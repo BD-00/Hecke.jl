@@ -173,3 +173,4 @@ end
 
 my_mul!(c::Vector{T}, A::SMat{T}, b::Vector{T}) where T <:Union{FpFieldElem, ZZModRingElem} = multi!(c, A, b)
 my_mul!(c::Vector{T}, A::SMat{T}, b::Vector{T}) where T <:Union{fpFieldElem, zzModRingElem} = mul!(c, A, b)
+
