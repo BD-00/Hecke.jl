@@ -1190,9 +1190,11 @@ end
     add_scaled_row!(A::SMat{T}, i::Int, j::Int, c::T) -> SMat{T}
 
 Returns $A$ after add_scaled_row!(Ai::SRow{T}, Aj::SRow{T}, c::T) in $A$.
+Returns $A$ after add_scaled_row!(Ai::SRow{T}, Aj::SRow{T}, c::T) in $A$.
 """
 function add_scaled_row!(A::SMat{T}, i::Int, j::Int, c::T) where T
   A.nnz = A.nnz - length(A[j])
+  add_scaled_row!(A[i], A[j], c)
   add_scaled_row!(A[i], A[j], c)
   A.nnz = A.nnz + length(A[j])
   return A
@@ -1218,12 +1220,9 @@ function add_scaled_col!(A::SMat{T}, i::Int, j::Int, c::T) where T
         end
       else
         k = searchsortedfirst(r.pos, j)
-        v = c*r.values[i_i]
-        if v != 0
-          insert!(r.pos, k, j)
-          insert!(r.values, k, v)
-          A.nnz+=1 #necessary in matrices
-        end
+        insert!(r.pos, k, j)
+        insert!(r.values, k, c*r.values[i_i])
+        A.nnz+=1 #necessary in matrices
       end
     end
   end
