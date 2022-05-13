@@ -20,6 +20,7 @@
 import Base.push!, Base.max, Nemo.nbits, Base.Array, Base.Matrix,
        Base.hcat,
        Base.vcat, Base.max, Base.min
+       Base.log, #AbstractAlgebra.evaluate
 
 include("Sparse/Matrix.jl")
 include("Sparse/Row.jl")
