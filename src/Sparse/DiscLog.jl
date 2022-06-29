@@ -97,6 +97,29 @@ function disc_log_rest(a2, b2, F)
   return g2
 end
 
+function one_prod(d, prods, rest) #used in disc_log2
+  prod1 = fmpz(1)
+  for (k,v) in d
+    if log(k^v)/log(10)>13
+      return false
+    end
+    x = prod1*(k^v)
+    if log(x)/log(10)>13#works only, if not at the end
+      push!(prods, prod1)
+      divexact!(rest, prod1)
+      return d, prods, rest
+   elseif length(d)==1
+      prod1 = k^v
+      push!(prods, prod1)
+      divexact!(rest, prod1)
+      delete!(d, k) 
+      return d, prods, rest
+   else
+      prod1 = x
+      delete!(d, k) 
+    end
+  end
+end
 
 @doc raw"""
     disc_log(a, b, F = parent(a)) -> ZZRingElem
