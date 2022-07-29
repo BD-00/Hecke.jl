@@ -37,5 +37,4 @@
       @test a^g == b 
     end
   end
-=#
 end
