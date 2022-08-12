@@ -648,8 +648,8 @@ end
 #
 ################################################################################
 
-@doc raw"""
-    norm2(A::SRow{T} -> T
+@doc Markdown.doc"""
+    norm2(A::SRow{T}) -> T
 
 Returns $A \cdot A^t$.
 """
