@@ -1,5 +1,5 @@
-add_verbose_scope(:DiscLog)
-add_assert_scope(:DiscLog)
+add_verbosity_scope(:DiscLog)
+add_assertion_scope(:DiscLog)
 
 function log_dict_rest(F::T, A, TA, idx=1)where T<:Union{Nemo.GaloisField, Nemo.GaloisFmpzField}
   cnt = 0

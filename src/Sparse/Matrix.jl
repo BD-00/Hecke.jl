@@ -1105,50 +1105,6 @@ function scale_col!(A::SMat{T}, TA::SMat{T}, j, c) where T #A[_j]->c*A[_,j]
 end
 
 @doc Markdown.doc"""
-    add_scaled_row!(A::SMat{T}, i::Int, j::Int, c::T) -> SMat{T}
-
-Returns $A$ after add_scaled_row!(Ai::SRow{T}, Aj::SRow{T}, c::T) in $A$.
-"""
-function add_scaled_row!(A::SMat{T}, i::Int, j::Int, c::T) where T
-  A.nnz = A.nnz - length(A[j])
-  add_scaled_row!(A[i], A[j], c)
-  A.nnz = A.nnz + length(A[j])
-  return A
-end
-
-@doc Markdown.doc"""
-    add_scaled_col!(A::SMat{T}, i::Int, j::Int, c::T) -> SMat{T}
-
-As add_scaled_row!(A::SMat{T}, i::Int, j::Int, c::T) but with columns of $A$.
-"""
-function add_scaled_col!(A::SMat{T}, i::Int, j::Int, c::T) where T 
-  @assert c != 0
-  @assert 1 <= i <= ncols(A) && 1 <= j <= ncols(A)  
-  for r in A.rows
-    if i in r.pos
-      i_i = searchsortedfirst(r.pos, i) #changed
-      if j in r.pos
-        i_j = searchsortedfirst(r.pos, j) #changed
-        r.values[i_j] += c*r.values[i_i]
-        if r.values[i_j] == 0
-          deleteat!(r.pos, i_j);deleteat!(r.values, i_j)
-          A.nnz-=1
-        end
-      else
-        k = searchsortedfirst(r.pos, j)
-        v = c*r.values[i_i]
-        if v != 0
-          insert!(r.pos, k, j)
-          insert!(r.values, k, v)
-          A.nnz+=1 #necessary in matrices
-        end
-      end
-    end
-  end
-  return A
-end
-
-@doc Markdown.doc"""
     add_scaled_col!(A::SMat{T}, TA::SMat{T}, i::Int, j::Int, c::T) -> SMat{T}
 
 As add_scaled_row!(A::SMat{T}, i::Int, j::Int, c::T) but with columns of $A$.
