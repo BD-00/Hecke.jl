@@ -1,6 +1,21 @@
 add_verbose_scope(:DiscLog)
 add_assert_scope(:DiscLog)
 
+function safeprime_dl(a, b, p)
+ p1 = div(p-1,2)
+ a1 = a^2
+ b1 = b^2
+ g1 = disc_log_ph(a1, b1, p1, 1)
+ a2 = a^p1
+ b2 = b^p1
+ if a2 == b2
+  g2 = fmpz(1)
+ else
+  g2 = fmpz(0)
+ end
+ return crt(g1, p1, g2, fmpz(2))
+end
+
 function log_dict_rest(F::T, A, TA, idx=1)where T<:Union{Nemo.GaloisField, Nemo.GaloisFmpzField}
   cnt = 0
   if !wiedemann(A, TA)[1]
@@ -40,7 +55,7 @@ function log_rest(F, b2)
     @vprint :DiscLog 1 "FB_logs empty"
     return 0
   end
-  p = order(F)
+  p = Hecke.order(F)
   randomexp = fmpz(rand(1:p))
   while !issmooth(FB,fmpz(lift(b2*p_elem^randomexp)))
     randomexp = fmpz(rand(1:p))
@@ -93,6 +108,14 @@ function disc_log(a, b, F = parent(a)) #requires a to be primitive
   b==1 && return fmpz(0)
   b==a && return fmpz(1)
   p = characteristic(F)
+  #for safeprimes:
+  if isprime(div(p-1,2))
+    if log2(p)<33
+      return safeprime_dl(a,b, p)
+    else
+     return IdxCalc(a,b,F)[1]
+    end
+  end
   d = Dict(Hecke.factor(p-1))
   G = [] #log(a^(M/m_i), b^(M/m_i))
   M = [] #m_i
