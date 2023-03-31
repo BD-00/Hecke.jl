@@ -340,7 +340,8 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
  l = length(FB)
  set_attribute!(F, :fb_length=>l)
  Indx = Dict(zip(FB,[i for i=1:l]))::Dict{fmpz, Int} #Index in a dictionary
- A = sparse_matrix(ZZ)
+ A = sparse_matrix(zz)
+ len = []
  rel = fmpz(1)
  #IDEA: dont add logs. add INT counter, then add cnt * log in the end. ??
  ##########################################################################################################################################
@@ -496,7 +497,8 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
            push!(V,-1)
            push!(V,-1)
          end
-         push!(A,sparse_row(ZZ, J1, V))
+         push!(A,sparse_row(zz, J1, V))
+         push!(len, length(J1))
        end
      end
      add!(rel, rel, Hc1)
@@ -509,10 +511,14 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
    return sieve(F,(qlimit, climit, ratio, inc))
  end
 <<<<<<< HEAD
+<<<<<<< HEAD
  return set_attribute!(F, :qlimit=>qlimit, :climit=>climit, :ratio=>ratio, :inc=>inc, :RelMat=>A, :FB_array=>FB, :fb_length=>l)
 >>>>>>> 1e3d19dbc (tests updated, sieve improved)
 =======
  return set_attribute!(F, :qlimit=>qlimit, :climit=>climit, :ratio=>ratio, :inc=>inc, :RelMat=>A, :FB_array=>FB)
+=======
+ return set_attribute!(F, :qlimit=>qlimit, :climit=>climit, :ratio=>ratio, :inc=>inc, :RelMat=>A, :FB_array=>FB, :len=>len)
+>>>>>>> 6f2458d06 (before script)
 end
 
 @doc Markdown.doc"""
@@ -544,7 +550,8 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
  l = length(FB)
  set_attribute!(F, :fb_length=>l)
  Indx = Dict(zip(FB,[i for i=1:l]))::Dict{fmpz, Int} #Index in a dictionary
- A = sparse_matrix(ZZ)
+ A = sparse_matrix(zz)
+ len = []
  #IDEA: dont add logs. add INT counter, then add cnt * log in the end. ??
  ##########################################################################################################################################
  # Sieve for ci
@@ -625,7 +632,8 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
            push!(V,-1)
            push!(V,-1)
          end
-         push!(A,sparse_row(ZZ, J1, V))
+         push!(A,sparse_row(zz, J1, V))
+         push!(len, length(J1))
        end
      end
      rel+=Hc1
@@ -637,8 +645,12 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
    climit += inc[2]
    return sieve(F,(qlimit, climit, ratio, inc))
  end
+<<<<<<< HEAD
  return set_attribute!(F, :qlimit=>qlimit, :climit=>climit, :ratio=>ratio, :inc=>inc, :RelMat=>A, :FB_array=>FB)
 >>>>>>> 37ff6a677 (Sieve: values of size sqrt(p) have type Int now + extra sieve for Nemo.GaloisField)
+=======
+ return set_attribute!(F, :qlimit=>qlimit, :climit=>climit, :ratio=>ratio, :inc=>inc, :RelMat=>A, :FB_array=>FB, :len=>len)
+>>>>>>> 6f2458d06 (before script)
 end
 
 ###############################################################################
@@ -652,7 +664,11 @@ end
 
 Given a field $F$ with attributes from sieve, logs of factorbase are computed and added to $F$.
 """
+<<<<<<< HEAD
 function log_dict(F::T, A, TA, WIEDEMANN=true)where T<:Union{Nemo.fpField, Nemo.FpField}
+=======
+function log_dict(F::T, A, TA, WIEDEMANN=true)where T<:Union{Nemo.GaloisField, Nemo.GaloisFmpzField}
+>>>>>>> 6f2458d06 (before script)
   p = get_attribute(F, :p)
   if WIEDEMANN
     cnt = 0
@@ -664,7 +680,11 @@ function log_dict(F::T, A, TA, WIEDEMANN=true)where T<:Union{Nemo.fpField, Nemo.
     while z
       kern = wiedemann(A, TA)[2]
       cnt+=1
+<<<<<<< HEAD
       cnt < 5 || return Dict{ZZRingElem, ZZRingElem}([]),Vector{ZZModRingElem}([]),FactorBase(ZZRingElem[])
+=======
+      cnt < 5 || return Dict{fmpz, fmpz}([]),Vector{fmpz_mod}([]),FactorBase(fmpz[])
+>>>>>>> 6f2458d06 (before script)
       if !iszero(kern)
         z = false
       end
@@ -765,7 +785,11 @@ function IdxCalc(a::T, b::T, F=parent(a)) where T<:Union{fpFieldElem, FpFieldEle
     #Preprocessing
     A = change_base_ring(F2, get_attribute(F,:RelMat))
     TA = transpose(A)
+<<<<<<< HEAD
     A, TA = sp_prepro(A, TA, get_attribute(F, :fb_length),2)
+=======
+    A, TA = sp_prepro(A, TA, get_attribute(F, :fb_length),10)
+>>>>>>> 6f2458d06 (before script)
     #Wiedemann + dict with logs of FB
     @vtime :DiscLog 3 log_dict(F, A, TA)
   end
