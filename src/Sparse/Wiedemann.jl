@@ -1,4 +1,5 @@
-some_nullspace(A::SMat) = wiedemann(A::SMat, transpose(A)::SMat)
+some_nullspace(A::SMat) = w=#
+iedemann(A::SMat, transpose(A)::SMat)
 
 #(p-1)/2 prime 
 @doc raw"""
