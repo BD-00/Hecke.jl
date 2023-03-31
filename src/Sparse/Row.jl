@@ -308,6 +308,20 @@ function change_base_ring(R::S, A::SRow{T}) where {T <: RingElem, S <: Ring}
   return z
 end
 
+function change_base_ring(R::S, A::SRow{T}) where {T <: Integer, S <: Ring}
+ z = sparse_row(R)
+ for (i, v) in A
+   nv = R(v)
+   if iszero(nv)
+     continue
+   else
+     push!(z.pos, i)
+     push!(z.values, nv)
+   end
+ end
+ return z
+end
+
 ################################################################################
 #
 #  Getting and setting values
