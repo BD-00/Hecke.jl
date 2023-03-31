@@ -65,7 +65,8 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
  l = length(FB)
  set_attribute!(F, :fb_length=>l)
  Indx = Dict(zip(FB,[i for i=1:l]))::Dict{fmpz, Int} #Index in a dictionary
- A = sparse_matrix(ZZ)
+ A = sparse_matrix(zz)
+ len = []
  rel = fmpz(1)
  #IDEA: dont add logs. add INT counter, then add cnt * log in the end. ??
  ##########################################################################################################################################
@@ -156,7 +157,8 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
            push!(V,-1)
            push!(V,-1)
          end
-         push!(A,sparse_row(ZZ, J1, V))
+         push!(A,sparse_row(zz, J1, V))
+         push!(len, length(J1))
        end
      end
      add!(rel, rel, Hc1)
@@ -168,7 +170,7 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
    climit += inc[2]
    return sieve(F,(qlimit, climit, ratio, inc))
  end
- return set_attribute!(F, :qlimit=>qlimit, :climit=>climit, :ratio=>ratio, :inc=>inc, :RelMat=>A, :FB_array=>FB)
+ return set_attribute!(F, :qlimit=>qlimit, :climit=>climit, :ratio=>ratio, :inc=>inc, :RelMat=>A, :FB_array=>FB, :len=>len)
 end
 
 @doc Markdown.doc"""
@@ -200,7 +202,8 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
  l = length(FB)
  set_attribute!(F, :fb_length=>l)
  Indx = Dict(zip(FB,[i for i=1:l]))::Dict{fmpz, Int} #Index in a dictionary
- A = sparse_matrix(ZZ)
+ A = sparse_matrix(zz)
+ len = []
  #IDEA: dont add logs. add INT counter, then add cnt * log in the end. ??
  ##########################################################################################################################################
  # Sieve for ci
@@ -281,7 +284,8 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
            push!(V,-1)
            push!(V,-1)
          end
-         push!(A,sparse_row(ZZ, J1, V))
+         push!(A,sparse_row(zz, J1, V))
+         push!(len, length(J1))
        end
      end
      rel+=Hc1
@@ -293,7 +297,7 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
    climit += inc[2]
    return sieve(F,(qlimit, climit, ratio, inc))
  end
- return set_attribute!(F, :qlimit=>qlimit, :climit=>climit, :ratio=>ratio, :inc=>inc, :RelMat=>A, :FB_array=>FB)
+ return set_attribute!(F, :qlimit=>qlimit, :climit=>climit, :ratio=>ratio, :inc=>inc, :RelMat=>A, :FB_array=>FB, :len=>len)
 end
 
 ###############################################################################
@@ -307,21 +311,26 @@ end
 
 Given a field $F$ with attributes from sieve, logs of factorbase are computed and added to $F$.
 """
-function log_dict(F::T, A, TA )where T<:Union{Nemo.GaloisField, Nemo.GaloisFmpzField}
+function log_dict(F::T, A, TA, WIEDEMANN=true)where T<:Union{Nemo.GaloisField, Nemo.GaloisFmpzField}
   p = get_attribute(F, :p)
-  cnt = 0
-  if !wiedemann(A, TA)[1]
-    @warn "wiedemann failed"
-    return F
-  end
-  z = true 
-  while z
-    kern = wiedemann(A, TA)[2]
-    cnt+=1
-    cnt < 5 || return Dict{fmpz, fmpz}([]),Vector{fmpz_mod}([]),FactorBase(fmpz[])
-    if !iszero(kern)
-      z = false
+  if WIEDEMANN
+    cnt = 0
+    if !wiedemann(A, TA)[1]
+      @warn "wiedemann failed"
+      return F
     end
+    z = true 
+    while z
+      kern = wiedemann(A, TA)[2]
+      cnt+=1
+      cnt < 5 || return Dict{fmpz, fmpz}([]),Vector{fmpz_mod}([]),FactorBase(fmpz[])
+      if !iszero(kern)
+        z = false
+      end
+    end
+  else
+    dim, kern = kernel(matrix(A))
+    @assert dim == 1
   end
   kern = inv(kern[1]).*kern #norm kernelvec
   # recon FB_logs mod p  mod p (note this works here if (p-1)/2 prime) Only 2 checks necessary.
@@ -410,7 +419,7 @@ function IdxCalc(a::T, b::T, F=parent(a)) where T<:Union{gfp_elem, gfp_fmpz_elem
     #Preprocessing
     A = change_base_ring(F2, get_attribute(F,:RelMat))
     TA = transpose(A)
-    A, TA = sp_prepro(A, TA, get_attribute(F, :fb_length))
+    A, TA = sp_prepro(A, TA, get_attribute(F, :fb_length),10)
     #Wiedemann + dict with logs of FB
     @vtime :DiscLog 3 log_dict(F, A, TA)
   end
