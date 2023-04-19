@@ -12,7 +12,7 @@ Like a snf without the divisibility condition.
 """
 function diagonal_form(A::SMat{ZZRingElem})
   s = 0
-  while !is_diagonal(A)
+  while !isdiagonal(A)
     s += 1
     A = hnf(transpose(A))
   end
@@ -33,11 +33,11 @@ function diagonal(A::SMat)
 end
 
 @doc raw"""
-    is_diagonal(A::SMat) -> Bool
+    isdiagonal(A::SMat) -> Bool
 
 True iff only the i-th entry in the i-th row is non-zero.
 """
-function is_diagonal(A::SMat)
+function isdiagonal(A::SMat)
   i = 1
   while i<= nrows(A) && length(A.rows[i].pos)>0
     if length(A.rows[i].pos) > 1
