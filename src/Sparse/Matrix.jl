@@ -158,13 +158,8 @@ end
     sparse_matrix(R::Ring) -> SMat
 Return an empty sparse matrix with base ring $R$.
 """
-function sparse_matrix(R::Ring)
-  r = SMat{elem_type(R), Vector{elem_type(R)}}()
-  r.base_ring = R
-  return r
-end
-function sparse_matrix(R::ZZRing)
-  r = SMat{ZZRingElem, ZZRingElem_Array_Mod.ZZRingElem_Array}()
+function sparse_matrix(R::T) where T <: Ring
+  r = SMat{elem_type(R)}()
   r.base_ring = R
   return r
 end
@@ -1084,7 +1079,7 @@ end
 #
 ################################################################################
 
-@doc Markdown.doc"""
+@doc raw"""
   delete_row!(A::SMat{T}, i::Int) -> SMat{T}
 
 Deletes $i$-th row of $A$ in place.
@@ -1097,7 +1092,7 @@ function delete_row!(A::SMat{T}, i::Int) where T
   return A
 end
 
-@doc Markdown.doc"""
+@doc raw"""
   delete_rows!(A::SMat{T}, I, sorted=true)
 
 Deletes rows in set of indices $I$ of $A$ in place.
@@ -1112,7 +1107,7 @@ function delete_rows!(A::SMat{T}, I, sorted=true) where T #elements in I need to
   return A
 end
 
-@doc Markdown.doc"""
+@doc raw"""
   delete_zero_rows!(A::SMat{T}, s=1)
 
 Deletes zero rows of $A$ in place.
@@ -1126,7 +1121,7 @@ function delete_zero_rows!(A::SMat{T}, s=1) where T #where s denotes the first r
   return A
 end
 
-@doc Markdown.doc"""
+@doc raw"""
     empty_col!(A::SMat{T}, TA::SMat{T}, j::Int, changeTA=false) -> SMat{T}/Tuple{SMat{T}, SMat{T}}
 
 Deletes non-zero entries in $j$-th column of $A$ in place using the transpose $TA$ of $A$. Output $A$ doesn't match $TA$ unless changeTA = true.
@@ -1151,7 +1146,7 @@ function empty_col!(A::SMat{T}, TA::SMat{T}, j::Int, changeTA=false) where T #on
   return A
 end
 
-@doc Markdown.doc"""
+@doc raw"""
     empty_cols!(A::SMat{T}, TA::SMat{T}, J, changeTA=false) -> SMat{T}/Tuple{SMat{T}, SMat{T}}
 
 Deletes non-zero entries in columns with indices in $J$ of $A$ in place using the transpose $TA$ of $A$. Output $A$ doesn't match $TA$ unless changeTA = true.
@@ -1169,7 +1164,7 @@ end
 #  Row/Col operations in matrix
 #
 ################################################################################
-@doc Markdown.doc"""
+@doc raw"""
     function scale_col!(A::SMat{T}, TA::SMat{T}, j, c) -> SMat{T}
 
 Returns $A$ after scaling $j$-th column in place using the transpose $TA$ of $A$.
@@ -1186,7 +1181,7 @@ function scale_col!(A::SMat{T}, TA::SMat{T}, j, c) where T #A[_j]->c*A[_,j]
   return A
 end
 
-@doc Markdown.doc"""
+@doc raw"""
     add_scaled_row!(A::SMat{T}, i::Int, j::Int, c::T) -> SMat{T}
 
 Returns $A$ after add_scaled_row!(Ai::SRow{T}, Aj::SRow{T}, c::T) in $A$.
@@ -1200,7 +1195,7 @@ function add_scaled_row!(A::SMat{T}, i::Int, j::Int, c::T) where T
   return A
 end
 
-@doc Markdown.doc"""
+@doc raw"""
     add_scaled_col!(A::SMat{T}, i::Int, j::Int, c::T) -> SMat{T}
 
 As add_scaled_row!(A::SMat{T}, i::Int, j::Int, c::T) but with columns of $A$.
@@ -1232,7 +1227,7 @@ function add_scaled_col!(A::SMat{T}, i::Int, j::Int, c::T) where T
   return A
 end
 
-@doc Markdown.doc"""
+@doc raw"""
     add_scaled_col!(A::SMat{T}, TA::SMat{T}, i::Int, j::Int, c::T) -> SMat{T}
 
 As add_scaled_row!(A::SMat{T}, i::Int, j::Int, c::T) but with columns of $A$.
