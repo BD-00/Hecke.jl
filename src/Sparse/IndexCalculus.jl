@@ -44,6 +44,7 @@ function sieve_params(p,eps::Float64,ratio::Float64)
 end
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 @doc raw"""
     sieve(F::Nemo.FpField,SP = sieve_params(characteristic(F),0.02,1.1)) -> Nothing
 
@@ -317,10 +318,18 @@ Computes coefficient matrix of factorbase logarithms and saves corresponding att
 """
 function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Union{Nemo.GaloisFmpzField} #F with primitive element as attribute, p at most 35 decimals
 >>>>>>> 37ff6a677 (Sieve: values of size sqrt(p) have type Int now + extra sieve for Nemo.GaloisField)
+=======
+@doc raw"""
+    sieve(F::Nemo.FpField,SP = sieve_params(characteristic(F),0.02,1.1)) -> Nothing
+
+Computes coefficient matrix of factorbase logarithms and saves corresponding attributes on $F$.
+"""
+function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Union{Nemo.FpField} #F with primitive element as attribute, p at most 35 decimals
+>>>>>>> 179fd98de (after script and some work)
  p = characteristic(F)
  set_attribute!(F, :p=>p)
  a = get_attribute(F, :a)
- H_fmpz = floor(root(p,2))+1
+ H_fmpz = floor(iroot(p,2))+1
  H1 = H_fmpz +1
  H = Int(H_fmpz)
  J = Int(H_fmpz^2 - p)
@@ -331,7 +340,7 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
  # factorbase up to qlimit
  fb_primes = Hecke.primes_up_to(qlimit)
  indx = searchsortedfirst(fb_primes, lift(a))
- FB = vcat([fmpz(lift(a))],deleteat!(fb_primes,indx))::Vector{fmpz} # swap a[1] = a[2] , a[2] = [1] array
+ FB = vcat([ZZRingElem(lift(a))],deleteat!(fb_primes,indx))::Vector{ZZRingElem} # swap a[1] = a[2] , a[2] = [1] array
  # use shift! / unshift! here...
  log2 = Base.log(2.0);
  logqs = Float64[Base.log(Int(q))/log2 for q in FB] #real logarithms for sieve 
@@ -339,10 +348,10 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
  FBs = get_attribute(F, :FBs)
  l = length(FB)
  set_attribute!(F, :fb_length=>l)
- Indx = Dict(zip(FB,[i for i=1:l]))::Dict{fmpz, Int} #Index in a dictionary
- A = sparse_matrix(zz)
+ Indx = Dict(zip(FB,[i for i=1:l]))::Dict{ZZRingElem, Int} #Index in a dictionary
+ A = sparse_matrix(ZZ) #zz
  len = []
- rel = fmpz(1)
+ rel = ZZRingElem(1)
  #IDEA: dont add logs. add INT counter, then add cnt * log in the end. ??
  ##########################################################################################################################################
  # Sieve for ci
@@ -451,7 +460,7 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
    #include relations / check sieve for full factorizations.
    mul!(rel, Hc1, H1)
 
-   n = fmpz(1)
+   n = ZZRingElem(1)
    for c2 in 1:length(Sieve)
      if rel > p
        sub!(n, rel, p)
@@ -465,7 +474,7 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
      if abs(Sieve[c2] - nbn) < 1 
        #generate Factorbase based on FBs with new c_i�s
        if issmooth(FBs,n)
-         dict_factors = Hecke.factor(FBs,fmpz(n))
+         dict_factors = Hecke.factor(FBs,ZZRingElem(n))
          #Include each H + c_i in extended factor basis.
          r = length(Indx)+1
          if !((Hc1) in keys(Indx))
@@ -497,7 +506,7 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
            push!(V,-1)
            push!(V,-1)
          end
-         push!(A,sparse_row(zz, J1, V))
+         push!(A,sparse_row(ZZ, J1, V)) #zz
          push!(len, length(J1))
        end
      end
@@ -521,12 +530,12 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
 >>>>>>> 6f2458d06 (before script)
 end
 
-@doc Markdown.doc"""
-    sieve(F::Nemo.GaloisField,SP = sieve_params(characteristic(F),0.02,1.1)) -> Nothing
+@doc raw"""
+    sieve(F::Nemo.fpField,SP = sieve_params(characteristic(F),0.02,1.1)) -> Nothing
 
 Computes coefficient matrix of factorbase logarithms and saves corresponding attributes on $F$.
 """
-function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Union{Nemo.GaloisField} #F with primitive element as attribute
+function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Union{Nemo.fpField} #F with primitive element as attribute
  p = Int(length(F))
  set_attribute!(F, :p=>p)
  a = get_attribute(F, :a)
@@ -541,7 +550,7 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
  # factorbase up to qlimit
  fb_primes = Hecke.primes_up_to(qlimit)
  indx = searchsortedfirst(fb_primes, lift(a))
- FB = vcat([fmpz(lift(a))],deleteat!(fb_primes,indx))::Vector{fmpz} # swap a[1] = a[2] , a[2] = [1] array
+ FB = vcat([ZZRingElem(lift(a))],deleteat!(fb_primes,indx))::Vector{ZZRingElem} # swap a[1] = a[2] , a[2] = [1] array
  # use shift! / unshift! here...
  log2 = Base.log(2.0);
  logqs = Float64[Base.log(Int(q))/log2 for q in FB] #real logarithms for sieve 
@@ -549,8 +558,8 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
  FBs = get_attribute(F, :FBs)
  l = length(FB)
  set_attribute!(F, :fb_length=>l)
- Indx = Dict(zip(FB,[i for i=1:l]))::Dict{fmpz, Int} #Index in a dictionary
- A = sparse_matrix(zz)
+ Indx = Dict(zip(FB,[i for i=1:l]))::Dict{ZZRingElem, Int} #Index in a dictionary
+ A = sparse_matrix(ZZ) #zz
  len = []
  #IDEA: dont add logs. add INT counter, then add cnt * log in the end. ??
  ##########################################################################################################################################
@@ -599,8 +608,8 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
      nbn = nbits(n)-1
      if abs(Sieve[c2] - nbn) < 1 
        #generate Factorbase based on FBs with new c_i�s
-       if issmooth(FBs,fmpz(n))
-         dict_factors = Hecke.factor(FBs,fmpz(n))
+       if issmooth(FBs,ZZRingElem(n))
+         dict_factors = Hecke.factor(FBs,ZZRingElem(n))
          #Include each H + c_i in extended factor basis.
          r = length(Indx)+1
          if !((Hc1) in keys(Indx))
@@ -632,7 +641,7 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
            push!(V,-1)
            push!(V,-1)
          end
-         push!(A,sparse_row(zz, J1, V))
+         push!(A,sparse_row(ZZ, J1, V)) #zz
          push!(len, length(J1))
        end
      end
@@ -665,10 +674,14 @@ end
 Given a field $F$ with attributes from sieve, logs of factorbase are computed and added to $F$.
 """
 <<<<<<< HEAD
+<<<<<<< HEAD
 function log_dict(F::T, A, TA, WIEDEMANN=true)where T<:Union{Nemo.fpField, Nemo.FpField}
 =======
 function log_dict(F::T, A, TA, WIEDEMANN=true)where T<:Union{Nemo.GaloisField, Nemo.GaloisFmpzField}
 >>>>>>> 6f2458d06 (before script)
+=======
+function log_dict(F::T, A, TA, WIEDEMANN=true)where T<:Union{Nemo.fpField, Nemo.FpField}
+>>>>>>> 179fd98de (after script and some work)
   p = get_attribute(F, :p)
   if WIEDEMANN
     cnt = 0
@@ -681,10 +694,14 @@ function log_dict(F::T, A, TA, WIEDEMANN=true)where T<:Union{Nemo.GaloisField, N
       kern = wiedemann(A, TA)[2]
       cnt+=1
 <<<<<<< HEAD
+<<<<<<< HEAD
       cnt < 5 || return Dict{ZZRingElem, ZZRingElem}([]),Vector{ZZModRingElem}([]),FactorBase(ZZRingElem[])
 =======
       cnt < 5 || return Dict{fmpz, fmpz}([]),Vector{fmpz_mod}([]),FactorBase(fmpz[])
 >>>>>>> 6f2458d06 (before script)
+=======
+      cnt < 5 || return Dict{ZZRingElem, ZZRingElem}([]),Vector{ZZModRingElem}([]),FactorBase(ZZRingElem[])
+>>>>>>> 179fd98de (after script and some work)
       if !iszero(kern)
         z = false
       end
@@ -762,12 +779,17 @@ Tries to find $g$ s.th. $a^g == b$ where $a$ is primitive element of $F$.
 function IdxCalc(a::T, b::T, F=parent(a)) where T<:Union{fpFieldElem, FpFieldElem} #RingElem better?
   @assert parent(a) === parent(b)
 <<<<<<< HEAD
+<<<<<<< HEAD
   b==1 && return ZZRingElem(0), F
   b==a && return ZZRingElem(1), F
 =======
   b==1 && return fmpz(0), F
   b==a && return fmpz(1), F
 >>>>>>> 1e3d19dbc (tests updated, sieve improved)
+=======
+  b==1 && return ZZRingElem(0), F
+  b==a && return ZZRingElem(1), F
+>>>>>>> 179fd98de (after script and some work)
   set_attribute!(F, :a=>a)
   if typeof(get_attribute(F, :RelMat))==Nothing
     @vtime :DiscLog 3 sieve(F)
@@ -801,10 +823,14 @@ function IdxCalc(a::T, b::T, F=parent(a)) where T<:Union{fpFieldElem, FpFieldEle
     p = get_attribute(F, :p)
     loga = log(F, a)
 <<<<<<< HEAD
+<<<<<<< HEAD
     logb = solvemod(loga, logb, ZZRingElem(p-1))
 =======
     logb = solvemod(loga, logb, fmpz(p-1))
 >>>>>>> 37ff6a677 (Sieve: values of size sqrt(p) have type Int now + extra sieve for Nemo.GaloisField)
+=======
+    logb = solvemod(loga, logb, ZZRingElem(p-1))
+>>>>>>> 179fd98de (after script and some work)
   end
   return logb, F 
 end
