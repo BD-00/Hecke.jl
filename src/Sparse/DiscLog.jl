@@ -9,14 +9,14 @@ function safeprime_dl(a, b, p)
  a2 = a^p1
  b2 = b^p1
  if a2 == b2
-  g2 = fmpz(1)
+  g2 = ZZRingElem(1)
  else
-  g2 = fmpz(0)
+  g2 = ZZRingElem(0)
  end
- return crt(g1, p1, g2, fmpz(2))
+ return crt(g1, p1, g2, ZZRingElem(2))
 end
 
-function log_dict_rest(F::T, A, TA, idx=1)where T<:Union{Nemo.GaloisField, Nemo.GaloisFmpzField}
+function log_dict_rest(F::T, A, TA, idx=1)where T<:Union{Nemo.fpField, Nemo.FpField}
   cnt = 0
   if !wiedemann(A, TA)[1]
     @vprint :DiscLog 1 "wiedemann failed"
@@ -26,13 +26,13 @@ function log_dict_rest(F::T, A, TA, idx=1)where T<:Union{Nemo.GaloisField, Nemo.
   while z
    @vtime :DiscLog 2 kern = wiedemann(A, TA)[2]
     cnt+=1
-    cnt < 5 || return Dict{fmpz, fmpz}([]),Vector{fmpz_mod}([]),FactorBase(fmpz[])
+    cnt < 5 || return Dict{ZZRingElem, ZZRingElem}([]),Vector{ZZModRingElem}([]),FactorBase(ZZRingElem[])
     if !iszero(kern)
       z = false
     end
   end
   kern = inv(kern[idx]).*kern #norm kernelvec
-  Q,L = Array{fmpz}([]),Array{fmpz}([])
+  Q,L = Array{ZZRingElem}([]),Array{ZZRingElem}([])
   FB = get_attribute(F, :FB_array)
   l = get_attribute(F, :fb_length)
   Q = FB[1:l] 
@@ -56,9 +56,9 @@ function log_rest(F, b2)
     return 0
   end
   p = Hecke.order(F)
-  randomexp = fmpz(rand(1:p))
-  while !issmooth(FB,fmpz(lift(b2*p_elem^randomexp)))
-    randomexp = fmpz(rand(1:p))
+  randomexp = ZZRingElem(rand(1:p))
+  while !issmooth(FB,ZZRingElem(lift(b2*p_elem^randomexp)))
+    randomexp = ZZRingElem(rand(1:p))
   end  
   factorization = Hecke.factor(FB,lift(b2*p_elem^randomexp))
 
@@ -68,8 +68,8 @@ end
 
 function disc_log_rest(a2, b2, F)
   @assert parent(a2) === parent(b2)
-  b2==1 && return fmpz(0)
-  b2==a2 && return fmpz(1)
+  b2==1 && return ZZRingElem(0)
+  b2==a2 && return ZZRingElem(1)
   p = characteristic(F)
   rest = get_attribute(F, :rest)
   set_attribute!(F, :a=>F(2))
@@ -81,7 +81,7 @@ function disc_log_rest(a2, b2, F)
   end                     #later sieve2
   rest = get_attribute(F, :rest)
   #Preprocessing
-  RR = ResidueRing(ZZ, rest)#falsches p ?
+  RR = residue_ring(ZZ, rest)#falsches p ?
   set_attribute!(F, :RR=>RR)
   A = change_base_ring(RR,get_attribute(F,:RelMat))
   TA = transpose(A)
@@ -98,15 +98,15 @@ function disc_log_rest(a2, b2, F)
 end
 
 
-@doc Markdown.doc"""
-    disc_log(a, b, F = parent(a)) -> fmpz
+@doc raw"""
+    disc_log(a, b, F = parent(a)) -> ZZRingElem
 
 Returns x such that a^x=b.
 """
 function disc_log(a, b, F = parent(a)) #requires a to be primitive
   @assert parent(a) === parent(b)
-  b==1 && return fmpz(0)
-  b==a && return fmpz(1)
+  b==1 && return ZZRingElem(0)
+  b==a && return ZZRingElem(1)
   p = characteristic(F)
   #for safeprimes:
   if isprime(div(p-1,2))
