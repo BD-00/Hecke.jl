@@ -1,3 +1,10 @@
+import Hecke.sparse_row
+
+#move to ZZRow.jl
+function sparse_row(R::ZZRing, pos::Vector{Int64}, val::Vector{<:Integer}; sort::Bool = true)
+ return sparse_row(R, pos, map(ZZRingElem, val), sort = sort)
+end
+
 ###############################################################################
 #
 #   SIEVE
@@ -6,12 +13,12 @@
 
 function primitive_elem(F::FinField,first::Bool) 
   p = length(F)
-  Fact = prime_divisors(fmpz(p-1))
+  Fact = prime_divisors(ZZRingElem(p-1))
   while true # alpha exists
     for y in F
       if !first y = rand(F) end
       if isprime(lift(y))
-        if !(any(i->isone(y^divexact(fmpz(p-1),i)), Fact))
+        if !(any(i->isone(y^divexact(ZZRingElem(p-1),i)), Fact))
           return y
         end
       end
@@ -19,7 +26,7 @@ function primitive_elem(F::FinField,first::Bool)
   end
 end
 
-@doc Markdown.doc"""
+@doc raw"""
     sieve_params(p,eps::Float64,ratio::Float64) -> Tuple{Int64, Int64, Float64, Tuple{Int64, Int64}}
 
 Returns parameters for sieve.
@@ -36,16 +43,16 @@ function sieve_params(p,eps::Float64,ratio::Float64)
   return qlimit,climit,ratio,inc
 end
 
-@doc Markdown.doc"""
-    sieve(F::Nemo.GaloisFmpzField,SP = sieve_params(characteristic(F),0.02,1.1)) -> Nothing
+@doc raw"""
+    sieve(F::Nemo.FpField,SP = sieve_params(characteristic(F),0.02,1.1)) -> Nothing
 
 Computes coefficient matrix of factorbase logarithms and saves corresponding attributes on $F$.
 """
-function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Union{Nemo.GaloisFmpzField} #F with primitive element as attribute, p at most 35 decimals
+function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Union{Nemo.FpField} #F with primitive element as attribute, p at most 35 decimals
  p = characteristic(F)
  set_attribute!(F, :p=>p)
  a = get_attribute(F, :a)
- H_fmpz = floor(root(p,2))+1
+ H_fmpz = floor(iroot(p,2))+1
  H1 = H_fmpz +1
  H = Int(H_fmpz)
  J = Int(H_fmpz^2 - p)
@@ -56,7 +63,7 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
  # factorbase up to qlimit
  fb_primes = Hecke.primes_up_to(qlimit)
  indx = searchsortedfirst(fb_primes, lift(a))
- FB = vcat([fmpz(lift(a))],deleteat!(fb_primes,indx))::Vector{fmpz} # swap a[1] = a[2] , a[2] = [1] array
+ FB = vcat([ZZRingElem(lift(a))],deleteat!(fb_primes,indx))::Vector{ZZRingElem} # swap a[1] = a[2] , a[2] = [1] array
  # use shift! / unshift! here...
  log2 = Base.log(2.0);
  logqs = Float64[Base.log(Int(q))/log2 for q in FB] #real logarithms for sieve 
@@ -64,10 +71,10 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
  FBs = get_attribute(F, :FBs)
  l = length(FB)
  set_attribute!(F, :fb_length=>l)
- Indx = Dict(zip(FB,[i for i=1:l]))::Dict{fmpz, Int} #Index in a dictionary
- A = sparse_matrix(zz)
+ Indx = Dict(zip(FB,[i for i=1:l]))::Dict{ZZRingElem, Int} #Index in a dictionary
+ A = sparse_matrix(ZZ) #zz
  len = []
- rel = fmpz(1)
+ rel = ZZRingElem(1)
  #IDEA: dont add logs. add INT counter, then add cnt * log in the end. ??
  ##########################################################################################################################################
  # Sieve for ci
@@ -111,7 +118,7 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
    #include relations / check sieve for full factorizations.
    mul!(rel, Hc1, H1)
 
-   n = fmpz(1)
+   n = ZZRingElem(1)
    for c2 in 1:length(Sieve)
      if rel > p
        sub!(n, rel, p)
@@ -125,7 +132,7 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
      if abs(Sieve[c2] - nbn) < 1 
        #generate Factorbase based on FBs with new c_i�s
        if issmooth(FBs,n)
-         dict_factors = Hecke.factor(FBs,fmpz(n))
+         dict_factors = Hecke.factor(FBs,ZZRingElem(n))
          #Include each H + c_i in extended factor basis.
          r = length(Indx)+1
          if !((Hc1) in keys(Indx))
@@ -157,7 +164,7 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
            push!(V,-1)
            push!(V,-1)
          end
-         push!(A,sparse_row(zz, J1, V))
+         push!(A,sparse_row(ZZ, J1, V)) #zz
          push!(len, length(J1))
        end
      end
@@ -173,12 +180,12 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
  return set_attribute!(F, :qlimit=>qlimit, :climit=>climit, :ratio=>ratio, :inc=>inc, :RelMat=>A, :FB_array=>FB, :len=>len)
 end
 
-@doc Markdown.doc"""
-    sieve(F::Nemo.GaloisField,SP = sieve_params(characteristic(F),0.02,1.1)) -> Nothing
+@doc raw"""
+    sieve(F::Nemo.fpField,SP = sieve_params(characteristic(F),0.02,1.1)) -> Nothing
 
 Computes coefficient matrix of factorbase logarithms and saves corresponding attributes on $F$.
 """
-function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Union{Nemo.GaloisField} #F with primitive element as attribute
+function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Union{Nemo.fpField} #F with primitive element as attribute
  p = Int(length(F))
  set_attribute!(F, :p=>p)
  a = get_attribute(F, :a)
@@ -193,7 +200,7 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
  # factorbase up to qlimit
  fb_primes = Hecke.primes_up_to(qlimit)
  indx = searchsortedfirst(fb_primes, lift(a))
- FB = vcat([fmpz(lift(a))],deleteat!(fb_primes,indx))::Vector{fmpz} # swap a[1] = a[2] , a[2] = [1] array
+ FB = vcat([ZZRingElem(lift(a))],deleteat!(fb_primes,indx))::Vector{ZZRingElem} # swap a[1] = a[2] , a[2] = [1] array
  # use shift! / unshift! here...
  log2 = Base.log(2.0);
  logqs = Float64[Base.log(Int(q))/log2 for q in FB] #real logarithms for sieve 
@@ -201,8 +208,8 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
  FBs = get_attribute(F, :FBs)
  l = length(FB)
  set_attribute!(F, :fb_length=>l)
- Indx = Dict(zip(FB,[i for i=1:l]))::Dict{fmpz, Int} #Index in a dictionary
- A = sparse_matrix(zz)
+ Indx = Dict(zip(FB,[i for i=1:l]))::Dict{ZZRingElem, Int} #Index in a dictionary
+ A = sparse_matrix(ZZ) #zz
  len = []
  #IDEA: dont add logs. add INT counter, then add cnt * log in the end. ??
  ##########################################################################################################################################
@@ -251,8 +258,8 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
      nbn = nbits(n)-1
      if abs(Sieve[c2] - nbn) < 1 
        #generate Factorbase based on FBs with new c_i�s
-       if issmooth(FBs,fmpz(n))
-         dict_factors = Hecke.factor(FBs,fmpz(n))
+       if issmooth(FBs,ZZRingElem(n))
+         dict_factors = Hecke.factor(FBs,ZZRingElem(n))
          #Include each H + c_i in extended factor basis.
          r = length(Indx)+1
          if !((Hc1) in keys(Indx))
@@ -284,7 +291,7 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
            push!(V,-1)
            push!(V,-1)
          end
-         push!(A,sparse_row(zz, J1, V))
+         push!(A,sparse_row(ZZ, J1, V)) #zz
          push!(len, length(J1))
        end
      end
@@ -306,12 +313,12 @@ end
 #
 ###############################################################################
 
-@doc Markdown.doc"""
+@doc raw"""
     log_dict(F::Nemo.Galois(Fmpz)Field, A::SMat, TA::SMat) -> Nemo.Galois(Fmpz)Field
 
 Given a field $F$ with attributes from sieve, logs of factorbase are computed and added to $F$.
 """
-function log_dict(F::T, A, TA, WIEDEMANN=true)where T<:Union{Nemo.GaloisField, Nemo.GaloisFmpzField}
+function log_dict(F::T, A, TA, WIEDEMANN=true)where T<:Union{Nemo.fpField, Nemo.FpField}
   p = get_attribute(F, :p)
   if WIEDEMANN
     cnt = 0
@@ -323,7 +330,7 @@ function log_dict(F::T, A, TA, WIEDEMANN=true)where T<:Union{Nemo.GaloisField, N
     while z
       kern = wiedemann(A, TA)[2]
       cnt+=1
-      cnt < 5 || return Dict{fmpz, fmpz}([]),Vector{fmpz_mod}([]),FactorBase(fmpz[])
+      cnt < 5 || return Dict{ZZRingElem, ZZRingElem}([]),Vector{ZZModRingElem}([]),FactorBase(ZZRingElem[])
       if !iszero(kern)
         z = false
       end
@@ -334,8 +341,8 @@ function log_dict(F::T, A, TA, WIEDEMANN=true)where T<:Union{Nemo.GaloisField, N
   end
   kern = inv(kern[1]).*kern #norm kernelvec
   # recon FB_logs mod p  mod p (note this works here if (p-1)/2 prime) Only 2 checks necessary.
-  Q,L = Array{fmpz}([]),Array{fmpz}([])
-  two = fmpz(2)
+  Q,L = Array{ZZRingElem}([]),Array{ZZRingElem}([])
+  two = ZZRingElem(2)
   _modulus = get_attribute(F, :_modulus)
   u,v = get_attribute(F, :u), get_attribute(F, :v)
   FB = get_attribute(F, :FB_array)
@@ -348,10 +355,10 @@ function log_dict(F::T, A, TA, WIEDEMANN=true)where T<:Union{Nemo.GaloisField, N
     q_temp = FB[i]
     if a^test1 == q_temp   
       push!(Q,q_temp)
-      push!(L,fmpz(test1))
+      push!(L,ZZRingElem(test1))
     elseif a^test2 == FB[i]
       push!(Q,q_temp)
-      push!(L,fmpz(test2))
+      push!(L,ZZRingElem(test2))
     end 
   end 
   
@@ -362,12 +369,12 @@ function log_dict(F::T, A, TA, WIEDEMANN=true)where T<:Union{Nemo.GaloisField, N
   return F
 end
 
-@doc Markdown.doc"""
-    log(F::Nemo.Galois(Fmpz)Field, b) -> fmpz
+@doc raw"""
+    log(F::Nemo.Galois(Fmpz)Field, b) -> ZZRingElem
 
 Returns $g$ s.th. $a^g == b$ given the factorbase logs in $F$.
 """
-function log(F::T, b) where T<:Union{Nemo.GaloisField, Nemo.GaloisFmpzField}
+function log(F::T, b) where T<:Union{Nemo.fpField, Nemo.FpField}
   #return log_a(b) i.e x s.t a^x = b
   p = get_attribute(F, :p)
   p_elem = get_attribute(F, :primitive_elem)
@@ -377,9 +384,9 @@ function log(F::T, b) where T<:Union{Nemo.GaloisField, Nemo.GaloisFmpzField}
     @warn "FB_logs empty"
     return 0
   end
-  randomexp = fmpz(rand(1:p-1))
-  while !issmooth(FB,fmpz(lift(b*p_elem^randomexp)))
-    randomexp = fmpz(rand(1:p-1))
+  randomexp = ZZRingElem(rand(1:p-1))
+  while !issmooth(FB,ZZRingElem(lift(b*p_elem^randomexp)))
+    randomexp = ZZRingElem(rand(1:p-1))
   end  
   factorization = Hecke.factor(FB,lift(b*p_elem^randomexp))
 
@@ -393,15 +400,15 @@ end
 #
 ###############################################################################
 
-@doc Markdown.doc"""
-    IdxCalc(a::gfp_(fmpz_)elem, b::gfp_(fmpz_)elem, F=parent(a)) -> Tupel{fmpz, Nemo.Galois(Fmpz)Field} 
+@doc raw"""
+    IdxCalc(a::gfp_(fmpz_)elem, b::gfp_(fmpz_)elem, F=parent(a)) -> Tupel{ZZRingElem, Nemo.Galois(Fmpz)Field} 
 
 Tries to find $g$ s.th. $a^g == b$ where $a$ is primitive element of $F$.
 """
-function IdxCalc(a::T, b::T, F=parent(a)) where T<:Union{gfp_elem, gfp_fmpz_elem} #RingElem better?
+function IdxCalc(a::T, b::T, F=parent(a)) where T<:Union{fpFieldElem, FpFieldElem} #RingElem better?
   @assert parent(a) === parent(b)
-  b==1 && return fmpz(0), F
-  b==a && return fmpz(1), F
+  b==1 && return ZZRingElem(0), F
+  b==a && return ZZRingElem(1), F
   set_attribute!(F, :a=>a)
   if typeof(get_attribute(F, :RelMat))==Nothing
     @vtime :DiscLog 3 sieve(F)
@@ -409,8 +416,8 @@ function IdxCalc(a::T, b::T, F=parent(a)) where T<:Union{gfp_elem, gfp_fmpz_elem
   if typeof(get_attribute(F, :Logdict))==Nothing
     p = get_attribute(F, :p)
     _modulus = div((p-1),2)
-    two = fmpz(2)
-    F2 = ResidueRing(ZZ, _modulus) #change it when prepro fixed
+    two = ZZRingElem(2)
+    F2 = residue_ring(ZZ, _modulus) #change it when prepro fixed
     set_attribute!(F, :F2=>F2)
     c, u, v = gcdx(two, _modulus)
     c == 1 || (@error "FB_LOGS: 2 ,(p-1)/2 not coprime")
@@ -430,7 +437,7 @@ function IdxCalc(a::T, b::T, F=parent(a)) where T<:Union{gfp_elem, gfp_fmpz_elem
   if a != get_attribute(F, :primitive_elem) 
     p = get_attribute(F, :p)
     loga = log(F, a)
-    logb = solvemod(loga, logb, fmpz(p-1))
+    logb = solvemod(loga, logb, ZZRingElem(p-1))
   end
   return logb, F 
 end
