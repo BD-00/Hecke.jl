@@ -4,9 +4,9 @@
 #
 ################################################################################
 
-function SMatSpace(R::Ring, r::Int, c::Int)
+function SMatSpace(R::Ring, r::Int, c::Int; cached = true)
   T = elem_type(R)
-  return SMatSpace{T}(R, r, c)
+  return SMatSpace{T}(R, r, c, cached)
 end
 
 ################################################################################
@@ -145,7 +145,7 @@ density(A::SMat) = 1.0 - sparsity(A)
 
 function show(io::IO, A::SMat{T}) where T
   print(io, "Sparse ", A.r, " x ", A.c, " matrix with ")
-  print(io, A.nnz, " non-zero entries")
+  print(io, A.nnz, " non-zero entries\n")
 end
 
 ################################################################################
@@ -159,28 +159,10 @@ end
 
 Return an empty sparse matrix with base ring $R$.
 """
-function sparse_matrix(R::Ring)
-  r = SMat{elem_type(R), Vector{elem_type(R)}}()
+function sparse_matrix(R::T) where T <: Ring
+  r = SMat{elem_type(R)}()
   r.base_ring = R
   return r
-end
-function sparse_matrix(R::ZZRing)
-  r = SMat{ZZRingElem, ZZRingElem_Array_Mod.ZZRingElem_Array}()
-  r.base_ring = R
-  return r
-end
-
-@doc raw"""
-    sparse_matrix(R::Ring, n::Int, m::Int) -> SMat
-
-Return a sparse $n$ times $m$ zero matrix over $R$.
-"""
-function sparse_matrix(R::Ring, n::Int, m::Int)
-  S = sparse_matrix(R)
-  S.rows = [sparse_row(R) for i=1:n]
-  S.r = n
-  S.c = m
-  return S
 end
 
 ################################################################################
@@ -259,35 +241,6 @@ end
 #
 ################################################################################
 
-# A dangerous interface for checking whether an entry is zero
-#
-# fl, t = _is_zero_entry(A, i, j)
-# then A[i, j] == _get(t)
-#
-# This is to avoid the allocation and double "lookup" for flint matrices
-#
-# WARNING: The function calling _is_zero_entry(A, i, j) must call this inside a
-# GC.@preserve A block
-
-@inline function _is_zero_entry(A::ZZMatrix, i, j)
-  x = ccall((:fmpz_mat_entry, libflint),
-            Ptr{ZZRingElem}, (Ref{ZZMatrix}, Int, Int), A, i - 1, j - 1)
-  return ccall((:fmpz_is_zero, libflint), Bool, (Ptr{ZZRingElem},), x), x
-end
-
-@inline function _is_zero_entry(A::MatElem, i, j)
-  t = A[i, j]
-  return iszero(t), t
-end
-
-@inline function _get(x::Ptr{ZZRingElem})
-  z = ZZRingElem()
-  ccall((:fmpz_set, libflint), Cvoid, (Ref{ZZRingElem}, Ptr{ZZRingElem}), z, x)
-  return z
-end
-
-_get(x::RingElem) = x
-
 @doc raw"""
     sparse_matrix(A::MatElem; keepzrows::Bool = true)
 
@@ -300,28 +253,26 @@ function sparse_matrix(A::MatElem; keepzrows::Bool = true)
   m.c = ncols(A)
   m.r = 0
 
-  GC.@preserve A begin
-    for i=1:nrows(A)
-      if is_zero_row(A, i)
-        if !keepzrows
-          continue
-        else
-          r = sparse_row(R)
-        end
+  for i=1:nrows(A)
+    if iszero_row(A, i)
+      if !keepzrows
+        continue
       else
         r = sparse_row(R)
-        for j = 1:ncols(A)
-          t, el = _is_zero_entry(A, i, j)
-          if !t
-            m.nnz += 1
-            push!(r.values, _get(el))
-            push!(r.pos, j)
-          end
+      end
+    else
+      r = sparse_row(R)
+      for j = 1:ncols(A)
+        t = A[i, j]
+        if t != 0
+          m.nnz += 1
+          push!(r.values, R(t))
+          push!(r.pos, j)
         end
       end
-      push!(m.rows, r)
-      m.r += 1
     end
+    push!(m.rows, r)
+    m.r += 1
   end
   return m
 end
@@ -337,7 +288,7 @@ function sparse_matrix(A::Matrix{T}) where {T <: RingElement}
   m.c = Base.size(A, 2)
   m.r = 0
   for i in 1:size(A, 1)
-    if is_zero_row(A, i)
+    if iszero_row(A, i)
       push!(m, sparse_row(parent(A[1, 1])))
       continue
     end
@@ -473,7 +424,7 @@ end
 
 ################################################################################
 #
-#  Make sparse matrices iterable
+#  Make sparse matrices iteratable
 #
 ################################################################################
 
@@ -650,7 +601,7 @@ end
 function +(A::SMat{T}, B::SMat{T}) where T
   nrows(A) != nrows(B) && error("Matrices must have same number of rows")
   ncols(A) != ncols(B) && error("Matrices must have same number of columns")
-  C = sparse_matrix(base_ring(A), 0, ncols(A))
+  C = sparse_matrix(base_ring(A))
   m = min(nrows(A), nrows(B))
   for i=1:m
     push!(C, A[i] + B[i])
@@ -667,7 +618,7 @@ end
 function -(A::SMat{T}, B::SMat{T}) where T
   nrows(A) != nrows(B) && error("Matrices must have same number of rows")
   ncols(A) != ncols(B) && error("Matrices must have same number of columns")
-  C = sparse_matrix(base_ring(A), 0, ncols(A))
+  C = sparse_matrix(base_ring(A))
   m = min(nrows(A), nrows(B))
   for i=1:m
     push!(C, A[i]-B[i])
@@ -997,7 +948,7 @@ end
 
 ################################################################################
 #
-#  Vertical concatenation
+#  Vertical concatentation
 #
 ################################################################################
 
@@ -1032,7 +983,7 @@ end
 
 ################################################################################
 #
-#  Horizontal concatenation
+#  Horizontal concatentation
 #
 ################################################################################
 
@@ -1117,7 +1068,7 @@ end
 #
 ################################################################################
 
-@doc Markdown.doc"""
+@doc raw"""
   delete_row!(A::SMat{T}, i::Int) -> SMat{T}
 
 Deletes $i$-th row of $A$ in place.
@@ -1130,7 +1081,7 @@ function delete_row!(A::SMat{T}, i::Int) where T
   return A
 end
 
-@doc Markdown.doc"""
+@doc raw"""
   delete_rows!(A::SMat{T}, I, sorted=true)
 
 Deletes rows in set of indices $I$ of $A$ in place.
@@ -1145,7 +1096,7 @@ function delete_rows!(A::SMat{T}, I, sorted=true) where T #elements in I need to
   return A
 end
 
-@doc Markdown.doc"""
+@doc raw"""
   delete_zero_rows!(A::SMat{T}, s=1)
 
 Deletes zero rows of $A$ in place.
@@ -1159,7 +1110,7 @@ function delete_zero_rows!(A::SMat{T}, s=1) where T #where s denotes the first r
   return A
 end
 
-@doc Markdown.doc"""
+@doc raw"""
     empty_col!(A::SMat{T}, TA::SMat{T}, j::Int, changeTA=false) -> SMat{T}/Tuple{SMat{T}, SMat{T}}
 
 Deletes non-zero entries in $j$-th column of $A$ in place using the transpose $TA$ of $A$. Output $A$ doesn't match $TA$ unless changeTA = true.
@@ -1184,7 +1135,7 @@ function empty_col!(A::SMat{T}, TA::SMat{T}, j::Int, changeTA=false) where T #on
   return A
 end
 
-@doc Markdown.doc"""
+@doc raw"""
     empty_cols!(A::SMat{T}, TA::SMat{T}, J, changeTA=false) -> SMat{T}/Tuple{SMat{T}, SMat{T}}
 
 Deletes non-zero entries in columns with indices in $J$ of $A$ in place using the transpose $TA$ of $A$. Output $A$ doesn't match $TA$ unless changeTA = true.
@@ -1202,7 +1153,7 @@ end
 #  Row/Col operations in matrix
 #
 ################################################################################
-@doc Markdown.doc"""
+@doc raw"""
     function scale_col!(A::SMat{T}, TA::SMat{T}, j, c) -> SMat{T}
 
 Returns $A$ after scaling $j$-th column in place using the transpose $TA$ of $A$.
@@ -1219,7 +1170,7 @@ function scale_col!(A::SMat{T}, TA::SMat{T}, j, c) where T #A[_j]->c*A[_,j]
   return A
 end
 
-@doc Markdown.doc"""
+@doc raw"""
     add_scaled_row!(A::SMat{T}, i::Int, j::Int, c::T) -> SMat{T}
 
 Returns $A$ after add_scaled_row!(Ai::SRow{T}, Aj::SRow{T}, c::T) in $A$.
@@ -1231,7 +1182,7 @@ function add_scaled_row!(A::SMat{T}, i::Int, j::Int, c::T) where T
   return A
 end
 
-@doc Markdown.doc"""
+@doc raw"""
     add_scaled_col!(A::SMat{T}, i::Int, j::Int, c::T) -> SMat{T}
 
 As add_scaled_row!(A::SMat{T}, i::Int, j::Int, c::T) but with columns of $A$.
@@ -1263,7 +1214,7 @@ function add_scaled_col!(A::SMat{T}, i::Int, j::Int, c::T) where T
   return A
 end
 
-@doc Markdown.doc"""
+@doc raw"""
     add_scaled_col!(A::SMat{T}, TA::SMat{T}, i::Int, j::Int, c::T) -> SMat{T}
 
 As add_scaled_row!(A::SMat{T}, i::Int, j::Int, c::T) but with columns of $A$.
@@ -1495,14 +1446,25 @@ end
 
 Return a sparse $n$ times $n$ zero matrix over $R$.
 """
-zero_matrix(::Type{SMat}, R::Ring, n::Int) = sparse_matrix(R, n, n)
+function zero_matrix(::Type{SMat}, R::Ring, n::Int)
+  S = sparse_matrix(R)
+  S.rows = [sparse_row(R) for i=1:n]
+  S.c = S.r = n
+  return S
+end
 
 @doc raw"""
     zero_matrix(::Type{SMat}, R::Ring, n::Int, m::Int)
 
 Return a sparse $n$ times $m$ zero matrix over $R$.
 """
-zero_matrix(::Type{SMat}, R::Ring, n::Int, m::Int) = sparse_matrix(R, n, m)
+function zero_matrix(::Type{SMat}, R::Ring, n::Int, m::Int)
+  S = sparse_matrix(R)
+  S.rows = [sparse_row(R) for i=1:n]
+  S.r = n
+  S.c = m
+  return S
+end
 
 similar(A::SMat) = sparse_matrix(base_ring(A), nrows(A), ncols(A))
 
