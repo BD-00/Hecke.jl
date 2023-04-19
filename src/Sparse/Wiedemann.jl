@@ -1,12 +1,12 @@
 some_nullspace(A::SMat) = wiedemann(A::SMat, transpose(A)::SMat)
 
 #(p-1)/2 prime 
-@doc Markdown.doc"""
-    wiedemann(A::SMat{gfp_elem}, TA::SMat{gfp_elem}) ->Vector{gfp_elem}
+@doc raw"""
+    wiedemann(A::SMat{fpFieldElem}, TA::SMat{fpFieldElem}) ->Vector{fpFieldElem}
 
 Computes ker($A$).
 """
-function wiedemann(A::SMat{T}, TA::SMat{T}) where T <:Union{gfp_elem, gfp_fmpz_elem, nmod, fmpz_mod} #N::Int64
+function wiedemann(A::SMat{T}, TA::SMat{T}) where T <:Union{fpFieldElem, FpFieldElem, zzModRingElem, ZZModRingElem} #N::Int64
 		RR = base_ring(A)
 		N = modulus(RR)
 		(n,m) = nrows(A),ncols(A)
@@ -41,7 +41,7 @@ function wiedemann(A::SMat{T}, TA::SMat{T}) where T <:Union{gfp_elem, gfp_fmpz_e
 		return true, (v-r)
 end
 
-function wiedemann(A::SMat{T}) where T <:Union{gfp_elem, gfp_fmpz_elem, nmod, fmpz_mod} #A square matrix
+function wiedemann(A::SMat{T}) where T <:Union{fpFieldElem, FpFieldElem, zzModRingElem, ZZModRingElem} #A square matrix
  RR = base_ring(A)
  N = modulus(RR)
  n = nrows(A)
@@ -75,7 +75,7 @@ function wiedemann(A::SMat{T}) where T <:Union{gfp_elem, gfp_fmpz_elem, nmod, fm
  return true, (v-r)
 end
 
-function Hecke.evaluate(f,TA::SMat{T},A::SMat{T},c) where T <:Union{gfp_elem, gfp_fmpz_elem, nmod, fmpz_mod}
+function Hecke.evaluate(f,TA::SMat{T},A::SMat{T},c) where T <:Union{fpFieldElem, FpFieldElem, zzModRingElem, ZZModRingElem}
   #return f(A^t *A)*c
 		(n,m) = size(A)
   RR = base_ring(A)
@@ -90,7 +90,7 @@ function Hecke.evaluate(f,TA::SMat{T},A::SMat{T},c) where T <:Union{gfp_elem, gf
 		return s
 end
 
-function Hecke.evaluate(f,A::SMat{T},c) where T <:Union{gfp_elem, gfp_fmpz_elem, nmod, fmpz_mod}
+function Hecke.evaluate(f,A::SMat{T},c) where T <:Union{fpFieldElem, FpFieldElem, zzModRingElem, ZZModRingElem}
  #return f(A^t *A)*c
  n = nrows(A)
  RR = base_ring(A)
@@ -106,7 +106,7 @@ function Hecke.evaluate(f,A::SMat{T},c) where T <:Union{gfp_elem, gfp_fmpz_elem,
 end
 
 function rand_srow(l,n,b,R)
-		#generate fmpz sparse_row, indx not greater than n limited by n
+		#generate ZZRingElem sparse_row, indx not greater than n limited by n
 		#l values not greater than b
 		val =  rand(1:b,l)
 		pos = randperm!(Vector{Int}(undef, n))[1:l]
@@ -122,15 +122,15 @@ function rand_vec(l,n,RR)
  return v
 end
 
-function multi!(c::Vector{T}, A::SMat{T}, b::Vector{T}) where T <:Union{gfp_fmpz_elem, fmpz_mod}
-		t = fmpz()
+function multi!(c::Vector{T}, A::SMat{T}, b::Vector{T}) where T <:Union{FpFieldElem, ZZModRingElem}
+		t = ZZRingElem()
 		for (i, r) in enumerate(A)
 				c[i] = dot_experimental!(c[i],r,b,t)
 		end
 		return c
 end
 
-function dot_experimental!(s::T, sr::SRow{T}, a::Vector{T},t::fmpz) where T <:Union{gfp_fmpz_elem, fmpz_mod}
+function dot_experimental!(s::T, sr::SRow{T}, a::Vector{T},t::ZZRingElem) where T <:Union{FpFieldElem, ZZModRingElem}
 		m = modulus(parent(s))
 		zero!(s.data)
 		zero!(t)
@@ -142,15 +142,15 @@ function dot_experimental!(s::T, sr::SRow{T}, a::Vector{T},t::fmpz) where T <:Un
 		return s
 end
 
-function multi2!(c::SRow{T}, A::SMat{T}, b::SRow{T}) where T <:Union{gfp_fmpz_elem, fmpz_mod}
- #t = fmpz()
+function multi2!(c::SRow{T}, A::SMat{T}, b::SRow{T}) where T <:Union{FpFieldElem, ZZModRingElem}
+ #t = ZZRingElem()
  for (i, r) in enumerate(A)
    c[i] = dot_experimental2!(c[i],r,b)
  end
  return c
 end
 
-function dot_experimental2!(v::T, A::SRow{T}, B::SRow{T},t=fmpz()) where T <:Union{gfp_fmpz_elem, fmpz_mod}
+function dot_experimental2!(v::T, A::SRow{T}, B::SRow{T},t=ZZRingElem()) where T <:Union{FpFieldElem, ZZModRingElem}
   @assert length(A) != 0
   m = modulus(parent(v))
   zero!(v.data)
@@ -171,5 +171,5 @@ function dot_experimental2!(v::T, A::SRow{T}, B::SRow{T},t=fmpz()) where T <:Uni
   return v
 end
 
-my_mul!(c::Vector{T}, A::SMat{T}, b::Vector{T}) where T <:Union{gfp_fmpz_elem, fmpz_mod} = multi!(c, A, b)
-my_mul!(c::Vector{T}, A::SMat{T}, b::Vector{T}) where T <:Union{gfp_elem, nmod} = mul!(c, A, b)
+my_mul!(c::Vector{T}, A::SMat{T}, b::Vector{T}) where T <:Union{FpFieldElem, ZZModRingElem} = multi!(c, A, b)
+my_mul!(c::Vector{T}, A::SMat{T}, b::Vector{T}) where T <:Union{fpFieldElem, zzModRingElem} = mul!(c, A, b)

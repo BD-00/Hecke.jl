@@ -26,7 +26,7 @@ function sp_prepro_1(A::SMat{T}, TA::SMat{T}, l) where T
 end
 
 ########## mods ##########
-function sp_prepro_k(A::SMat{T}, TA::SMat{T}, l, k, forbidden_cols) where T <: Union{fmpz_mod, nmod, gfp_elem, gfp_fmpz_elem} #prepro for cols with k>1
+function sp_prepro_k(A::SMat{T}, TA::SMat{T}, l, k, forbidden_cols) where T <: Union{ZZModRingElem, zzModRingElem, fpFieldElem, FpFieldElem} #prepro for cols with k>1
   @assert k > 1
   m = TA.r
   done = false
@@ -65,7 +65,7 @@ function sp_prepro_k(A::SMat{T}, TA::SMat{T}, l, k, forbidden_cols) where T <: U
 end
 
 ########## Integers ##########
-function sp_prepro_k(A::SMat{T}, TA::SMat{T}, l, k, forbidden_cols) where T <: Union{fmpz, Integer}
+function sp_prepro_k(A::SMat{T}, TA::SMat{T}, l, k, forbidden_cols) where T <: Union{ZZRingElem, Integer}
   @assert k > 1
   m = TA.r
   done = false
@@ -134,7 +134,7 @@ end
 
 
 
-function struct_gauss_k(A::SMat{T}, TA::SMat{T}, l, k, density_col) where T <: Union{fmpz_mod, nmod, gfp_elem, gfp_fmpz_elem} #prepro for cols with k>1
+function struct_gauss_k(A::SMat{T}, TA::SMat{T}, l, k, density_col) where T <: Union{ZZModRingElem, zzModRingElem, fpFieldElem, FpFieldElem} #prepro for cols with k>1
  @assert k > 1
  m = TA.r
  bound = m*density_col
@@ -247,7 +247,7 @@ function change_base_ring(R::S, A::SRow{T}) where {T <: Integer, S <: Ring}
   return z
 end
 
-function change_base_ring(R::FlintIntegerRing, A::SRow{T}) where T
+function change_base_ring(R::ZZRing, A::SRow{T}) where T
   z = sparse_row(R)
   for (i, v) in A
     nv = lift(v)
@@ -261,7 +261,7 @@ function change_base_ring(R::FlintIntegerRing, A::SRow{T}) where T
   return z
 end
 
-function change_base_ring(R::FlintIntegerRing, A::SMat{T}) where T
+function change_base_ring(R::ZZRing, A::SMat{T}) where T
   z = sparse_matrix(R)
   z.c = A.c
   for r in A

@@ -1,5 +1,6 @@
-using Hecke, Nemo, Random, Markdown
-import Base.log
+using Oscar
+include("module-StructuredGauss.jl")
+using .StructuredGauss
 
 add_verbose_scope(:StructGauss)
 add_assert_scope(:StructGauss)
@@ -7,31 +8,58 @@ add_assert_scope(:StructGauss)
 set_assert_level(:StructGauss, 3)
 set_verbose_level(:StructGauss, 0)
 
+function swap_rows_perm(A, i, j, col_list_perm, col_list_permi)
+ if i != j
+  swap_rows!(A, i, j)
+  swap_entries(single_col, i, j)
+  swap_entries(col_list_perm, i, j)
+  swap_entries(col_list_permi, col_list_perm[i], col_list_perm[j])
+  swap_entries(light_weight, i, j)
+ end
+end 
+
+function swap_entries(v, i,j) #swaps entries v[i], v[j]
+ v[i],v[j] = v[j],v[i]
+end
+
+function find_light_entry(position_array::Vector{Int64}, is_light_col::Vector{Bool})::Int64
+ for j in position_array[end:-1:1]
+  if is_light_col[j]
+   return j #smallest index necessary???
+  end
+ end
+end
+
+
+
+
+#=
 #kleines Beispiel ohne Error
-p = fmpz(47)
+p = ZZRingElem(47)
 F = GF(p)
 a = F(20)
 set_attribute!(F, :a=>a)
 
 #mittleres Beispiel ohne Error
-p = fmpz(3808986227)
+p = ZZRingElem(3808986227)
 F  = GF(p)
 a = GF(2964180501)
 set_attribute!(F, :a=>a)
 
-#großes Beispiel ohne Error
-p = fmpz(28305054749008327163)
+#gro�es Beispiel ohne Error
+p = ZZRingElem(28305054749008327163)
 F = GF(p)
 a = F(6879064112033849389)
 set_attribute!(F, :a=>a)
+=#
 
 #Beispiel AssertionError: c != best_c in 382
-p = fmpz(9048192719)
+p = ZZRingElem(9048192719) 
 F = GF(p)
 a = F(4313590289)
 set_attribute!(F, :a=>a)
 
-#von hier an für alle Beispiele gleich
+#von hier an f�r alle Beispiele gleich
 
 sieve(F, sieve_params(characteristic(F),0.02,1.01))
 
@@ -50,7 +78,7 @@ NEW = true
 REDUCE_IC_RELS_EXTRA=30000
 
 R = base_ring(A)
-if R == ZZ || R == zz
+if R == ZZ #|| R == zz
  over_Z = true
 end
 M = div(p-1,2)
@@ -105,6 +133,7 @@ Y.c = A.c
 counter = 0
 #544-1127
 while nlight > 0 && base <= A.r #&& det_sign
+ global counter, matrix_nentries, nlight, nsingle, single_row_limit, base
  counter +=1
  col_consider_o = [c for c in 1:A.c]
  col_consider_len_o = A.c + 1
@@ -235,7 +264,7 @@ while nlight > 0 && base <= A.r #&& det_sign
       hc[1] = c
      else
      #jk = hext
-      for j = hext:-1:2  #falsche Schleifen, für hext = 1 
+      for j = hext:-1:2  #falsche Schleifen, f�r hext = 1 
        if c >= hc[j]  
         for k = 1:j-1
          harray[k] = harray[k + 1]
@@ -304,6 +333,7 @@ while nlight > 0 && base <= A.r #&& det_sign
  end
 
  @assert best_i!=-1
+ @assert length(A[best_i]) > 0 
  best_v = A[best_i]#!!! search prob?
  best_len = length(best_v)
  @assert best_len > 0
@@ -311,13 +341,16 @@ while nlight > 0 && base <= A.r #&& det_sign
  best_c = find_light_entry(best_v.pos, is_light_col)
  @assert is_light_col[best_c]
  best_x = A[best_i, best_c]
+ @assert best_x != 0
  @assert col_count[best_c]>=1 #or SMAT_PRIM_CTX
  #if over_field
  L = col_list[best_c]
  @assert length(L) == col_count[best_c]
  #944-1126
  L_row=0
+ @assert length(A[best_i]) > 0
  while length(L) > 1
+  @assert length(A[best_i]) > 0
   i = 0
   for k = length(L):-1:1
    L_row = L[k]
@@ -330,12 +363,15 @@ while nlight > 0 && base <= A.r #&& det_sign
    end
    break #make sure that i is saved after loop
   end
+  @assert i >= base && i!=best_i
   v = A[i]
   vlen = length(v)
   #969-1125
+  @assert length(A[best_i]) > 0
   while true
    @assert best_c in v.pos
    x = A[i, best_c]
+   @assert x!=0
    if !over_field && over_Z
     g = gcd(x, best_x)
     xg = div(x, g)
@@ -362,7 +398,8 @@ while nlight > 0 && base <= A.r #&& det_sign
    end
    matrix_nentries -= vlen
    #SVEC_ASSURE_SIZE(tvec, m_svecp_len(v) + best_len)
-   add_scaled_row!(A, best_i, i, -xg)#Reihenfolge richtig???
+   @show A[i], A[best_i], xg, best_c
+   Hecke.add_scaled_row!(A, best_i, i, -xg)#Reihenfolge richtig???
    if (M!=0)
     v = A[i]
     light_weight[i] = 0
@@ -390,16 +427,17 @@ while nlight > 0 && base <= A.r #&& det_sign
    light_weight[i] = w
    #SVEC_CHECK(vec[i], use_fp)
    matrix_nentries += vlen
-   #CAREFUL IF BEST_I == BASE!!! or: I == BEST_I
    if (w == 0)
     if i < single_row_limit
      swap_rows_perm(A, i, base, col_list_perm, col_list_permi)
+     best_i == base && (best_i = deepcopy(i))
     else
      if (i != single_row_limit)
       swap_rows_perm(A, base, single_row_limit, col_list_perm, col_list_permi)
      end
     single_row_limit += 1
     swap_rows_perm(A, base, i, col_list_perm, col_list_permi)
+    best_i == base  && (best_i = deepcopy(i))
     end
     single_col[base] -= 1
     #A, Y, single_col, col_count = move_into_Y(Y,A, base)
@@ -409,6 +447,7 @@ while nlight > 0 && base <= A.r #&& det_sign
      @assert col_count[cc_] > 0
      col_count[cc_]-=1
     end
+    @assert length(A[best_i]) > 0
     A.nnz-=length(A[base])
     empty!(A[base].pos), empty!(A[base].values)
     base +=1
@@ -425,7 +464,6 @@ while nlight > 0 && base <= A.r #&& det_sign
  end
 end#1127
 
-#=
 if M!=0
  for i = 1:A.c
   if is_light_col[i] && col_count[i]!=0
@@ -538,199 +576,4 @@ if sol[norm_col]!=-1
    end
   end
  end
-end
-=#
-
-function swap_rows_perm(A, i, j, col_list_perm, col_list_permi)
- if i != j
-  swap_rows!(A, i, j)
-  swap_entries(single_col, i, j)
-  swap_entries(col_list_perm, i, j)
-  swap_entries(col_list_permi, col_list_perm[i], col_list_perm[j])
-  swap_entries(light_weight, i, j)
- end
-end 
-
-function swap_entries(v, i,j) #swaps entries v[i], v[j]
- v[i],v[j] = v[j],v[i]
-end
-
-function find_light_entry(position_array::Vector{Int64}, is_light_col::Vector{Bool})::Int64
- for j in position_array[end:-1:1]
-  if is_light_col[j]
-   return j #smallest index necessary???
-  end
- end
-end
-
-
-###aktuelles Sieb###
-
-function primitive_elem(F::FinField,first::Bool) 
- p = length(F)
- Fact = prime_divisors(fmpz(p-1))
- while true # alpha exists
-   for y in F
-     if !first y = rand(F) end
-     if isprime(lift(y))
-       if !(any(i->isone(y^divexact(fmpz(p-1),i)), Fact))
-         return y
-       end
-     end
-   end
- end
-end
-
-@doc Markdown.doc"""
-   sieve_params(p,eps::Float64,ratio::Float64) -> Tuple{Int64, Int64, Float64, Tuple{Int64, Int64}}
-
-Returns parameters for sieve.
-"""
-function sieve_params(p,eps::Float64,ratio::Float64)
- # assymptotic bounds by Coppersmith, Odlyzko, and Schroeppel L[p,1/2,1/2]# L[n,\alpha ,c]=e^{(c+o(1))(\ln n)^{\alpha }(\ln \ln n)^{1-\alpha }}}   for c=1
- qlimit = exp((0.5* sqrt(Base.log(p)*Base.log(Base.log(p)))))
- qlimit *= Base.log(qlimit) # since aproximately    #primes
- climit = exp((0.5+eps)*sqrt(Base.log(p)*Base.log(Base.log(p))))
-
- qlimit = Int64(ceil(0.5*max(qlimit,30)))
- climit = Int64(ceil(max(climit,35)))
- inc = (Int64(100),Int64(100))
- return qlimit,climit,ratio,inc
-end
-
-@doc Markdown.doc"""
-   sieve(F::Nemo.GaloisFmpzField,SP = sieve_params(characteristic(F),0.02,1.1)) -> Nothing
-
-Computes coefficient matrix of factorbase logarithms and saves corresponding attributes on $F$.
-"""
-function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Union{Nemo.GaloisFmpzField} #F with primitive element as attribute, p at most 35 decimals
-p = characteristic(F)
-set_attribute!(F, :p=>p)
-a = get_attribute(F, :a)
-H_fmpz = floor(root(p,2))+1
-H1 = H_fmpz +1
-H = Int(H_fmpz)
-J = Int(H_fmpz^2 - p)
-qlimit, climit, ratio, inc = SP
-(lift(a) <= qlimit&&isprime(lift(a))) || (a = primitive_elem(F, true)) 
-set_attribute!(F, :primitive_elem=>a)
-
-# factorbase up to qlimit
-fb_primes = Hecke.primes_up_to(qlimit)
-indx = searchsortedfirst(fb_primes, lift(a))
-FB = vcat([fmpz(lift(a))],deleteat!(fb_primes,indx))::Vector{fmpz} # swap a[1] = a[2] , a[2] = [1] array
-# use shift! / unshift! here...
-log2 = Base.log(2.0);
-logqs = Float64[Base.log(Int(q))/log2 for q in FB] #real logarithms for sieve 
-set_attribute!(F, :FBs=>FactorBase(FB))
-FBs = get_attribute(F, :FBs)
-l = length(FB)
-set_attribute!(F, :fb_length=>l)
-Indx = Dict(zip(FB,[i for i=1:l]))::Dict{fmpz, Int} #Index in a dictionary
-A = sparse_matrix(zz)
-len = []
-rel = fmpz(1)
-#IDEA: dont add logs. add INT counter, then add cnt * log in the end. ??
-##########################################################################################################################################
-# Sieve for ci
-for c1 = 1:climit
-  nrows(A)/length(FB) < ratio || break
-  Sieve = zeros(climit)
-  Hc1 = H + c1;                # denominator of relation
-  #num = -(J + c1*H)            # numerator
-  for i=1:length(fb_primes)
-    q = fb_primes[i]
-    qpow = Int(q)
-    nextqpow = qpow   #WARNING inserted, because of some error with nextqpow
-    logq = logqs[i]
-    while qpow < qlimit      # qlimit-smooth
-      den_int = Hc1%qpow
-      den_int != 0 || break
-      num_int = ((-J)%qpow - (c1 %qpow)*(H%qpow))%qpow
-      c2 = num_int * invmod(den_int, qpow)  % qpow ###
-      (c2 != 0) || (c2 = qpow)
-      nextqpow = qpow*q    #increase q_power
-      while c2 < c1   #c2>=c1 to remove redundant relations of (c1,c2) tuples, just increase c2
-        c2+=qpow
-      end
-      while c2 <= length(Sieve)
-          Sieve[c2] += logq
-          if nextqpow > qlimit
-              prod1 = J + c1*c2
-              prod2 = c1+c2
-              nextp = nextqpow
-              while (prod1%nextp + (prod2%nextp)*(H%nextp))%nextp == 0
-                  Sieve[c2] += logq
-                  nextp = nextp*q
-              end
-          end
-          c2 += qpow
-      end
-      qpow = nextqpow
-    end
-  end
-
-  #include relations / check sieve for full factorizations.
-  mul!(rel, Hc1, H1)
-
-  n = fmpz(1)
-  for c2 in 1:length(Sieve)
-    if rel > p
-      sub!(n, rel, p)
-      if n > p
-        n = rel %p
-      end
-    else
-      n = p
-    end
-    nbn = nbits(n)-1
-    if abs(Sieve[c2] - nbn) < 1 
-      #generate Factorbase based on FBs with new c_i�s
-      if issmooth(FBs,n)
-        dict_factors = Hecke.factor(FBs,fmpz(n))
-        #Include each H + c_i in extended factor basis.
-        r = length(Indx)+1
-        if !((Hc1) in keys(Indx))
-          push!(FB,Hc1)
-          push!(Indx, Hc1 => r)
-        end#(FB = vcat(FB,[H + c1])) #push!(FB,wert)
-        r = length(Indx)+1
-        Hc2 = H + c2
-        if !((Hc2) in keys(Indx))
-          push!(FB,Hc2)
-          push!(Indx,(Hc2) => r)
-        end#(FB = vcat(FB,[H + c2]))
-        #Include relation (H + c1)*(H + c2) = fact.
-        #row = nrows(A) + 1 # insert new relation (new row)to sparse_matrix
-        J1 = Vector{Int64}([])
-        V = Vector{Int64}([])
-        for (prime,power) in dict_factors
-          if !(power == 0)
-            push!(J1,Indx[prime])
-            push!(V,Int(power))
-          end
-        end
-        if c1 == c2
-          push!(J1,Indx[Hc1])
-          push!(V,-2)
-        else
-          push!(J1,Indx[Hc1])
-          push!(J1,Indx[Hc2])
-          push!(V,-1)
-          push!(V,-1)
-        end
-        push!(A,sparse_row(zz, J1, V))
-        push!(len, length(J1))
-      end
-    end
-    add!(rel, rel, Hc1)
-  end
-end
-#increase Sieve 
-if nrows(A)/length(FB) < ratio
-  qlimit += inc[1]
-  climit += inc[2]
-  return sieve(F,(qlimit, climit, ratio, inc))
-end
-return set_attribute!(F, :qlimit=>qlimit, :climit=>climit, :ratio=>ratio, :inc=>inc, :RelMat=>A, :FB_array=>FB, :len=>len)
 end
