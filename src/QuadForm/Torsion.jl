@@ -451,6 +451,13 @@ function gen(T::TorQuadModule, i::Int)
   return T(gen(abelian_group(T), i))
 end
 
+function gen(T::TorQuadModule, i::Int)
+  if isdefined(T, :gens)
+    return gens(T)[i]
+  end
+  return T(gen(abelian_group(T), i))
+end
+
 @doc raw"""
     getindex(T::TorQuadModule, i::Int) -> TorQuadModuleElem
 
