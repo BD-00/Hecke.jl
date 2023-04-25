@@ -1,5 +1,5 @@
-add_verbose_scope(:DiscLog)
-add_assert_scope(:DiscLog)
+Hecke.add_verbosity_scope(:DiscLog)
+Hecke.add_assertion_scope(:DiscLog)
 
 function safeprime_dl(a, b, p)
  p1 = div(p-1,2)

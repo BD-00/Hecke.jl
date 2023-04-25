@@ -3,11 +3,11 @@ using Oscar
 include("module-StructuredGauss.jl")
 using .StructuredGauss
 
-add_verbose_scope(:StructGauss)
-add_assert_scope(:StructGauss)
+Hecke.add_verbosity_scope(:StructGauss)
+Hecke.add_assertion_scope(:StructGauss)
 
-set_assert_level(:StructGauss, 3)
-set_verbose_level(:StructGauss, 0)
+Hecke.set_assertion_level(:StructGauss, 3)
+Hecke.set_verbosity_level(:StructGauss, 0)
 
 function swap_rows_perm(A, i, j, col_list_perm, col_list_permi)
  if i != j
@@ -491,8 +491,7 @@ for i = 1:A.c
 end
 @assert j == nheavy+1 
 S = sparse_matrix(R)# size A.r x nheavy
-S.c = nheavy
-r = 1 #use push instead of r since no size f S initialized
+S.c = nheavy #use push instead of r since no size f S initialized
 
 Y_light_weight = [length(y) for y in Y.rows]
 for i =1:Y.r
@@ -508,9 +507,6 @@ for i = 1:Y.r
  end
  sp_row = sparse_row(R, Srow_pos, Srow_val)
  push!(S, sp_row)
- if S.r>nheavy + REDUCE_IC_RELS_EXTRA
-  break
- end
 end
 
 S_sol = smat_solve_mod(S, nheavy, norm_col, M_list, ic) #1756 ???
