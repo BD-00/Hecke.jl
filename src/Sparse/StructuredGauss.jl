@@ -1,12 +1,13 @@
 using Oscar
+
 include("module-StructuredGauss.jl")
 using .StructuredGauss
 
-add_verbose_scope(:StructGauss)
-add_assert_scope(:StructGauss)
+Hecke.add_verbosity_scope(:StructGauss)
+Hecke.add_assertion_scope(:StructGauss)
 
-set_assert_level(:StructGauss, 3)
-set_verbose_level(:StructGauss, 0)
+Hecke.set_assertion_level(:StructGauss, 3)
+Hecke.set_verbosity_level(:StructGauss, 0)
 
 function swap_rows_perm(A, i, j, col_list_perm, col_list_permi)
  if i != j
@@ -160,16 +161,16 @@ while nlight > 0 && base <= A.r #&& det_sign
       #Column c has only one non-zero at row i. Move row i into base.
       #599-607
       for cc in A[i].pos
-        if is_light_col[cc]
-         @assert col_count[cc]>0 
-        end
-        col_count[cc]-=1
-        if col_count[cc]== 1
-          push!(col_consider_n, cc)
-        end
-        if is_light_col[cc]
-          deleteat!(col_list[cc],findfirst(isequal(L_row), col_list[cc]))
-        end
+       if is_light_col[cc]
+        @assert col_count[cc]>0 
+       end
+       col_count[cc]-=1
+       if col_count[cc]== 1
+        push!(col_consider_n, cc)
+       end
+       if is_light_col[cc]
+        deleteat!(col_list[cc],findfirst(isequal(L_row), col_list[cc]))
+       end
       end
       matrix_nentries -= length(A[i])
       is_light_col[c] = false
@@ -477,43 +478,35 @@ end
 nlight = length(findall(isequal(true),is_light_col))#as long as nlight doesn't count properly ???
 
 nheavy = A.c - nlight - nsingle #???  nlight =-451, nsingle = 161
-heavy_map = fill(-1, A.c)
-heavy_mapi = []
+heavy_map = fill(-1, A.c) #index in mapi of heavy col else -1
+heavy_mapi = [] #indices of heavy cols <
 
 j=1
 for i = 1:A.c
- if !is_light_col[i] && !is_single_col[i]
+ if !is_light_col[i] && !is_single_col[i] #heavy col
   heavy_map[i] = j
   push!(heavy_mapi, i)
   j+=1
- else
-  heavy_map[i]=-1
  end
 end
 @assert j == nheavy+1 
 S = sparse_matrix(R)# size A.r x nheavy
-S.c = nheavy
-r = 1 #use push instead of r since no size f S initialized
+S.c = nheavy #use push instead of r since no size f S initialized
 
+Y_light_weight = [length(y) for y in Y.rows]
 for i =1:Y.r
- light_weight[i] = length(Y[i])
+ Y_light_weight[i] = length(Y[i])
 end
 #sort!(Y.rows, by = x->length(x))#???change to light_weight 1206
 for i = 1:Y.r
- for j = 1:length(Y[i])
-  c = Y[i].pos[j]
-  x = Y[i].values[j]
-  @assert(heavy_map[c]>=1)
-  #=
-  smat_set_entry_pc(
-		    SMAT_PRIM_CTX, S, r, heavy_map[c],
-		    (*primitives->elt_incref)(ctx, x), vlen
-		)???=#
+ Srow_pos = []
+ Srow_val = Y[i].values
+ for j in Y[i].pos 
+  @assert(heavy_map[j]>=0)
+  push!(S_row_pos, heavy_map[j])
  end
- r+=1
- if r>nheavy + REDUCE_IC_RELS_EXTRA
-  break
- end
+ sp_row = sparse_row(R, Srow_pos, Srow_val)
+ push!(S, sp_row)
 end
 
 S_sol = smat_solve_mod(S, nheavy, norm_col, M_list, ic) #1756 ???
