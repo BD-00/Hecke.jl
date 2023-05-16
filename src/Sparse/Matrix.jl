@@ -158,8 +158,13 @@ end
     sparse_matrix(R::Ring) -> SMat
 Return an empty sparse matrix with base ring $R$.
 """
-function sparse_matrix(R::T) where T <: Ring
-  r = SMat{elem_type(R)}()
+function sparse_matrix(R::Ring)
+  r = SMat{elem_type(R), Vector{elem_type(R)}}()
+  r.base_ring = R
+  return r
+end
+function sparse_matrix(R::ZZRing)
+  r = SMat{ZZRingElem, ZZRingElem_Array_Mod.ZZRingElem_Array}()
   r.base_ring = R
   return r
 end
