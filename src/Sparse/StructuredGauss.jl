@@ -729,6 +729,33 @@ function kernel_matrix(_nullity, _dense_kernel, SG)
  return(l, K)
 end
 
+function update_zero_weight_row(base, single_row_limit, i, best_i)
+ if i < single_row_limit
+  swap_rows_perm(A, i, base, col_list_perm, col_list_permi)
+  best_i == base && (best_i = deepcopy(i))
+ else
+  if (i != single_row_limit)
+   swap_rows_perm(A, base, single_row_limit, col_list_perm, col_list_permi)
+  end
+ single_row_limit += 1
+ swap_rows_perm(A, base, i, col_list_perm, col_list_permi)
+ best_i == base  && (best_i = deepcopy(i))
+ end
+ single_col[base] -= 1
+ #A, Y, single_col, col_count = move_into_Y(Y,A, base)
+ push!(Y, deepcopy(A[base]))
+ for cc_ in A[base].pos
+  @assert !is_light_col[cc_]
+  @assert col_count[cc_] > 0
+  col_count[cc_]-=1
+ end
+ @assert length(A[best_i]) > 0
+ A.nnz-=length(A[base])
+ empty!(A[base].pos), empty!(A[base].values)
+ return base+1, single_row_limit, i, best_i
+end
+
+#return is_light_col, light_weight, single_col, base, single_row_limit, Y, A, col_count, nlight
 #=
 function init_kernel(_dense_kernel, SG)
  m = ncols(SG.A)
