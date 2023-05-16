@@ -132,13 +132,29 @@ end
 
 @doc raw"""
     sparse_matrix(R::Ring) -> SMat
-
 Return an empty sparse matrix with base ring $R$.
 """
-function sparse_matrix(R::T) where T <: Ring
-  r = SMat{elem_type(R)}()
+function sparse_matrix(R::Ring)
+  r = SMat{elem_type(R), Vector{elem_type(R)}}()
   r.base_ring = R
   return r
+end
+function sparse_matrix(R::ZZRing)
+  r = SMat{ZZRingElem, ZZRingElem_Array_Mod.ZZRingElem_Array}()
+  r.base_ring = R
+  return r
+end
+
+@doc raw"""
+    sparse_matrix(R::Ring, n::Int, m::Int) -> SMat
+Return a sparse $n$ times $m$ zero matrix over $R$.
+"""
+function sparse_matrix(R::Ring, n::Int, m::Int)
+  S = sparse_matrix(R)
+  S.rows = [sparse_row(R) for i=1:n]
+  S.r = n
+  S.c = m
+  return S
 end
 
 ################################################################################
