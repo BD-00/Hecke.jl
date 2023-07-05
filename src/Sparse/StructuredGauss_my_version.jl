@@ -1,32 +1,21 @@
+#=
 using Oscar
-
 include("module-StructuredGauss.jl")
 using .StructuredGauss
+=#
 
-p = ZZRingElem(47)
-F = GF(p)
-a = F(20)
-set_attribute!(F, :a=>a)
-sieve(F, sieve_params(characteristic(F),0.02,1.1))
-a = get_attribute(F, :primitive_elem)
-modulus = div(p-1,2)
-RelMat = get_attribute(F, :RelMat)
-d1, kern_RelMat = kernel(matrix(RelMat))
-R = ResidueRing(ZZ, modulus)
-A = change_base_ring(R, RelMat)
-d2, kernel_original_A = kernel(matrix(A))
-TA = transpose(A)
-
-
-function my_StructGauss(A, TA, F, p)
+function my_StructGauss(A, TA, p, SG)
  #initialize all arrays (and constants)
  single_row_limit = 1
- light_weight = [length(A[i]) for i in 1:A.r]
  base = 1
+ nlight = A.c #number of light cols
+ nsingle = 0
+ light_weight = [deepcopy(length(A[i])) for i in 1:A.r]
  col_list = []; col_count = []
  for j = 1:A.c
-  push!(col_list, TA[j].pos)
-  push!(col_count, length(TA[j]))
+  Pos = deepcopy(TA[j].pos)
+  push!(col_list, Pos)
+  push!(col_count, length(Pos))
  end
  col_list_perm = [i for i = 1:A.r]  #perm gives new ordering of original A[i] via their indices
  col_list_permi = [i for i = 1:A.r] #A[permi[i]]=A[i] before permutation = list of sigma(i) (recent position of former A[i])
@@ -34,8 +23,6 @@ function my_StructGauss(A, TA, F, p)
  is_single_col = fill(false, A.c)
  single_col = fill(-2, A.r) #single_col[i] = c >= 0 if col c has its only entry in row i, i always recent position
 
- nlight = A.c #number of light cols
- nsingle = 0
  #delete empty rows and swap those with only one variable to top
  for i = 1:A.r
   len = length(A[i])
@@ -44,60 +31,106 @@ function my_StructGauss(A, TA, F, p)
   elseif len == 1
    @assert single_row_limit <=i
    if i != single_row_limit
-    swap_rows_perm(A, i, single_row_limit, single_col, col_list_perm, col_list_permi, light_weight)
+    swap_rows_perm(A, i, single_row_limit, col_list_perm, col_list_permi, light_weight)
    end
    single_row_limit +=1
   end
  end 
  
-#move rows to singleton cols to the top
+#move rows to SINGLETON COLS to the top
  1 in col_count ? still_singletons = true : still_singletons = false
- #iter = 0
  while still_singletons
   still_singletons = false
-  #iter +=1
   for j = A.c:-1:1
-   if col_count[j]==1
+   if col_count[j]==1 && is_light_col[j]
+    @assert length(col_list[j])==1
     still_singletons = true
-    singleton_row = first(col_list[j])
-    for jj in A[singleton_row].pos
-     col_count[jj]-=1
-     delete!(col_list[jj],1)
+    singleton_row_origin = first(col_list[j])
+    singleton_row_idx = col_list_permi[singleton_row_origin]
+    for jj in A[singleton_row_idx].pos
+     if is_light_col[jj]
+      j_idx = findfirst(isequal(singleton_row_idx), col_list[jj])
+      col_count[jj]-=1
+      deleteat!(col_list[jj],j_idx)
+     end
     end
-    if singleton_row < single_row_limit
-     swap_rows_perm(A, singleton_row, base, single_col, col_list_perm, col_list_permi, light_weight)
-    else
-      if singleton_row != single_row_limit 
-       swap_rows_perm(A, base, single_row_limit, single_col, col_list_perm, col_list_permi, light_weight)
-      end
-      single_row_limit +=1
-      swap_rows_perm(A, base, singleton_row, single_col, col_list_perm, col_list_permi, light_weight)
-    end
+    is_light_col[j] = false
+    is_single_col[j] = true
+    nlight-=1
+    nsingle+=1
+    @show col_list_perm
+    single_row_limit = swap_i_into_base(A, singleton_row_idx, base, single_row_limit, col_list_perm, col_list_permi, light_weight)
+    @show col_list_perm
+    single_col[base] = j
     base+=1
    end
   end
  end
- return base, col_count
+ @assert !(1 in col_count)
+ return base, single_row_limit, nsingle, nlight, single_col, col_list_perm, col_list_permi, light_weight
 end
 
-base, col_count =  my_StructGauss(A, TA, F, p)
 
-function swap_rows_perm(A, i, j, single_col, col_list_perm, col_list_permi, light_weight)
+function swap_rows_perm(A, i, j, col_list_perm, col_list_permi, light_weight)
  if i != j
   swap_rows!(A, i, j) #swap!(A[i],A[j]) throws error later???
-  swap_entries(single_col, i, j)
+  #swap_entries(single_col, i, j)
   swap_entries(col_list_perm, i, j)
   swap_entries(col_list_permi, col_list_perm[i], col_list_perm[j])
   swap_entries(light_weight, i, j)
  end
+ @show col_list_perm, :Hi
 end 
 
 function swap_entries(v, i,j) #swaps entries v[i], v[j]
  v[i],v[j] = v[j],v[i]
 end
 
+function swap_i_into_base(A, i, j, single_row_limit, col_list_perm, col_list_permi, light_weight)
+ if i < single_row_limit
+  swap_rows_perm(A, i, j, col_list_perm, col_list_permi, light_weight)
+ else
+   if i != single_row_limit 
+    swap_rows_perm(A, i, j, col_list_perm, col_list_permi, light_weight)
+   end
+   single_row_limit +=1
+   swap_rows_perm(A, i, j, col_list_perm, col_list_permi, light_weight)
+ end
+ @show col_list_perm, i, j
+ return single_row_limit
+end
 
 
+#Some test functions
+function test_base_part(single_row_limit, base)
+ for i = 1:base-1
+  sc = single_col[i]
+  @assert col_count[sc] == 0
+  @assert length(col_list[sc]) == 0
+  @assert is_single_col[sc]
+  @assert !is_light_col[sc]
+ end
+ single_row_limit<base && print("srl<base")
+ if single_row_limit>base
+  for i = base:single_row_limit-1
+   @assert light_weight[i] == 1
+  end
+ end
+end
+
+function test_permutation()
+ for i = 1:length(col_list_perm)
+  @assert col_list_perm[col_list_permi[i]] == i
+ end
+end
+
+function test_light_weight()
+ for i = 1:length(light_weight)
+  @assert light_weight[i]==length(filter(x->is_light_col[x], A[i].pos))
+ end
+end
+
+#=
 @doc raw"""
     swap_cols!(TA, A, i1, i2) -> SMat
 
@@ -189,4 +222,20 @@ function swap_cols!(TA, A, i1, i2)
   i2_pos_idx+=1
  end
  return TA
+end
+=#
+
+mutable struct SG
+ single_row_limit
+ base
+ nlight
+ nsingle
+ light_weight
+ col_list
+ col_count
+ col_list_perm 
+ col_list_permi
+ is_light_col
+ is_single_col
+ single_col
 end
