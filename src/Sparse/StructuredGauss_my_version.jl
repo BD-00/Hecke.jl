@@ -229,6 +229,7 @@ function swap_rows_perm(i, j, SG)
   swap_entries(SG.col_list_permi, SG.col_list_perm[i], SG.col_list_perm[j])
   swap_entries(SG.light_weight, i, j)
  end
+ @show col_list_perm, :Hi
 end 
 
 function swap_entries(v, i,j) #swaps entries v[i], v[j]
