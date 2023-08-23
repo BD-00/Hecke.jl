@@ -6,7 +6,7 @@ export SMatSpace, sparse_matrix, nnz, sparsity, density
 #
 ################################################################################
 
-function SMatSpace(R::Ring, r::Int, c::Int; cached = true; cached = true)
+function SMatSpace(R::Ring, r::Int, c::Int; cached = true)
   T = elem_type(R)
   return SMatSpace{T}(R, r, c, cached, cached)
 end
