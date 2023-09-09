@@ -28,7 +28,6 @@ end
 function my_StructGauss_1(A, TA)
  #initialize all arrays (and constants)
  over_field = false #more cases are tested this way
- M = div(p-1,2)
  single_row_limit = 1
  base = 1
  nlight = A.c #number of light cols
@@ -84,7 +83,7 @@ function my_StructGauss_1(A, TA)
      SG.is_single_col[j] = true
      SG.single_col[singleton_row_idx] = j
      SG.nlight-=1
-     SG.nlight<0 && print("nlight < 0 singleton case")
+     #SG.nlight<0 && print("nlight < 0 singleton case")
      SG.nsingle+=1
      swap_i_into_base(singleton_row_idx, SG)
      SG.base+=1
@@ -95,7 +94,7 @@ function my_StructGauss_1(A, TA)
   for i = 1:A.c
    SG.is_light_col[i] && @assert SG.col_count[i] != 1
   end
-  (SG.nlight == 0 || SG.base == SG.A.r) && break
+  (SG.nlight == 0 || SG.base > SG.A.r) && break
 
   #Find best row which is single (having only one light entry)
   best_single_row = -1
@@ -126,10 +125,10 @@ function my_StructGauss_1(A, TA)
   if best_single_row < 0
    heavy_ext_p1(SG)
    heavy_ext_p2(SG)
-   @show(findall(x->SG.is_light_col[x], 1:SG.A.c))
+   #@show(findall(x->SG.is_light_col[x], 1:SG.A.c))
    continue #while SG.nlight > 0 && SG.base <= SG.A.r
   end
-  @show(best_single_row)
+  #@show(best_single_row)
   @assert best_single_row != 0
   best_row = deepcopy(SG.A[best_single_row])
   best_len = length(best_row)
@@ -149,7 +148,7 @@ function my_StructGauss_1(A, TA)
    row_len = length(SG.A[row_idx])
    #L_row < 1 && break when can this be the case???
    @assert row_idx > 0
-   @show SG.A[row_idx]
+   #@show SG.A[row_idx]
    L_row = SG.col_list_perm[row_idx]#hopefully right
    while true#!!!
     val = SG.A[row_idx, best_col] 
@@ -185,7 +184,7 @@ function my_StructGauss_1(A, TA)
     if SG.light_weight[row_idx] == 0
      swap_i_into_base(row_idx, SG)
      SG.single_col[SG.base] = -1
-     @show SG.col_list_perm[SG.base]
+     #@show SG.col_list_perm[SG.base]
      move_into_Y(SG.base, SG)
      SG.base += 1
     else
@@ -217,7 +216,7 @@ function my_StructGauss_2(SG)
  end
  @assert SG.nlight > -1
  nheavy = SG.A.c - SG.nlight - SG.nsingle
- @show(nheavy)
+ #@show(nheavy)
  heavy_map = fill(-1, SG.A.c)
  heavy_mapi = []
  j = 1
@@ -228,8 +227,9 @@ function my_StructGauss_2(SG)
    j+=1
   end
  end
- @assert length(heavy_mapi)==nheavy
  @show(heavy_mapi)
+ @assert length(heavy_mapi)==nheavy
+ #@show(heavy_mapi)
  ST = sparse_matrix(base_ring(SG.A))
  ST.c = SG.Y.r
  YT = transpose(SG.Y)
@@ -237,29 +237,32 @@ function my_StructGauss_2(SG)
   push!(ST, YT[j])
  end
  S = transpose(ST)
+ #@show(matrix(S))
  d, S_kern = kernel(matrix(S))
- @show(d)
- @assert d==1
+ #@show(d)
+ #@show(S_kern)
+ #@assert d==1
  #eigentlichen Kern zusammensetzen:
  R = base_ring(SG.A)
  kern = fill(zero(R), SG.A.c)
- bad_part = []
- @show(kern)
+ single_part = []
+ #@show(kern)
  for i = 1:SG.A.c
   if SG.is_light_col[i]
-   kern[i]=0
+   kern[i]=zero(R)
   else
    j = heavy_map[i]
    if j>0
     kern[i] = S_kern[j,1]
    else
-    push!(bad_part, i)
+    push!(single_part, i)
    end
   end
  end 
- @show(bad_part)
+ #@show(single_part)
  #single_col Lösungen zusammensetzen
  nfail = 0
+ failure = []
  for i=SG.base-1:-1:1
   c = SG.single_col[i]
   if c>0
@@ -272,7 +275,7 @@ function my_StructGauss_2(SG)
     if cc==c
      x = xx
      j+=1
-    elseif !(cc in bad_part)
+    elseif !(cc in single_part)
      y += (xx*kern[cc])
      j+=1
     else
@@ -281,13 +284,14 @@ function my_StructGauss_2(SG)
    end
    if j <= length(SG.A[i])
     nfail +=1
+    push!(failure, i)
    else
     kern[c]=-y*inv(x)
    end
   end
  end 
  @show(nfail)
- return kern
+ return kern, failure
 end
 
 
@@ -298,7 +302,7 @@ function heavy_ext_p1(SG)
  SG.heavy_col_idx = fill(-1, SG.heavy_ext) #indices (descending order for same length)
  SG.heavy_col_len = fill(-1, SG.heavy_ext)#length of cols in heavy_idcs (ascending)
  light_cols = findall(x->SG.is_light_col[x], 1:SG.A.c)
- @show(light_cols)
+ #@show(light_cols)
  for i = A.c:-1:1
   if SG.is_light_col[i]
    col_len = SG.col_count[i]
@@ -345,7 +349,7 @@ function heavy_ext_p2(SG)
    if w == 0
     swap_i_into_base(i_now,SG)
     SG.single_col[SG.base] = -1
-    @show SG.col_list_perm[SG.base]
+    #@show SG.col_list_perm[SG.base]
     move_into_Y(SG.base, SG)
     SG.base+=1
    elseif w == 1
@@ -354,11 +358,11 @@ function heavy_ext_p2(SG)
     end
     SG.single_row_limit += 1
    end
-   test_Y(SG)
+   #test_Y(SG)
   end
  end
  SG.nlight -= SG.heavy_ext
- SG.nlight<0 && print("nlight < 0 extension case")
+ #SG.nlight<0 && print("nlight < 0 extension case")
 end
 
 function swap_rows_perm(i, j, SG)
@@ -447,7 +451,7 @@ function test_base_part(SG)
   #@assert length(filter(x->SG.is_light_col[x], SG.A[i].pos)) == 0
   end
  end
- SG.single_row_limit<SG.base && print("srl<base")
+ #SG.single_row_limit<SG.base && print("srl<base")
  println("base part seems fine")
 end
 
