@@ -109,7 +109,7 @@ function rand_srow(l,n,b,R)
 		#generate ZZRingElem sparse_row, indx not greater than n limited by n
 		#l values not greater than b
 		val =  rand(1:b,l)
-		pos = randperm!(Vector{Int}(undef, n))[1:l]
+		pos = Hecke.randperm!(Vector{Int}(undef, n))[1:l]
 		return sparse_row(R,pos,val)
 end
 
