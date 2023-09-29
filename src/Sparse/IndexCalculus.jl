@@ -808,10 +808,14 @@ function IdxCalc(a::T, b::T, F=parent(a)) where T<:Union{fpFieldElem, FpFieldEle
     A = change_base_ring(F2, get_attribute(F,:RelMat))
     TA = transpose(A)
 <<<<<<< HEAD
+<<<<<<< HEAD
     A, TA = sp_prepro(A, TA, get_attribute(F, :fb_length),2)
 =======
     A, TA = sp_prepro(A, TA, get_attribute(F, :fb_length),10)
 >>>>>>> 6f2458d06 (before script)
+=======
+    A, TA = sp_prepro(A, TA, get_attribute(F, :fb_length),2)
+>>>>>>> 851cff3ab (wiedemann vs structgauss)
     #Wiedemann + dict with logs of FB
     @vtime :DiscLog 3 log_dict(F, A, TA)
   end
