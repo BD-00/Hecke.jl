@@ -111,7 +111,6 @@ function only_dense_kernel(SG, F)
   end
  end
  @assert length(SG.heavy_mapi)==nheavy
-
  ST = sparse_matrix(base_ring(SG.A))
  ST.c = SG.Y.r
  YT = transpose(SG.Y)
@@ -135,6 +134,11 @@ function only_dense_kernel(SG, F)
  return kern
 end
 
+function my_StructGauss(A, TA)
+ SG = my_StructGauss_1(A, TA)
+ kern, _ = my_StructGauss_2(SG)
+ return kern
+end
 
 function small_logs(F, kern)
  kern = inv(kern[1]).*kern
