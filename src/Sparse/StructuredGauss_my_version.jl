@@ -22,6 +22,7 @@ mutable struct data_StructGauss
  heavy_ext
  heavy_col_idx
  heavy_col_len
+ heavy_mapi
 end
 
 
@@ -46,12 +47,12 @@ function my_StructGauss_1(A, TA)
  single_col = fill(-2, A.r) #single_col[i] = c >= 0 if col c has its only entry in row i, i always recent position
  Y = sparse_matrix(base_ring(A))
  Y.c = A.c
- SG = data_StructGauss(A,Y,single_row_limit,base,nlight,nsingle,light_weight,col_list,col_count,col_list_perm ,col_list_permi,is_light_col,is_single_col,single_col, 0, [], [])
+ SG = data_StructGauss(A,Y,single_row_limit,base,nlight,nsingle,light_weight,col_list,col_count,col_list_perm ,col_list_permi,is_light_col,is_single_col,single_col, 0, [], [], [])
  #delete empty rows and swap those with only one variable to top
  for i = 1:A.r
   len = length(A[i])
   if len == 0
-   delete_row!(A, i)
+   Hecke.delete_row!(A, i)
   elseif len == 1
    @assert SG.single_row_limit <=i
    if i != SG.single_row_limit
@@ -71,7 +72,7 @@ function my_StructGauss_1(A, TA)
      still_singletons = true
      singleton_row_origin = first(SG.col_list[j])
      singleton_row_idx = SG.col_list_permi[singleton_row_origin]
-     for jj in A[singleton_row_idx].pos
+     for jj in SG.A[singleton_row_idx].pos
       SG.col_count[jj]-=1
       if SG.is_light_col[jj]
        @assert singleton_row_origin in SG.col_list[jj]
@@ -218,22 +219,22 @@ function my_StructGauss_2(SG)
  nheavy = SG.A.c - SG.nlight - SG.nsingle
  #@show(nheavy)
  heavy_map = fill(-1, SG.A.c)
- heavy_mapi = []
+ #SG.heavy_mapi = []
  j = 1
  for i = 1:SG.A.c
   if !SG.is_light_col[i] && !SG.is_single_col[i]
    heavy_map[i] = j
-   push!(heavy_mapi,i)  
+   push!(SG.heavy_mapi,i)  
    j+=1
   end
  end
- @show(heavy_mapi)
- @assert length(heavy_mapi)==nheavy
+ @assert length(SG.heavy_mapi)==nheavy
+ #fb_and_dense(SG)
  #@show(heavy_mapi)
  ST = sparse_matrix(base_ring(SG.A))
  ST.c = SG.Y.r
  YT = transpose(SG.Y)
- for j in heavy_mapi
+ for j in SG.heavy_mapi
   push!(ST, YT[j])
  end
  S = transpose(ST)
@@ -270,8 +271,8 @@ function my_StructGauss_2(SG)
    x = NaN
    j=1
    while j <= length(SG.A[i])
-    cc = A[i].pos[j]
-    xx = A[i].values[j]
+    cc = SG.A[i].pos[j]
+    xx = SG.A[i].values[j]
     if cc==c
      x = xx
      j+=1
@@ -290,11 +291,86 @@ function my_StructGauss_2(SG)
    end
   end
  end 
- @show(nfail)
+ #@show(nfail)
  return kern, failure
 end
 
+function my_StructGauss(A, TA)
+ SG = my_StructGauss_1(A, TA)
+ kern, _ = my_StructGauss_2(SG)
+ return kern
+end
 
+function dense_kernel(SG, F)
+ for i = 1:SG.A.c
+  if SG.is_light_col[i] && SG.col_count[i]>0
+   SG.is_light_col[i] = false
+   SG.nlight -= 1
+  end
+ end
+ @assert SG.nlight > -1
+ nheavy = SG.A.c - SG.nlight - SG.nsingle
+ heavy_map = fill(-1, SG.A.c)
+ j = 1
+ for i = 1:SG.A.c
+  if !SG.is_light_col[i] && !SG.is_single_col[i]
+   heavy_map[i] = j
+   push!(SG.heavy_mapi,i)  
+   j+=1
+  end
+ end
+ @assert length(SG.heavy_mapi)==nheavy
+
+ ST = sparse_matrix(base_ring(SG.A))
+ ST.c = SG.Y.r
+ YT = transpose(SG.Y)
+ for j in SG.heavy_mapi
+  push!(ST, YT[j])
+ end
+ S = transpose(ST)
+ #@show(matrix(S))
+ d, S_kern = kernel(matrix(S))
+ l = get_attribute(F, :fb_length)
+ R = base_ring(SG.A)
+ kern = fill(zero(R), l)
+ for idx = 1:length(SG.heavy_mapi)
+  dense_col = SG.heavy_mapi[idx]
+  if SG.heavy_mapi[idx]>l
+   break
+  else
+   kern[dense_col] = S_kern[idx]
+  end
+ end
+ return kern
+end
+
+
+function small_logs(F, kern)
+ kern = inv(kern[1]).*kern
+ FB = get_attribute(F, :FB_array)
+ l = get_attribute(F, :fb_length)
+ 
+ a1 = F(FB[1])
+ M = div(p-1,2)
+ Q,L = Array{ZZRingElem}([]),Array{ZZRingElem}([])
+ 
+ for i = 1:l
+  c0 = crt(lift(kern[i]), ZZ(M), ZZ(0), ZZ(2))
+  if lift(a1^c0)  == FB[i]
+   push!(Q,FB[i])
+   push!(L, c0)
+  else
+   c1 = crt(lift(kern[i]), ZZ(M), ZZ(1), ZZ(2))
+   if lift(a1^c1)  == FB[i]
+    push!(Q,FB[i])
+    push!(L, c1)
+   end
+  end
+ end
+ 
+ Logdict = Dict(zip(Q,L))
+ set_attribute!(F, :Logdict=>Logdict, :kern=>kern, :Q=>FactorBase(Q))
+end
 
 function heavy_ext_p1(SG)
  nheavy = SG.A.c - (SG.nlight + SG.nsingle)
@@ -303,7 +379,7 @@ function heavy_ext_p1(SG)
  SG.heavy_col_len = fill(-1, SG.heavy_ext)#length of cols in heavy_idcs (ascending)
  light_cols = findall(x->SG.is_light_col[x], 1:SG.A.c)
  #@show(light_cols)
- for i = A.c:-1:1
+ for i = SG.A.c:-1:1
   if SG.is_light_col[i]
    col_len = SG.col_count[i]
    if col_len > SG.heavy_col_len[1]
@@ -537,4 +613,9 @@ function count_nnz(A=SG.A)
   l+=length(A[i])
  end
  return l
+end
+
+function fb_and_dense(SG)
+ l_FB = get_attribute(F, :fb_length)
+ return filter(x->x<=l_FB, SG.heavy_mapi)
 end
