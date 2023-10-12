@@ -13,7 +13,6 @@ mutable struct data_StructGauss
  nsingle
  light_weight
  col_list
- col_count
  col_list_perm #perm gives new ordering of original A[i] via their indices
  col_list_permi #A[permi[i]]=A[i] before permutation = list of sigma(i) (recent position of former A[i])
  is_light_col
@@ -25,18 +24,16 @@ mutable struct data_StructGauss
  heavy_mapi
 
  function data_StructGauss(A)
-  Y = sparse_matrix(base_ring(A))
-  Y.c = A.c
+  Y = sparse_matrix(base_ring(A), 0, ncols(A))
   col_list = _col_list(A)
   return new(A,
   Y,
   1,
   1,
-  A.c,
+  ncols(A),
   0,
   [length(A[i]) for i in 1:nrows(A)],
   col_list,
-  [length(col_list[i]) for i = 1:ncols(A)],
   collect(1:nrows(A)),
   collect(1:nrows(A)),
   fill(true, ncols(A)),
@@ -54,19 +51,20 @@ function my_StructGauss_1(A)
  #initialize all arrays (and constants)
  over_field = false #more cases are tested this way
  A = delete_zero_rows!(A)
+ n = nrows(A)
+ m = ncols(A)
  SG = data_StructGauss(A)
  single_rows_to_top!(SG)
  
- while SG.nlight > 0 && SG.base <= SG.A.r
+ while SG.nlight > 0 && SG.base <= n
 #move rows to SINGLETON COLS to the top
-  build_part_ref_new!(SG)
-  for i = 1:A.c
+  build_part_ref!(SG)
+  for i = 1:m
    if SG.is_light_col[i]
-    @assert SG.col_count[i] != 1
-    @assert SG.col_count[i] == length(SG.col_list[i])
+    @assert length(SG.col_list[i]) != 1
    end
   end
-  (SG.nlight == 0 || SG.base > SG.A.r) && break
+  (SG.nlight == 0 || SG.base > n) && break
 
   #Find best row which is single (having only one light entry)
   best_single_row = -1
@@ -81,9 +79,8 @@ function my_StructGauss_1(A)
    w = SG.light_weight[i]
    @assert w == 1
    j_light = find_light_entry(single_row.pos, SG.is_light_col)
-   @assert SG.col_count[j_light]>=1
    single_row_val = SG.A[i, j_light]
-   @assert SG.col_count[j_light] > 1 # >= ???
+   @assert length(SG.col_list[j_light]) > 1 # >= ???
    #=
    if (M !=0 && !iscoprime(single_row_val, M))
     continue
@@ -106,9 +103,9 @@ function my_StructGauss_1(A)
   best_len = length(best_row)
   best_col = find_light_entry(best_row.pos, SG.is_light_col)
   best_val = deepcopy(SG.A[best_single_row, best_col])
-  @assert SG.col_count[best_col] > 1
+  @assert length(SG.col_list[best_col]) > 1
   best_col_idces = SG.col_list[best_col]
-  @assert SG.col_count[best_col] == length(best_col_idces)
+  @assert length(SG.col_list[best_col]) == length(best_col_idces)
   row_idx = 0
   while length(best_col_idces) > 1
    for L_row in best_col_idces[end:-1:1] #right??? breaking condition missing?
@@ -131,8 +128,7 @@ function my_StructGauss_1(A)
     best_val_red = divexact(best_val, g)
     @assert L_row in SG.col_list[best_col]
     for c in SG.A[row_idx].pos
-     @assert SG.col_count[c] > 0
-     SG.col_count[c] -= 1
+     @assert !isempty(SG.col_list[c])
      if SG.is_light_col[c]
       jj = findfirst(isequal(L_row), SG.col_list[c])
       deleteat!(SG.col_list[c], jj)
@@ -146,7 +142,6 @@ function my_StructGauss_1(A)
     SG.light_weight[row_idx] = 0
     for c in SG.A[row_idx].pos
      @assert c != best_col
-     SG.col_count[c] += 1
      #but not new:???
      if SG.is_light_col[c]
       sort!(push!(SG.col_list[c], L_row)) 
@@ -169,7 +164,6 @@ function my_StructGauss_1(A)
     #test_permutation(SG)
     #test_base_part(SG)
     #test_light_weight(SG)
-    #test_col_count(SG)
     #test_if_zeros_listed(SG)
     #test_col_list(SG)
     break #while true
@@ -180,19 +174,20 @@ function my_StructGauss_1(A)
 end
 
 function my_StructGauss_2(SG)
- for i = 1:SG.A.c
-  if SG.is_light_col[i] && SG.col_count[i]>0
+ m = ncols(SG.A)
+ for i = 1:m
+  if SG.is_light_col[i] && !isempty(SG.col_list[i])
    SG.is_light_col[i] = false
    SG.nlight -= 1
   end
  end
  @assert SG.nlight > -1
- nheavy = SG.A.c - SG.nlight - SG.nsingle
+ nheavy = m - SG.nlight - SG.nsingle
  #@show(nheavy)
- heavy_map = fill(-1, SG.A.c)
+ heavy_map = fill(-1, m)
  #SG.heavy_mapi = []
  j = 1
- for i = 1:SG.A.c
+ for i = 1:m
   if !SG.is_light_col[i] && !SG.is_single_col[i]
    heavy_map[i] = j
    push!(SG.heavy_mapi,i)  
@@ -216,10 +211,10 @@ function my_StructGauss_2(SG)
  #@assert d==1
  #eigentlichen Kern zusammensetzen:
  R = base_ring(SG.A)
- kern = fill(zero(R), SG.A.c)
+ kern = fill(zero(R), m)
  single_part = []
  #@show(kern)
- for i = 1:SG.A.c
+ for i = 1:m
   if SG.is_light_col[i]
    kern[i]=zero(R)
   else
@@ -273,17 +268,18 @@ function my_StructGauss(A)
 end
 
 function dense_kernel(SG, F)
- for i = 1:SG.A.c
-  if SG.is_light_col[i] && SG.col_count[i]>0
+ m = ncols(SG.A)
+ for i = 1:m
+  if SG.is_light_col[i] && !isempty(SG.col_list[i])
    SG.is_light_col[i] = false
    SG.nlight -= 1
   end
  end
  @assert SG.nlight > -1
- nheavy = SG.A.c - SG.nlight - SG.nsingle
- heavy_map = fill(-1, SG.A.c)
+ nheavy = m - SG.nlight - SG.nsingle
+ heavy_map = fill(-1, m)
  j = 1
- for i = 1:SG.A.c
+ for i = 1:m
   if !SG.is_light_col[i] && !SG.is_single_col[i]
    heavy_map[i] = j
    push!(SG.heavy_mapi,i)  
@@ -344,15 +340,16 @@ function small_logs(F, kern)
 end
 
 function heavy_ext_p1(SG)
- nheavy = SG.A.c - (SG.nlight + SG.nsingle)
+ m = ncols(SG.A)
+ nheavy = m - (SG.nlight + SG.nsingle)
  nheavy == 0 ? SG.heavy_ext = max(div(SG.nlight,20),1) : SG.heavy_ext = max(div(SG.nlight,100),1)
  SG.heavy_col_idx = fill(-1, SG.heavy_ext) #indices (descending order for same length)
  SG.heavy_col_len = fill(-1, SG.heavy_ext)#length of cols in heavy_idcs (ascending)
- light_cols = findall(x->SG.is_light_col[x], 1:SG.A.c)
+ light_cols = findall(x->SG.is_light_col[x], 1:m)
  #@show(light_cols)
- for i = SG.A.c:-1:1
+ for i = m:-1:1
   if SG.is_light_col[i]
-   col_len = SG.col_count[i]
+   col_len = length(SG.col_list[i])
    if col_len > SG.heavy_col_len[1]
     if SG.heavy_ext == 1
      SG.heavy_col_idx[1] = i 
@@ -374,7 +371,7 @@ function heavy_ext_p1(SG)
    end
   end
  end
- @assert light_cols == findall(x->SG.is_light_col[x], 1:SG.A.c)
+ @assert light_cols == findall(x->SG.is_light_col[x], 1:m)
 end
 
 function heavy_ext_p2(SG)
@@ -386,7 +383,7 @@ function heavy_ext_p2(SG)
   SG.is_light_col[c] = false
   lt2hvy_col = SG.col_list[c]
   lt2hvy_len = length(lt2hvy_col)
-  @assert lt2hvy_len == SG.col_count[c]
+  @assert lt2hvy_len == length(SG.col_list[c])
   for k = 1:lt2hvy_len
    i_origin = lt2hvy_col[k]
    i_now = SG.col_list_permi[i_origin]
@@ -476,8 +473,7 @@ function move_into_Y(i, SG::data_StructGauss)
  push!(SG.Y, deepcopy(SG.A[SG.base]))
  for base_c in SG.A[SG.base].pos
   @assert !SG.is_light_col[base_c]
-  @assert SG.col_count[base_c] > 0
-  SG.col_count[base_c]-=1
+  @assert !isempty(SG.col_list[base_c])
  end
  SG.A.nnz-=length(SG.A[SG.base])
  empty!(SG.A[SG.base].pos), empty!(SG.A[SG.base].values)
@@ -497,7 +493,7 @@ function _col_list(A)
 end
 
 function single_rows_to_top!(SG)
- for i = 1:SG.A.r
+ for i = 1:nrows(SG.A)
   len = length(SG.A[i])
   @assert !iszero(len)
   if len == 1
@@ -511,51 +507,17 @@ function single_rows_to_top!(SG)
  return SG
 end
 
-
-function build_part_ref_old!(SG)
- still_singletons = 1 in SG.col_count
-  while still_singletons
-   still_singletons = false
-   for j = SG.A.c:-1:1
-    if SG.col_count[j]==1 && SG.is_light_col[j]
-     still_singletons = true
-     singleton_row_origin = only(SG.col_list[j])
-     singleton_row_idx = SG.col_list_permi[singleton_row_origin]
-     for jj in SG.A[singleton_row_idx].pos
-      SG.col_count[jj]-=1
-      if SG.is_light_col[jj]
-       @assert singleton_row_origin in SG.col_list[jj]
-       j_idx = searchsortedfirst(SG.col_list[jj], singleton_row_origin)
-       deleteat!(SG.col_list[jj], j_idx)
-      end
-     end
-     test_col_count(SG)
-     SG.is_light_col[j] = false
-     SG.is_single_col[j] = true
-     SG.single_col[singleton_row_idx] = j
-     SG.nlight-=1
-     #SG.nlight<0 && print("nlight < 0 singleton case")
-     SG.nsingle+=1
-     swap_i_into_base(singleton_row_idx, SG)
-     SG.base+=1
-    end
-   end
-   #(SG.nlight == 0 || SG.base == SG.A.r) && break
-  end
-end
-
-function build_part_ref_new!(SG)
+function build_part_ref!(SG)
  queue = collect(ncols(SG.A):-1:1)
  while !isempty(queue)
   queue_new = Int[]
   for j in queue
-   if SG.col_count[j]==1 && SG.is_light_col[j]
+   if length(SG.col_list[j])==1 && SG.is_light_col[j]
     singleton_row_origin = only(SG.col_list[j])
     singleton_row_idx = SG.col_list_permi[singleton_row_origin]
     for jj in SG.A[singleton_row_idx].pos
-     SG.col_count[jj]-=1
      if SG.is_light_col[jj]
-      SG.col_count[jj] == 1 && push!(queue_new, jj)
+      length(SG.col_list[jj]) == 1 && push!(queue_new, jj)
       @assert singleton_row_origin in SG.col_list[jj]
       j_idx = findfirst(isequal(singleton_row_origin), SG.col_list[jj])
       deleteat!(SG.col_list[jj],j_idx)
@@ -575,8 +537,6 @@ function build_part_ref_new!(SG)
  end
 end
 
-build_part_ref!(SG) = build_part_ref_old!(SG)
-
 #Some test functions
 
 function test_base_part(SG)
@@ -584,7 +544,6 @@ function test_base_part(SG)
   sc = SG.single_col[i]
   sc < 0 && @assert isempty(SG.A[i].pos)
   if sc > 0
-   @assert SG.col_count[sc] == 0
    @assert length(SG.col_list[sc]) == 0
    @assert SG.is_single_col[sc]
    @assert !SG.is_light_col[sc]
@@ -622,16 +581,9 @@ function test_light_weight(SG)
 end
 #teste, ob Sachen für immer in base und weight dort egal
 
-function test_col_count(SG)
- for i = 1:SG.A.c
-  SG.is_light_col[i] && @assert length(SG.col_list[i]) == SG.col_count[i] "length(col_list[$i]) == $(length(SG.col_list[i])) != $(SG.col_count[i])"
- end
- #println("col count seems fine")
-end
-
 function test_if_zeros_listed(SG)
  TA = transpose(SG.A)
- for i = 1:SG.A.c
+ for i = 1:ncols(SG.A)
   if SG.is_light_col[i]
    for j in SG.col_list[i]
     @assert !iszero(SG.A[SG.col_list_permi[j],i])
@@ -643,7 +595,7 @@ end
 
 function test_col_list(SG)
  TA = transpose(SG.A)
- for i = 1:SG.A.c
+ for i = 1:ncols(SG.A)
   if SG.is_light_col[i]
    first(SG.col_list[i]) >= SG.base || @show 0, SG.col_list[i]
    col_len = length(SG.col_list[i])
@@ -667,13 +619,13 @@ function test_Y(SG)
 end
 
 function test_A(SG) #after ma_StructGauss_1
- @assert length(findall(x->length(SG.A[x])==0, 1:SG.A.r)) == SG.Y.r
+ @assert length(findall(x->length(SG.A[x])==0, 1:nrows(SG.A))) == SG.Y.r
  println("$(Y.r) many empty rows in A")
 end
 
 function count_nnz(A=SG.A)
  l = 0
- for i = 1:A.r
+ for i = 1:nrows(A)
   l+=length(A[i])
  end
  return l
