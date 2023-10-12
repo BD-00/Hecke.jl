@@ -14,86 +14,57 @@ mutable struct data_StructGauss
  light_weight
  col_list
  col_count
- col_list_perm 
- col_list_permi
+ col_list_perm #perm gives new ordering of original A[i] via their indices
+ col_list_permi #A[permi[i]]=A[i] before permutation = list of sigma(i) (recent position of former A[i])
  is_light_col
  is_single_col
- single_col
+ single_col #single_col[i] = c >= 0 if col c has its only entry in row i, i always recent position
  heavy_ext
  heavy_col_idx
  heavy_col_len
  heavy_mapi
+
+ function data_StructGauss(A)
+  Y = sparse_matrix(base_ring(A))
+  Y.c = A.c
+  col_list = _col_list(A)
+  return new(A,
+  Y,
+  1,
+  1,
+  A.c,
+  0,
+  [length(A[i]) for i in 1:nrows(A)],
+  col_list,
+  [length(col_list[i]) for i = 1:ncols(A)],
+  collect(1:nrows(A)),
+  collect(1:nrows(A)),
+  fill(true, ncols(A)),
+  fill(false, ncols(A)),
+  fill(-2, nrows(A)),
+  0,
+  Int[],
+  Int[],
+  Int[])
+ end
 end
 
 
-function my_StructGauss_1(A, TA)
+function my_StructGauss_1(A)
  #initialize all arrays (and constants)
  over_field = false #more cases are tested this way
- single_row_limit = 1
- base = 1
- nlight = A.c #number of light cols
- nsingle = 0
- light_weight = [deepcopy(length(A[i])) for i in 1:A.r]
- col_list = []; col_count = []
- for j = 1:A.c
-  Pos = deepcopy(TA[j].pos)
-  push!(col_list, Pos)
-  push!(col_count, length(Pos))
- end
- col_list_perm = collect(1:A.r)  #perm gives new ordering of original A[i] via their indices
- col_list_permi = collect(1:A.r) #A[permi[i]]=A[i] before permutation = list of sigma(i) (recent position of former A[i])
- is_light_col = fill(true, A.c)
- is_single_col = fill(false, A.c)
- single_col = fill(-2, A.r) #single_col[i] = c >= 0 if col c has its only entry in row i, i always recent position
- Y = sparse_matrix(base_ring(A))
- Y.c = A.c
- SG = data_StructGauss(A,Y,single_row_limit,base,nlight,nsingle,light_weight,col_list,col_count,col_list_perm ,col_list_permi,is_light_col,is_single_col,single_col, 0, [], [], [])
- #delete empty rows and swap those with only one variable to top
- for i = 1:A.r
-  len = length(A[i])
-  if len == 0
-   Hecke.delete_row!(A, i)
-  elseif len == 1
-   @assert SG.single_row_limit <=i
-   if i != SG.single_row_limit
-    swap_rows_perm(i, SG.single_row_limit, SG)
-   end
-   SG.single_row_limit +=1
-  end
- end 
+ A = delete_zero_rows!(A)
+ SG = data_StructGauss(A)
+ single_rows_to_top!(SG)
+ 
  while SG.nlight > 0 && SG.base <= SG.A.r
 #move rows to SINGLETON COLS to the top
-  1 in SG.col_count ? still_singletons = true : still_singletons = false
-  while still_singletons
-   still_singletons = false
-   for j = SG.A.c:-1:1
-    if SG.col_count[j]==1 && SG.is_light_col[j]
-     @assert length(SG.col_list[j])==1
-     still_singletons = true
-     singleton_row_origin = first(SG.col_list[j])
-     singleton_row_idx = SG.col_list_permi[singleton_row_origin]
-     for jj in SG.A[singleton_row_idx].pos
-      SG.col_count[jj]-=1
-      if SG.is_light_col[jj]
-       @assert singleton_row_origin in SG.col_list[jj]
-       j_idx = findfirst(isequal(singleton_row_origin), SG.col_list[jj])
-       deleteat!(SG.col_list[jj],j_idx)
-      end
-     end
-     SG.is_light_col[j] = false
-     SG.is_single_col[j] = true
-     SG.single_col[singleton_row_idx] = j
-     SG.nlight-=1
-     #SG.nlight<0 && print("nlight < 0 singleton case")
-     SG.nsingle+=1
-     swap_i_into_base(singleton_row_idx, SG)
-     SG.base+=1
-    end
-   end
-   #(SG.nlight == 0 || SG.base == SG.A.r) && break
-  end
+  build_part_ref_new!(SG)
   for i = 1:A.c
-   SG.is_light_col[i] && @assert SG.col_count[i] != 1
+   if SG.is_light_col[i]
+    @assert SG.col_count[i] != 1
+    @assert SG.col_count[i] == length(SG.col_list[i])
+   end
   end
   (SG.nlight == 0 || SG.base > SG.A.r) && break
 
@@ -143,7 +114,7 @@ function my_StructGauss_1(A, TA)
    for L_row in best_col_idces[end:-1:1] #right??? breaking condition missing?
     row_idx = SG.col_list_permi[L_row]
     SG.A[row_idx] == best_row && continue
-    row_idx < base && continue
+    row_idx < SG.base && continue
     break
    end
    row_len = length(SG.A[row_idx])
@@ -178,7 +149,7 @@ function my_StructGauss_1(A, TA)
      SG.col_count[c] += 1
      #but not new:???
      if SG.is_light_col[c]
-      sort!(push!(col_list[c], L_row)) 
+      sort!(push!(SG.col_list[c], L_row)) 
      end
      SG.is_light_col[c] && (SG.light_weight[row_idx]+=1)
     end
@@ -295,8 +266,8 @@ function my_StructGauss_2(SG)
  return kern, failure
 end
 
-function my_StructGauss(A, TA)
- SG = my_StructGauss_1(A, TA)
+function my_StructGauss(A)
+ SG = my_StructGauss_1(A)
  kern, _ = my_StructGauss_2(SG)
  return kern
 end
@@ -508,10 +479,103 @@ function move_into_Y(i, SG::data_StructGauss)
   @assert SG.col_count[base_c] > 0
   SG.col_count[base_c]-=1
  end
- SG.A.nnz-=length(A[SG.base])
+ SG.A.nnz-=length(SG.A[SG.base])
  empty!(SG.A[SG.base].pos), empty!(SG.A[SG.base].values)
 end
 
+function _col_list(A)
+ n = nrows(A)
+ m = ncols(A)
+ col_list = [Array{Int64}([]) for i = 1:m]
+ for i in 1:n
+  for c in A[i].pos
+   col = col_list[c]
+   push!(col, i)
+  end
+ end
+ return col_list
+end
+
+function single_rows_to_top!(SG)
+ for i = 1:SG.A.r
+  len = length(SG.A[i])
+  @assert !iszero(len)
+  if len == 1
+   @assert SG.single_row_limit <=i
+   if i != SG.single_row_limit
+    swap_rows_perm(i, SG.single_row_limit, SG)
+   end
+   SG.single_row_limit +=1
+  end
+ end
+ return SG
+end
+
+
+function build_part_ref_old!(SG)
+ still_singletons = 1 in SG.col_count
+  while still_singletons
+   still_singletons = false
+   for j = SG.A.c:-1:1
+    if SG.col_count[j]==1 && SG.is_light_col[j]
+     still_singletons = true
+     singleton_row_origin = only(SG.col_list[j])
+     singleton_row_idx = SG.col_list_permi[singleton_row_origin]
+     for jj in SG.A[singleton_row_idx].pos
+      SG.col_count[jj]-=1
+      if SG.is_light_col[jj]
+       @assert singleton_row_origin in SG.col_list[jj]
+       j_idx = searchsortedfirst(SG.col_list[jj], singleton_row_origin)
+       deleteat!(SG.col_list[jj], j_idx)
+      end
+     end
+     test_col_count(SG)
+     SG.is_light_col[j] = false
+     SG.is_single_col[j] = true
+     SG.single_col[singleton_row_idx] = j
+     SG.nlight-=1
+     #SG.nlight<0 && print("nlight < 0 singleton case")
+     SG.nsingle+=1
+     swap_i_into_base(singleton_row_idx, SG)
+     SG.base+=1
+    end
+   end
+   #(SG.nlight == 0 || SG.base == SG.A.r) && break
+  end
+end
+
+function build_part_ref_new!(SG)
+ queue = collect(ncols(SG.A):-1:1)
+ while !isempty(queue)
+  queue_new = Int[]
+  for j in queue
+   if SG.col_count[j]==1 && SG.is_light_col[j]
+    singleton_row_origin = only(SG.col_list[j])
+    singleton_row_idx = SG.col_list_permi[singleton_row_origin]
+    for jj in SG.A[singleton_row_idx].pos
+     SG.col_count[jj]-=1
+     if SG.is_light_col[jj]
+      SG.col_count[jj] == 1 && push!(queue_new, jj)
+      @assert singleton_row_origin in SG.col_list[jj]
+      j_idx = findfirst(isequal(singleton_row_origin), SG.col_list[jj])
+      deleteat!(SG.col_list[jj],j_idx)
+     end
+    end
+    SG.is_light_col[j] = false
+    SG.is_single_col[j] = true
+    SG.single_col[singleton_row_idx] = j
+    SG.nlight-=1
+    #SG.nlight<0 && print("nlight < 0 singleton case")
+    SG.nsingle+=1
+    swap_i_into_base(singleton_row_idx, SG)
+    SG.base+=1
+   end
+  end
+  queue = queue_new
+ end
+end
+
+build_part_ref!(SG) = build_part_ref_old!(SG)
 
 #Some test functions
 
@@ -560,9 +624,9 @@ end
 
 function test_col_count(SG)
  for i = 1:SG.A.c
-  SG.is_light_col[i] && @assert length(SG.col_list[i]) == SG.col_count[i]
+  SG.is_light_col[i] && @assert length(SG.col_list[i]) == SG.col_count[i] "length(col_list[$i]) == $(length(SG.col_list[i])) != $(SG.col_count[i])"
  end
- println("col count seems fine")
+ #println("col count seems fine")
 end
 
 function test_if_zeros_listed(SG)
