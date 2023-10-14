@@ -65,29 +65,7 @@ function my_StructGauss_1(A)
    end
   end
   (SG.nlight == 0 || SG.base > n) && break
-
-  #Find best row which is single (having only one light entry)
-  best_single_row = -1
-  best_col = NaN
-  best_val = NaN
-  best_len = -1
-  best_is_one = false
-  best_fill = 1e10
-  for i = SG.base:SG.single_row_limit-1  #here not the case in first loop
-   single_row = SG.A[i]
-   single_row_len = length(single_row)
-   w = SG.light_weight[i]
-   @assert w == 1
-   j_light = find_light_entry(single_row.pos, SG.is_light_col)
-   single_row_val = SG.A[i, j_light]
-   @assert length(SG.col_list[j_light]) > 1 # >= ???
-   #=
-   if (M !=0 && !iscoprime(single_row_val, M))
-    continue
-   end
-   =#
-   best_single_row = find_best_i(over_field, single_row_len, i, j_light, single_row_val, best_single_row, best_len, best_is_one)
-  end
+  best_single_row = find_best_single_row(SG, over_field)
   best_single_row < 0 && @assert(SG.base == SG.single_row_limit)
   
   #no best_i found:
@@ -444,26 +422,40 @@ function find_light_entry(position_array::Vector{Int64}, is_light_col::Vector{Bo
 end
 
 #is_one first, then length
-function find_best_i(over_field, single_row_len, i, j_light, single_row_val, best_single_row, best_len, best_is_one)
- is_one = over_field||isone(single_row_val)||isone(-single_row_val)
- if best_single_row < 0
-  best_single_row = i
-  best_col = j_light
-  best_len = single_row_len
-  best_is_one = is_one
-  best_val = single_row_val
- elseif !best_is_one && is_one
-  best_single_row = i
-  best_col = j_light
-  best_len = single_row_len
-  best_is_one = true
-  best_val = single_row_val
- elseif (is_one == best_is_one && single_row_len < best_len)
-  best_single_row = i
-  best_col = j_light
-  best_len = single_row_len
-  best_is_one = is_one
-  best_val = single_row_val
+function find_best_single_row(SG, over_field)
+ best_single_row = -1
+ best_col = NaN
+ best_val = NaN
+ best_len = -1
+ best_is_one = false
+ for i = SG.base:SG.single_row_limit-1  #here not the case in first loop
+  single_row = SG.A[i]
+  single_row_len = length(single_row)
+  w = SG.light_weight[i]
+  @assert w == 1
+  j_light = find_light_entry(single_row.pos, SG.is_light_col)
+  single_row_val = SG.A[i, j_light]
+  @assert length(SG.col_list[j_light]) > 1
+  is_one = over_field||isone(single_row_val)||isone(-single_row_val)
+  if best_single_row < 0
+   best_single_row = i
+   best_col = j_light
+   best_len = single_row_len
+   best_is_one = is_one
+   best_val = single_row_val
+  elseif !best_is_one && is_one
+   best_single_row = i
+   best_col = j_light
+   best_len = single_row_len
+   best_is_one = true
+   best_val = single_row_val
+  elseif (is_one == best_is_one && single_row_len < best_len)
+   best_single_row = i
+   best_col = j_light
+   best_len = single_row_len
+   best_is_one = is_one
+   best_val = single_row_val
+  end
  end
  return best_single_row
 end 
@@ -517,10 +509,10 @@ function build_part_ref!(SG)
     singleton_row_idx = SG.col_list_permi[singleton_row_origin]
     for jj in SG.A[singleton_row_idx].pos
      if SG.is_light_col[jj]
-      length(SG.col_list[jj]) == 1 && push!(queue_new, jj)
       @assert singleton_row_origin in SG.col_list[jj]
       j_idx = findfirst(isequal(singleton_row_origin), SG.col_list[jj])
       deleteat!(SG.col_list[jj],j_idx)
+      length(SG.col_list[jj]) == 1 && push!(queue_new, jj)
      end
     end
     SG.is_light_col[j] = false
