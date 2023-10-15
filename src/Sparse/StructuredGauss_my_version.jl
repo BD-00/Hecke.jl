@@ -48,7 +48,6 @@ end
 
 
 function my_StructGauss_1(A)
- #initialize all arrays (and constants)
  over_field = false #more cases are tested this way
  A = delete_zero_rows!(A)
  n = nrows(A)
@@ -57,33 +56,27 @@ function my_StructGauss_1(A)
  single_rows_to_top!(SG)
  
  while SG.nlight > 0 && SG.base <= n
-#move rows to SINGLETON COLS to the top
   build_part_ref!(SG)
   for i = 1:m
-   if SG.is_light_col[i]
-    @assert length(SG.col_list[i]) != 1
-   end
+   SG.is_light_col[i] && @assert length(SG.col_list[i]) != 1
   end
   (SG.nlight == 0 || SG.base > n) && break
   best_single_row = find_best_single_row(SG, over_field)
   best_single_row < 0 && @assert(SG.base == SG.single_row_limit)
   
-  #no best_i found:
   if best_single_row < 0
-   heavy_ext_p1(SG)
-   heavy_ext_p2(SG)
+   find_dense_cols(SG)
+   turn_heavy(SG)
    #@show(findall(x->SG.is_light_col[x], 1:SG.A.c))
    continue #while SG.nlight > 0 && SG.base <= SG.A.r
   end
   #@show(best_single_row)
   @assert best_single_row != 0
   best_row = deepcopy(SG.A[best_single_row])
-  best_len = length(best_row)
   best_col = find_light_entry(best_row.pos, SG.is_light_col)
   best_val = deepcopy(SG.A[best_single_row, best_col])
   @assert length(SG.col_list[best_col]) > 1
   best_col_idces = SG.col_list[best_col]
-  @assert length(SG.col_list[best_col]) == length(best_col_idces)
   row_idx = 0
   while length(best_col_idces) > 1
    for L_row in best_col_idces[end:-1:1] #right??? breaking condition missing?
@@ -92,7 +85,6 @@ function my_StructGauss_1(A)
     row_idx < SG.base && continue
     break
    end
-   row_len = length(SG.A[row_idx])
    #L_row < 1 && break when can this be the case???
    @assert row_idx > 0
    #@show SG.A[row_idx]
@@ -126,18 +118,7 @@ function my_StructGauss_1(A)
      end
      SG.is_light_col[c] && (SG.light_weight[row_idx]+=1)
     end
-    if SG.light_weight[row_idx] == 0
-     swap_i_into_base(row_idx, SG)
-     SG.single_col[SG.base] = -1
-     #@show SG.col_list_perm[SG.base]
-     move_into_Y(SG.base, SG)
-     SG.base += 1
-    else
-     if SG.light_weight[row_idx] == 1
-      row_idx > SG.single_row_limit && swap_rows_perm(row_idx, SG.single_row_limit, SG)
-      SG.single_row_limit += 1
-     end
-    end
+    handle_new_light_weight(row_idx, SG)
     #test_Y(SG)
     #test_permutation(SG)
     #test_base_part(SG)
@@ -317,7 +298,7 @@ function small_logs(F, kern)
  set_attribute!(F, :Logdict=>Logdict, :kern=>kern, :Q=>FactorBase(Q))
 end
 
-function heavy_ext_p1(SG)
+function find_dense_cols(SG)
  m = ncols(SG.A)
  nheavy = m - (SG.nlight + SG.nsingle)
  nheavy == 0 ? SG.heavy_ext = max(div(SG.nlight,20),1) : SG.heavy_ext = max(div(SG.nlight,100),1)
@@ -352,7 +333,7 @@ function heavy_ext_p1(SG)
  @assert light_cols == findall(x->SG.is_light_col[x], 1:m)
 end
 
-function heavy_ext_p2(SG)
+function turn_heavy(SG)
  for j = 1:SG.heavy_ext
   c = SG.heavy_col_idx[j]
   if c<0
@@ -367,19 +348,7 @@ function heavy_ext_p2(SG)
    i_now = SG.col_list_permi[i_origin]
    @assert SG.light_weight[i_now] > 0
    SG.light_weight[i_now]-=1
-   w = SG.light_weight[i_now]
-   if w == 0
-    swap_i_into_base(i_now,SG)
-    SG.single_col[SG.base] = -1
-    #@show SG.col_list_perm[SG.base]
-    move_into_Y(SG.base, SG)
-    SG.base+=1
-   elseif w == 1
-    if i_now > SG.single_row_limit
-     swap_rows_perm(i_now, SG.single_row_limit, SG)
-    end
-    SG.single_row_limit += 1
-   end
+   handle_new_light_weight(i_now, SG)
    #test_Y(SG)
   end
  end
@@ -527,6 +496,23 @@ function build_part_ref!(SG)
   end
   queue = queue_new
  end
+end
+
+function handle_new_light_weight(i, SG)
+ w = SG.light_weight[i]
+ if w == 0
+  swap_i_into_base(i, SG)
+  SG.single_col[SG.base] = -1
+  #@show SG.col_list_perm[SG.base]
+  move_into_Y(SG.base, SG)
+  SG.base+=1
+ elseif w == 1
+  if i > SG.single_row_limit
+   swap_rows_perm(i, SG.single_row_limit, SG)
+  end
+  SG.single_row_limit += 1
+ end
+ return SG
 end
 
 #Some test functions
