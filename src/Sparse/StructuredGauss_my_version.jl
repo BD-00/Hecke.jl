@@ -47,14 +47,14 @@ mutable struct data_StructGauss
 end
 
 
-function my_StructGauss_1(A)
+function part_echolonize(A)
  over_field = false #more cases are tested this way
  A = delete_zero_rows!(A)
  n = nrows(A)
  m = ncols(A)
  SG = data_StructGauss(A)
  single_rows_to_top!(SG)
- 
+
  while SG.nlight > 0 && SG.base <= n
   build_part_ref!(SG)
   for i = 1:m
@@ -67,166 +67,31 @@ function my_StructGauss_1(A)
   if best_single_row < 0
    find_dense_cols(SG)
    turn_heavy(SG)
-   #@show(findall(x->SG.is_light_col[x], 1:SG.A.c))
    continue #while SG.nlight > 0 && SG.base <= SG.A.r
   end
-  #@show(best_single_row)
-  @assert best_single_row != 0
-  best_row = deepcopy(SG.A[best_single_row])
-  best_col = find_light_entry(best_row.pos, SG.is_light_col)
-  best_val = deepcopy(SG.A[best_single_row, best_col])
-  @assert length(SG.col_list[best_col]) > 1
-  best_col_idces = SG.col_list[best_col]
-  row_idx = 0
-  while length(best_col_idces) > 1
-   for L_row in best_col_idces[end:-1:1] #right??? breaking condition missing?
-    row_idx = SG.col_list_permi[L_row]
-    SG.A[row_idx] == best_row && continue
-    row_idx < SG.base && continue
-    break
-   end
-   #L_row < 1 && break when can this be the case???
-   @assert row_idx > 0
-   #@show SG.A[row_idx]
-   L_row = SG.col_list_perm[row_idx]#hopefully right
-   while true#!!!
-    val = SG.A[row_idx, best_col] 
-    @assert !iszero(val)
-    #case !over_field && over_Z:
-    g = gcd(lift(val), lift(best_val))
-    val_red = divexact(val, g)
-    best_val_red = divexact(best_val, g)
-    @assert L_row in SG.col_list[best_col]
-    for c in SG.A[row_idx].pos
-     @assert !isempty(SG.col_list[c])
-     if SG.is_light_col[c]
-      jj = findfirst(isequal(L_row), SG.col_list[c])
-      deleteat!(SG.col_list[c], jj)
-     end
-    end
-    scale_row!(SG.A, row_idx, best_val_red)
-    #jj = findfirst(isequal(L_row), SG.col_list[best_col]) 
-    #deleteat!(SG.col_list[best_col], jj)
-    add_scaled_row!(best_row, SG.A[row_idx], -val_red)
-    @assert iszero(SG.A[row_idx, best_col])
-    SG.light_weight[row_idx] = 0
-    for c in SG.A[row_idx].pos
-     @assert c != best_col
-     #but not new:???
-     if SG.is_light_col[c]
-      sort!(push!(SG.col_list[c], L_row)) 
-     end
-     SG.is_light_col[c] && (SG.light_weight[row_idx]+=1)
-    end
-    handle_new_light_weight(row_idx, SG)
-    #test_Y(SG)
-    #test_permutation(SG)
-    #test_base_part(SG)
-    #test_light_weight(SG)
-    #test_if_zeros_listed(SG)
-    #test_col_list(SG)
-    break #while true
-   end
-  end
+
+  eliminate_and_update(best_single_row, SG)
  end
  return SG
 end
 
-function my_StructGauss_2(SG)
+function compute_kernel(SG)
  m = ncols(SG.A)
- for i = 1:m
-  if SG.is_light_col[i] && !isempty(SG.col_list[i])
-   SG.is_light_col[i] = false
-   SG.nlight -= 1
-  end
- end
+ update_light_cols(SG)
  @assert SG.nlight > -1
- nheavy = m - SG.nlight - SG.nsingle
- #@show(nheavy)
- heavy_map = fill(-1, m)
- #SG.heavy_mapi = []
- j = 1
- for i = 1:m
-  if !SG.is_light_col[i] && !SG.is_single_col[i]
-   heavy_map[i] = j
-   push!(SG.heavy_mapi,i)  
-   j+=1
-  end
- end
- @assert length(SG.heavy_mapi)==nheavy
- #fb_and_dense(SG)
- #@show(heavy_mapi)
- ST = sparse_matrix(base_ring(SG.A))
- ST.c = SG.Y.r
- YT = transpose(SG.Y)
- for j in SG.heavy_mapi
-  push!(ST, YT[j])
- end
- S = transpose(ST)
- #@show(matrix(S))
- d, S_kern = kernel(matrix(S))
- #@show(d)
- #@show(S_kern)
- #@assert d==1
- #eigentlichen Kern zusammensetzen:
- R = base_ring(SG.A)
- kern = fill(zero(R), m)
- single_part = []
- #@show(kern)
- for i = 1:m
-  if SG.is_light_col[i]
-   kern[i]=zero(R)
-  else
-   j = heavy_map[i]
-   if j>0
-    kern[i] = S_kern[j,1]
-   else
-    push!(single_part, i)
-   end
-  end
- end 
- #@show(single_part)
- #single_col Lösungen zusammensetzen
- nfail = 0
- failure = []
- for i=SG.base-1:-1:1
-  c = SG.single_col[i]
-  if c>0
-   y = 0
-   x = NaN
-   j=1
-   while j <= length(SG.A[i])
-    cc = SG.A[i].pos[j]
-    xx = SG.A[i].values[j]
-    if cc==c
-     x = xx
-     j+=1
-    elseif !(cc in single_part)
-     y += (xx*kern[cc])
-     j+=1
-    else
-     break
-    end
-   end
-   if j <= length(SG.A[i])
-    nfail +=1
-    push!(failure, i)
-   else
-    kern[c]=-y*inv(x)
-   end
-  end
- end 
- #@show(nfail)
- return kern, failure
+ heavy_map = collect_dense_cols(SG)
+ d, _dense_kernel = dense_kernel(heavy_map, SG)
+ _kernel, single_part = init_kernel(_dense_kernel, heavy_map, SG)
+ return compose_kernel(_kernel, single_part, SG)
 end
 
-function my_StructGauss(A)
- SG = my_StructGauss_1(A)
- kern, _ = my_StructGauss_2(SG)
- return kern
+function structured_gauss(A)
+ SG = part_echolonize(A)
+ _kernel, _ = compute_kernel(SG)
+ return _kernel
 end
 
-function dense_kernel(SG, F)
+function only_dense_kernel(SG, F)
  m = ncols(SG.A)
  for i = 1:m
   if SG.is_light_col[i] && !isempty(SG.col_list[i])
@@ -255,7 +120,7 @@ function dense_kernel(SG, F)
  end
  S = transpose(ST)
  #@show(matrix(S))
- d, S_kern = kernel(matrix(S))
+ d, S_kernel = kernel(matrix(S))
  l = get_attribute(F, :fb_length)
  R = base_ring(SG.A)
  kern = fill(zero(R), l)
@@ -264,7 +129,7 @@ function dense_kernel(SG, F)
   if SG.heavy_mapi[idx]>l
    break
   else
-   kern[dense_col] = S_kern[idx]
+   kern[dense_col] = S_kernel[idx]
   end
  end
  return kern
@@ -498,6 +363,49 @@ function build_part_ref!(SG)
  end
 end
 
+function find_row_to_add_on(best_row, best_col_idces::Vector{Int64}, SG::data_StructGauss)
+ for L_row in best_col_idces[end:-1:1] #right??? breaking condition missing?
+  row_idx = SG.col_list_permi[L_row]
+  SG.A[row_idx] == best_row && continue
+  row_idx < SG.base && continue
+  return row_idx
+ end
+end
+
+function add_to_eliminate(L_row, row_idx, best_row, best_col, best_val, SG)
+ @assert L_row in SG.col_list[best_col]
+ @assert !(0 in SG.A[row_idx].values)
+ val = SG.A[row_idx, best_col] 
+ @assert !iszero(val)
+ #case !over_field && over_Z:
+ g = gcd(lift(val), lift(best_val))
+ val_red = divexact(val, g)
+ best_val_red = divexact(best_val, g)
+ @assert L_row in SG.col_list[best_col]
+ for c in SG.A[row_idx].pos
+  @assert !isempty(SG.col_list[c])
+  if SG.is_light_col[c]
+   jj = findfirst(isequal(L_row), SG.col_list[c])
+   deleteat!(SG.col_list[c], jj)
+  end
+ end
+ scale_row!(SG.A, row_idx, best_val_red)
+ @assert !(0 in SG.A[row_idx].values)
+ add_scaled_row!(best_row, SG.A[row_idx], -val_red)
+ @assert iszero(SG.A[row_idx, best_col])
+ return SG
+end
+
+function update_after_addition(L_row, row_idx::Int, best_col, SG::data_StructGauss)
+ SG.light_weight[row_idx] = 0
+ for c in SG.A[row_idx].pos
+  @assert c != best_col
+  SG.is_light_col[c] && sort!(push!(SG.col_list[c], L_row)) 
+  SG.is_light_col[c] && (SG.light_weight[row_idx]+=1)
+ end
+ return SG
+end
+
 function handle_new_light_weight(i, SG)
  w = SG.light_weight[i]
  if w == 0
@@ -515,7 +423,117 @@ function handle_new_light_weight(i, SG)
  return SG
 end
 
-#Some test functions
+function eliminate_and_update(best_single_row, SG)
+ @assert best_single_row != 0
+ best_row = deepcopy(SG.A[best_single_row])
+ best_col = find_light_entry(best_row.pos, SG.is_light_col)
+ @assert length(SG.col_list[best_col]) > 1
+ best_val = SG.A[best_single_row, best_col]
+ @assert !iszero(best_val)
+ best_col_idces = SG.col_list[best_col]
+ row_idx = 0
+ while length(best_col_idces) > 1
+  row_idx = find_row_to_add_on(best_row, best_col_idces, SG)
+  @assert best_col_idces == SG.col_list[best_col]
+  @assert SG.col_list_perm[row_idx] in SG.col_list[best_col]
+  @assert row_idx > 0
+  L_row = SG.col_list_perm[row_idx]
+  add_to_eliminate(L_row, row_idx, best_row, best_col, best_val, SG)
+  update_after_addition(L_row, row_idx, best_col, SG)
+  handle_new_light_weight(row_idx, SG)
+ end
+ return SG
+end
+
+function update_light_cols(SG)
+ for i = 1:ncols(SG.A)
+  if SG.is_light_col[i] && !isempty(SG.col_list[i])
+   SG.is_light_col[i] = false
+   SG.nlight -= 1
+  end
+ end
+end
+
+function collect_dense_cols(SG)
+ m = ncols(SG.A)
+ nheavy = m - SG.nlight - SG.nsingle
+ heavy_map = fill(-1, m)
+ j = 1
+ for i = 1:m
+  if !SG.is_light_col[i] && !SG.is_single_col[i]
+   heavy_map[i] = j
+   push!(SG.heavy_mapi,i)  
+   j+=1
+  end
+ end
+ @assert length(SG.heavy_mapi)==nheavy
+ return heavy_map
+end
+
+function dense_kernel(heavy_map, SG)
+ ST = sparse_matrix(base_ring(SG.A), 0, SG.Y.r)
+ YT = transpose(SG.Y)
+ for j in SG.heavy_mapi
+  push!(ST, YT[j])
+ end
+ S = transpose(ST)
+ d, _dense_kernel = kernel(matrix(S))
+ return d, _dense_kernel
+end
+
+function init_kernel(_dense_kernel, heavy_map, SG)
+ m = ncols(SG.A)
+ R = base_ring(SG.A)
+ _kernel = fill(zero(R), m)
+ single_part = []
+ #@show(kern)
+ for i = 1:m
+  if SG.is_light_col[i]
+   _kernel[i]=zero(R)
+  else
+   j = heavy_map[i]
+   if j>0
+    _kernel[i] = _dense_kernel[j,1]
+   else
+    push!(single_part, i)
+   end
+  end
+ end 
+ return _kernel, single_part
+end
+
+function compose_kernel(_kernel, single_part, SG)
+ nfail = 0
+ failure = []
+ for i=SG.base-1:-1:1
+  c = SG.single_col[i]
+  if c>0
+   y = 0
+   x = NaN
+   j=1
+   while j <= length(SG.A[i])
+    cc = SG.A[i].pos[j]
+    xx = SG.A[i].values[j]
+    if cc==c
+     x = xx
+     j+=1
+    elseif !(cc in single_part)
+     y += (xx*_kernel[cc])
+     j+=1
+    else
+     break
+    end
+   end
+   if j <= length(SG.A[i])
+    nfail +=1
+    push!(failure, i)
+   else
+    _kernel[c]=-y*inv(x)
+   end
+  end
+ end 
+ return _kernel, failure
+end
 
 function test_base_part(SG)
  for i = 1:SG.base-1
@@ -596,7 +614,7 @@ function test_Y(SG)
  println("Y is heavy")
 end
 
-function test_A(SG) #after ma_StructGauss_1
+function test_A(SG) #after part_echolonize
  @assert length(findall(x->length(SG.A[x])==0, 1:nrows(SG.A))) == SG.Y.r
  println("$(Y.r) many empty rows in A")
 end
