@@ -264,7 +264,6 @@ function find_dense_cols(SG)
  SG.heavy_col_idx = fill(-1, SG.heavy_ext) #indices (descending order for same length)
  SG.heavy_col_len = fill(-1, SG.heavy_ext)#length of cols in heavy_idcs (ascending)
  light_cols = findall(x->SG.is_light_col[x], 1:m)
-
  for i = m:-1:1
   if SG.is_light_col[i]
    col_len = length(SG.col_list[i])
@@ -681,6 +680,27 @@ function compose_kernel_field(l, K, SG)
  return l, K
 end
 
+function eliminate_and_update!(best_single_row, SG)
+ @assert best_single_row != 0
+ best_row = deepcopy(SG.A[best_single_row])
+ best_col = find_light_entry(best_row.pos, SG.is_light_col)
+ @assert length(SG.col_list[best_col]) > 1
+ best_val = SG.A[best_single_row, best_col]
+ @assert !iszero(best_val)
+ best_col_idces = SG.col_list[best_col]
+ row_idx = 0
+ while length(best_col_idces) > 1
+  row_idx = find_row_to_add_on(row_idx, best_row, best_col_idces, SG)
+  @assert best_col_idces == SG.col_list[best_col]
+  @assert row_idx > 0
+  @assert SG.col_list_perm[row_idx] in SG.col_list[best_col]
+  L_row = SG.col_list_perm[row_idx]
+  add_to_eliminate!(L_row, row_idx, best_row, best_col, best_val, SG)
+  update_after_addition!(L_row, row_idx, best_col, SG)
+  handle_new_light_weight!(row_idx, SG)
+ end
+ return SG
+end
 
 function kernel_matrix(_nullity, _dense_kernel, SG)
  R = base_ring(SG.A)
@@ -729,30 +749,111 @@ function kernel_matrix(_nullity, _dense_kernel, SG)
  return(l, K)
 end
 
-function update_zero_weight_row(base, single_row_limit, i, best_i)
- if i < single_row_limit
-  swap_rows_perm(A, i, base, col_list_perm, col_list_permi)
-  best_i == base && (best_i = deepcopy(i))
- else
-  if (i != single_row_limit)
-   swap_rows_perm(A, base, single_row_limit, col_list_perm, col_list_permi)
+function find_row_to_add_on(row_idx, best_row, best_col_idces::Vector{Int64}, SG::data_StructGauss)
+ for L_row in best_col_idces[end:-1:1] #right??? breaking condition missing?
+  row_idx = SG.col_list_permi[L_row]
+  SG.A[row_idx] == best_row && continue
+  row_idx < SG.base && continue
+  break
+ end
+ return row_idx
+end
+
+function add_to_eliminate!(L_row, row_idx, best_row, best_col, best_val, SG)
+ @assert L_row in SG.col_list[best_col]
+ @assert !(0 in SG.A[row_idx].values)
+ val = SG.A[row_idx, best_col] 
+ @assert !iszero(val)
+ #case !over_field && over_Z:
+ g = gcd(lift(val), lift(best_val))
+ val_red = divexact(val, g)
+ best_val_red = divexact(best_val, g)
+ @assert L_row in SG.col_list[best_col]
+ for c in SG.A[row_idx].pos
+  @assert !isempty(SG.col_list[c])
+  if SG.is_light_col[c]
+   jj = findfirst(isequal(L_row), SG.col_list[c])
+   deleteat!(SG.col_list[c], jj)
   end
- single_row_limit += 1
- swap_rows_perm(A, base, i, col_list_perm, col_list_permi)
- best_i == base  && (best_i = deepcopy(i))
  end
- single_col[base] -= 1
- #A, Y, single_col, col_count = move_into_Y(Y,A, base)
- push!(Y, deepcopy(A[base]))
- for cc_ in A[base].pos
-  @assert !is_light_col[cc_]
-  @assert col_count[cc_] > 0
-  col_count[cc_]-=1
+ scale_row!(SG.A, row_idx, best_val_red)
+ @assert !(0 in SG.A[row_idx].values)
+ add_scaled_row!(best_row, SG.A[row_idx], -val_red)
+ @assert iszero(SG.A[row_idx, best_col])
+ return SG
+end
+
+function add_to_eliminate_field!(L_row, row_idx, best_row, best_col, best_val, SG)
+ @assert L_row in SG.col_list[best_col]
+ @assert !(0 in SG.A[row_idx].values)
+ val = SG.A[row_idx, best_col] 
+ @assert !iszero(val)
+ @assert L_row in SG.col_list[best_col]
+ for c in SG.A[row_idx].pos
+  @assert !isempty(SG.col_list[c])
+  if SG.is_light_col[c]
+   jj = findfirst(isequal(L_row), SG.col_list[c])
+   deleteat!(SG.col_list[c], jj)
+  end
  end
- @assert length(A[best_i]) > 0
- A.nnz-=length(A[base])
- empty!(A[base].pos), empty!(A[base].values)
- return base+1, single_row_limit, i, best_i
+ #scale_row!(SG.A, row_idx, best_val_red)
+ @assert !(0 in SG.A[row_idx].values)
+ add_scaled_row!(best_row, SG.A[row_idx], -val)
+ @assert iszero(SG.A[row_idx, best_col])
+ return SG
+end
+
+function update_after_addition!(L_row, row_idx::Int, best_col, SG::data_StructGauss)
+ SG.light_weight[row_idx] = 0
+ for c in SG.A[row_idx].pos
+  @assert c != best_col
+  SG.is_light_col[c] && sort!(push!(SG.col_list[c], L_row)) 
+  SG.is_light_col[c] && (SG.light_weight[row_idx]+=1)
+ end
+ return SG
+end
+
+function handle_new_light_weight!(i, SG)
+ w = SG.light_weight[i]
+ if w == 0
+  swap_i_into_base(i, SG)
+  SG.single_col[SG.base] = -1
+  #@show SG.col_list_perm[SG.base]
+  move_into_Y(SG.base, SG)
+  SG.base+=1
+ elseif w == 1
+  if i > SG.single_row_limit
+   swap_rows_perm(i, SG.single_row_limit, SG)
+  end
+  SG.single_row_limit += 1
+ end
+ return SG
+end
+
+function swap_rows_perm(i, j, SG)
+ if i != j
+  swap_rows!(SG.A, i, j) #swap!(A[i],A[j]) throws error later???
+  swap_entries(SG.single_col, i, j)
+  swap_entries(SG.col_list_perm, i, j)
+  swap_entries(SG.col_list_permi, SG.col_list_perm[i], SG.col_list_perm[j])
+  swap_entries(SG.light_weight, i, j)
+ end
+end 
+
+function swap_entries(v, i,j) #swaps entries v[i], v[j]
+ v[i],v[j] = v[j],v[i]
+end
+
+function swap_i_into_base(i, SG::data_StructGauss)
+ if i < SG.single_row_limit
+  swap_rows_perm(i, SG.base, SG)
+ else
+   if i != SG.single_row_limit 
+    swap_rows_perm(SG.base, SG.single_row_limit, SG)
+   end
+   SG.single_row_limit +=1
+   swap_rows_perm(SG.base, i, SG)
+ end
 end
 
 #return is_light_col, light_weight, single_col, base, single_row_limit, Y, A, col_count, nlight
