@@ -1,160 +1,295 @@
-using Oscar, TimerOutputs
+mutable struct data_StructGauss
+ A
+ Y
+ single_row_limit
+ base
+ nlight
+ nsingle
+ light_weight
+ col_list
+ col_list_perm #perm gives new ordering of original A[i] via their indices
+ col_list_permi #A[permi[i]]=A[i] before permutation = list of sigma(i) (recent position of former A[i])
+ is_light_col
+ is_single_col
+ single_col #single_col[i] = c >= 0 if col c has its only entry in row i, i always recent position
+ heavy_ext
+ heavy_col_idx
+ heavy_col_len
+ heavy_mapi
 
-include("module-StructuredGauss.jl")
-using .StructuredGauss
-
-Hecke.add_verbosity_scope(:StructGauss)
-Hecke.add_assertion_scope(:StructGauss)
-
-Hecke.set_assertion_level(:StructGauss, 0)
-Hecke.set_verbosity_level(:StructGauss, 0)
-
-function swap_rows_perm(A, i, j, col_list_perm, col_list_permi)
- if i != j
-  swap_rows!(A, i, j) #swap!(A[i],A[j]) throws error later???
-  swap_entries(single_col, i, j)
-  swap_entries(col_list_perm, i, j)
-  swap_entries(col_list_permi, col_list_perm[i], col_list_perm[j])
-  swap_entries(light_weight, i, j)
+ function data_StructGauss(A)
+  Y = sparse_matrix(base_ring(A), 0, ncols(A))
+  col_list = _col_list(A)
+  return new(A,
+  Y,
+  1,
+  1,
+  ncols(A),
+  0,
+  [length(A[i]) for i in 1:nrows(A)],
+  col_list,
+  collect(1:nrows(A)),
+  collect(1:nrows(A)),
+  fill(true, ncols(A)),
+  fill(false, ncols(A)),
+  fill(-2, nrows(A)),
+  0,
+  Int[],
+  Int[],
+  Int[])
  end
-end 
-
-function swap_entries(v, i,j) #swaps entries v[i], v[j]
- v[i],v[j] = v[j],v[i]
 end
 
-function find_light_entry(position_array::Vector{Int64}, is_light_col::Vector{Bool})::Int64
- for j in position_array[end:-1:1]
-  if is_light_col[j]
-   return j #smallest index necessary???
+function _col_list(A)
+ n = nrows(A)
+ m = ncols(A)
+ col_list = [Array{Int64}([]) for i = 1:m]
+ for i in 1:n
+  for c in A[i].pos
+   col = col_list[c]
+   push!(col, i)
   end
  end
+ return col_list
 end
 
-#A,i,base,single_row_limit,col_list_perm, col_list_permi
-function swap_i_into_base(i,base,single_row_limit)
- if i < single_row_limit
-  swap_rows_perm(A, i, base, col_list_perm, col_list_permi)
- else
-   if i != single_row_limit 
-    swap_rows_perm(A, base, single_row_limit, col_list_perm, col_list_permi)
+function structured_gauss(A)
+ SG = part_echolonize!(A)
+ _kernel, _ = compute_kernel(SG)
+ return _kernel
+end
+
+function structured_gauss_field(A) #change both parts
+ SG = part_echolonize_field!(A)
+ _kernel, _ = compute_kernel(SG)
+ return _kernel
+end
+
+function structured_gauss_QQ(A)
+ SG = part_echolonize!(A)
+ _kernel, _ = compute_kernel(SG) #change this
+ return _kernel
+end
+
+function structured_gauss_ZZ(A)#TODO: mod p butover Z
+ SG = part_echolonize!(A)
+ _kernel, _ = compute_kernel(SG)
+ return _kernel
+end
+
+
+function part_echolonize!(A)
+ over_field = false #more cases are tested this way
+ A = delete_zero_rows!(A)
+ n = nrows(A)
+ m = ncols(A)
+ SG = data_StructGauss(A)
+ single_rows_to_top!(SG)
+
+ while SG.nlight > 0 && SG.base <= n
+  build_part_ref!(SG)
+  for i = 1:m
+   SG.is_light_col[i] && @assert length(SG.col_list[i]) != 1
+  end
+  (SG.nlight == 0 || SG.base > n) && break
+  best_single_row = find_best_single_row(SG, over_field)
+  best_single_row < 0 && @assert(SG.base == SG.single_row_limit)
+  
+  if best_single_row < 0
+   find_dense_cols(SG)
+   turn_heavy(SG)
+   continue #while SG.nlight > 0 && SG.base <= SG.A.r
+  end
+
+  eliminate_and_update!(best_single_row, SG)
+ end
+ return SG
+end
+
+function part_echolonize_field!(A)
+ over_field = false #more cases are tested this way
+ A = delete_zero_rows!(A)
+ n = nrows(A)
+ m = ncols(A)
+ SG = data_StructGauss(A)
+ single_rows_to_top!(SG)
+
+ while SG.nlight > 0 && SG.base <= n
+  build_part_ref_field!(SG)
+  for i = 1:m
+   SG.is_light_col[i] && @assert length(SG.col_list[i]) != 1
+  end
+  (SG.nlight == 0 || SG.base > n) && break
+  best_single_row = find_best_single_row_field(SG)
+  best_single_row < 0 && @assert(SG.base == SG.single_row_limit)
+  
+  if best_single_row < 0
+   find_dense_cols(SG)
+   turn_heavy(SG)
+   continue #while SG.nlight > 0 && SG.base <= SG.A.r
+  end
+
+  eliminate_and_update_field!(best_single_row, SG)
+ end
+ return SG
+end
+
+function build_part_ref!(SG)
+ queue = collect(ncols(SG.A):-1:1)
+ while !isempty(queue)
+  queue_new = Int[]
+  for j in queue
+   if length(SG.col_list[j])==1 && SG.is_light_col[j]
+    singleton_row_origin = only(SG.col_list[j])
+    singleton_row_idx = SG.col_list_permi[singleton_row_origin]
+    for jj in SG.A[singleton_row_idx].pos
+     if SG.is_light_col[jj]
+      @assert singleton_row_origin in SG.col_list[jj]
+      j_idx = findfirst(isequal(singleton_row_origin), SG.col_list[jj])
+      deleteat!(SG.col_list[jj],j_idx)
+      length(SG.col_list[jj]) == 1 && push!(queue_new, jj)
+     end
+    end
+    SG.is_light_col[j] = false
+    SG.is_single_col[j] = true
+    SG.single_col[singleton_row_idx] = j
+    SG.nlight-=1
+    #SG.nlight<0 && print("nlight < 0 singleton case")
+    SG.nsingle+=1
+    swap_i_into_base(singleton_row_idx, SG)
+    SG.base+=1
    end
-   single_row_limit +=1
-   swap_rows_perm(A, base, i, col_list_perm, col_list_permi)
+  end
+  queue = queue_new
  end
- return single_row_limit
 end
 
-#c light col with only one entry, L_row original row index of entry, i position of A_l_row now
-#iterate over col_idx cc of entries in i, decrement their col_count
-#add cc to col_consider, if only one other left
-#delete L_row in light cc cols
-#c now heavy but single_col, move i into base 
-function work_with_single_cols(c, matrix_nentries, nlight, nsingle, base, single_row_limit, col_consider_n, col_count)#why col_consider_n necessary???
- @assert c <= length(col_list)
- L = col_list[c]
- @assert(length(L)==1)
- L_row = first(L) #index of row with entry in col c
- i = col_list_permi[L_row]
- for cc in A[i].pos
-  if is_light_col[cc]
-   @assert col_count[cc]>0 
+function build_part_ref_field!(SG)
+ queue = collect(ncols(SG.A):-1:1)
+ while !isempty(queue)
+  queue_new = Int[]
+  for j in queue
+   if length(SG.col_list[j])==1 && SG.is_light_col[j]
+    singleton_row_origin = only(SG.col_list[j])
+    singleton_row_idx = SG.col_list_permi[singleton_row_origin]
+    @assert !iszero(SG.A[singleton_row_idx, j])
+    scale_row!(SG.A, singleton_row_idx, inv(SG.A[singleton_row_idx, j]))
+    for jj in SG.A[singleton_row_idx].pos
+     if SG.is_light_col[jj]
+      @assert singleton_row_origin in SG.col_list[jj]
+      j_idx = findfirst(isequal(singleton_row_origin), SG.col_list[jj])
+      deleteat!(SG.col_list[jj],j_idx)
+      length(SG.col_list[jj]) == 1 && push!(queue_new, jj)
+     end
+    end
+    SG.is_light_col[j] = false
+    SG.is_single_col[j] = true
+    SG.single_col[singleton_row_idx] = j
+    SG.nlight-=1
+    #SG.nlight<0 && print("nlight < 0 singleton case")
+    SG.nsingle+=1
+    swap_i_into_base(singleton_row_idx, SG)
+    SG.base+=1
+   end
   end
-  col_count[cc]-=1
-  if col_count[cc]== 1
-   push!(col_consider_n, cc)
-  end
-  if is_light_col[cc]
-   deleteat!(col_list[cc],findfirst(isequal(L_row), col_list[cc]))
-  end
+  queue = queue_new
  end
- matrix_nentries -= length(A[i])
- is_light_col[c] = false
- is_single_col[c] = true
- nlight-=1
- nsingle+=1
-
- single_col[i] = c
-
- single_row_limit = swap_i_into_base(i,base,single_row_limit)
- return base+1, single_row_limit, nlight, nsingle, matrix_nentries
 end
 
-
-#i over single_rows not in base (can be empty)
-#c idx of last light col entry in row i 
-#start with best_i = i...
-#compare with following rows i
-#prioritize: x=A[i,c] = +-1, minimal length(A[i]) to find best_i
-function find_best_i(over_field, len, i, c, x, best_i, best_len, best_is_one)
- is_one = over_field||isone(x)||isone(-x)
- if best_i < 0
-  best_i = i
-  best_c = c
-  best_len = len
-  best_is_one = is_one
-  best_x = x
- elseif !best_is_one && is_one
-  best_i = i
-  best_c = c
-  best_len = len
-  best_is_one = true
-  best_x = x
- elseif (is_one == best_is_one && len < best_len)
-  best_i = i
-  best_c = c
-  best_len = len
-  best_is_one = is_one
-  best_x = x
+function single_rows_to_top!(SG)
+ for i = 1:nrows(SG.A)
+  len = length(SG.A[i])
+  @assert !iszero(len)
+  if len == 1
+   @assert SG.single_row_limit <=i
+   if i != SG.single_row_limit
+    swap_rows_perm(i, SG.single_row_limit, SG)
+   end
+   SG.single_row_limit +=1
+  end
  end
- return best_i
+ return SG
+end
+
+function find_best_single_row(SG, over_field)
+ best_single_row = -1
+ best_col = NaN
+ best_val = NaN
+ best_len = -1
+ best_is_one = false
+ for i = SG.base:SG.single_row_limit-1  #here not the case in first loop
+  single_row = SG.A[i]
+  single_row_len = length(single_row)
+  w = SG.light_weight[i]
+  @assert w == 1
+  j_light = find_light_entry(single_row.pos, SG.is_light_col)
+  single_row_val = SG.A[i, j_light]
+  @assert length(SG.col_list[j_light]) > 1
+  is_one = over_field||isone(single_row_val)||isone(-single_row_val)
+  if best_single_row < 0
+   best_single_row = i
+   best_col = j_light
+   best_len = single_row_len
+   best_is_one = is_one
+   best_val = single_row_val
+  elseif !best_is_one && is_one
+   best_single_row = i
+   best_col = j_light
+   best_len = single_row_len
+   best_is_one = true
+   best_val = single_row_val
+  elseif (is_one == best_is_one && single_row_len < best_len)
+   best_single_row = i
+   best_col = j_light
+   best_len = single_row_len
+   best_is_one = is_one
+   best_val = single_row_val
+  end
+ end
+ return best_single_row
 end 
 
-
-#used if no single_rows after base
-
-#1:go over light cols from right to left
-# find hext many heaviest light_cols by col_count (heavy extension)
-#if c >hc[1] compare col_count c of col i with element in hc starting left. 
-#if c >= hc[j], insert at position j, delete first col in both arrays:
-#within block of same col_count: indices descending
-#col_count should be increasing
-#in general: harray contains light cols with most entries and lowest indices for min col_count in there
-
-#2: iterate over col idces c in harray (and turn them to heavy cols)
-#set light_col to false
-#iterate over rows L_row (now i) in c
-#decrement light_weight[i]
-#if light _weight == 0, i to base, then A[base] into Y
-#decrement col_count for cols in base, empty A[base] 
-#if light_weight == 1, swap i in single_row part after base
-function heavy_ext(nlight, nsingle, base, single_row_limit)
- hext = max(div(nlight,100),1)
- nheavy = A.c - (nlight + nsingle)
- if nheavy == 0
-  hext = max(div(nlight,20),1)
- else
-  hext = max(div(nlight,1000),1)
+function find_best_single_row_field(SG)
+ best_single_row = -1
+ best_len = -1
+ for i = SG.base:SG.single_row_limit-1
+  single_row = SG.A[i]
+  single_row_len = length(single_row)
+  w = SG.light_weight[i]
+  @assert w == 1
+  if best_single_row < 0 || single_row_len < best_len
+   best_single_row = i
+   best_len = single_row_len
+  end
  end
- harray = fill(-1, hext) #indices (descending order for same length)
- hc = fill(-1, hext)#length of cols in harray (ascending)
- for i = A.c:-1:1
-  if is_light_col[i]
-   c = col_count[i]
-   if c > hc[1]
-    if hext == 1
-     harray[1] = i #why not c>=???
-     hc[1] = c
+ return best_single_row
+end 
+
+function find_dense_cols(SG)
+ m = ncols(SG.A)
+ nheavy = m - (SG.nlight + SG.nsingle)
+ nheavy == 0 ? SG.heavy_ext = max(div(SG.nlight,20),1) : SG.heavy_ext = max(div(SG.nlight,100),1)
+ SG.heavy_col_idx = fill(-1, SG.heavy_ext) #indices (descending order for same length)
+ SG.heavy_col_len = fill(-1, SG.heavy_ext)#length of cols in heavy_idcs (ascending)
+ light_cols = findall(x->SG.is_light_col[x], 1:m)
+ #@show(light_cols)
+ for i = m:-1:1
+  if SG.is_light_col[i]
+   col_len = length(SG.col_list[i])
+   if col_len > SG.heavy_col_len[1]
+    if SG.heavy_ext == 1
+     SG.heavy_col_idx[1] = i 
+     SG.heavy_col_len[1] = col_len
     else
-    #jk = hext
-     for j = hext:-1:2 
-      if c >= hc[j]  
+    #jk = SG.heavy_ext
+     for j = SG.heavy_ext:-1:2 
+      if col_len >= SG.heavy_col_len[j]  
        for k = 1:j-1
-        harray[k] = harray[k + 1]
-        hc[k] = hc[k + 1]
+        SG.heavy_col_idx[k] = SG.heavy_col_idx[k + 1]#replace by delete and insert!!!
+        SG.heavy_col_len[k] = SG.heavy_col_len[k + 1]
        end
-       harray[j] = i
-       hc[j] = c
+       SG.heavy_col_idx[j] = i
+       SG.heavy_col_len[j] = col_len
        break
       end 
      end
@@ -162,501 +297,337 @@ function heavy_ext(nlight, nsingle, base, single_row_limit)
    end
   end
  end
- for j = 1:hext
-  c = harray[j]
+ @assert light_cols == findall(x->SG.is_light_col[x], 1:m)
+end
+
+function turn_heavy(SG)
+ for j = 1:SG.heavy_ext
+  c = SG.heavy_col_idx[j]
   if c<0
    continue
   end
-  is_light_col[c] = false
-  L = col_list[c]
-  L_len = length(L)
-  #873 - 902
-  for k = 1:L_len
-   L_row = L[k]
-   i = col_list_permi[L_row]
-   v = A[i]
-   @assert light_weight[i] > 0
-   light_weight[i]-=1
-   w = light_weight[i]
-   if w == 0
-    single_row_limit = swap_i_into_base(i,base,single_row_limit)
-    single_col[base] = -1
-    #A, Y, single_col, col_count = move_into_Y(Y,A, base)
-    push!(Y, deepcopy(A[base]))
-    for cc_ in A[base].pos
-     @assert !is_light_col[cc_]
-     @assert col_count[cc_] > 0
-     col_count[cc_]-=1
-    end
-    A.nnz-=length(A[base])
-    empty!(A[base].pos), empty!(A[base].values)
-    base+=1
-   elseif w == 1
-    if i > single_row_limit
-     swap_rows_perm(A, i, single_row_limit, col_list_perm, col_list_permi)
-    end
-    single_row_limit += 1
-   end
+  SG.is_light_col[c] = false
+  lt2hvy_col = SG.col_list[c]
+  lt2hvy_len = length(lt2hvy_col)
+  @assert lt2hvy_len == length(SG.col_list[c])
+  for k = 1:lt2hvy_len
+   i_origin = lt2hvy_col[k]
+   i_now = SG.col_list_permi[i_origin]
+   @assert SG.light_weight[i_now] > 0
+   SG.light_weight[i_now]-=1
+   handle_new_light_weight!(i_now, SG)
+   #test_Y(SG)
   end
  end
- nlight -= hext
- return base, single_row_limit, nlight
+ SG.nlight -= SG.heavy_ext
+ #SG.nlight<0 && print("nlight < 0 extension case")
 end
 
+function eliminate_and_update!(best_single_row, SG)
+ @assert best_single_row != 0
+ best_row = deepcopy(SG.A[best_single_row])
+ best_col = find_light_entry(best_row.pos, SG.is_light_col)
+ @assert length(SG.col_list[best_col]) > 1
+ best_val = SG.A[best_single_row, best_col]
+ @assert !iszero(best_val)
+ best_col_idces = SG.col_list[best_col]
+ row_idx = 0
+ while length(best_col_idces) > 1
+  row_idx = find_row_to_add_on(row_idx, best_row, best_col_idces, SG)
+  @assert best_col_idces == SG.col_list[best_col]
+  @assert row_idx > 0
+  @assert SG.col_list_perm[row_idx] in SG.col_list[best_col]
+  L_row = SG.col_list_perm[row_idx]
+  add_to_eliminate!(L_row, row_idx, best_row, best_col, best_val, SG)
+  update_after_addition!(L_row, row_idx, best_col, SG)
+  handle_new_light_weight!(row_idx, SG)
+ end
+ return SG
+end
 
+function eliminate_and_update_field!(best_single_row, SG)
+ @assert best_single_row != 0
+ best_col = find_light_entry(SG.A[best_single_row].pos, SG.is_light_col)
+ @assert length(SG.col_list[best_col]) > 1
+ best_val = SG.A[best_single_row, best_col]
+ @assert !iszero(best_val)
+ scale_row!(SG.A, best_single_row, inv(best_val))
+ best_val = SG.A[best_single_row, best_col]
+ @assert isone(best_val)
+ best_row = deepcopy(SG.A[best_single_row])
+ best_col_idces = SG.col_list[best_col]
+ row_idx = 0
+ while length(best_col_idces) > 1
+  row_idx = find_row_to_add_on(row_idx, best_row, best_col_idces, SG)
+  @assert best_col_idces == SG.col_list[best_col]
+  @assert SG.col_list_perm[row_idx] in SG.col_list[best_col]
+  @assert row_idx > 0
+  L_row = SG.col_list_perm[row_idx]
+  add_to_eliminate_field!(L_row, row_idx, best_row, best_col, best_val, SG)
+  update_after_addition!(L_row, row_idx, best_col, SG)
+  handle_new_light_weight!(row_idx, SG)
+ end
+ return SG
+end
 
-function update_zero_weight_row(base, single_row_limit, i, best_i)
- if i < single_row_limit
-  swap_rows_perm(A, i, base, col_list_perm, col_list_permi)
-  best_i == base && (best_i = deepcopy(i))
+function find_row_to_add_on(row_idx, best_row, best_col_idces::Vector{Int64}, SG::data_StructGauss)
+ for L_row in best_col_idces[end:-1:1] #right??? breaking condition missing?
+  row_idx = SG.col_list_permi[L_row]
+  SG.A[row_idx] == best_row && continue
+  row_idx < SG.base && continue
+  break
+ end
+ return row_idx
+end
+
+function add_to_eliminate!(L_row, row_idx, best_row, best_col, best_val, SG)
+ @assert L_row in SG.col_list[best_col]
+ @assert !(0 in SG.A[row_idx].values)
+ val = SG.A[row_idx, best_col] 
+ @assert !iszero(val)
+ #case !over_field && over_Z:
+ g = gcd(lift(val), lift(best_val))
+ val_red = divexact(val, g)
+ best_val_red = divexact(best_val, g)
+ @assert L_row in SG.col_list[best_col]
+ for c in SG.A[row_idx].pos
+  @assert !isempty(SG.col_list[c])
+  if SG.is_light_col[c]
+   jj = findfirst(isequal(L_row), SG.col_list[c])
+   deleteat!(SG.col_list[c], jj)
+  end
+ end
+ scale_row!(SG.A, row_idx, best_val_red)
+ @assert !(0 in SG.A[row_idx].values)
+ add_scaled_row!(best_row, SG.A[row_idx], -val_red)
+ @assert iszero(SG.A[row_idx, best_col])
+ return SG
+end
+
+function add_to_eliminate_field!(L_row, row_idx, best_row, best_col, best_val, SG)
+ @assert L_row in SG.col_list[best_col]
+ @assert !(0 in SG.A[row_idx].values)
+ val = SG.A[row_idx, best_col] 
+ @assert !iszero(val)
+ @assert L_row in SG.col_list[best_col]
+ for c in SG.A[row_idx].pos
+  @assert !isempty(SG.col_list[c])
+  if SG.is_light_col[c]
+   jj = findfirst(isequal(L_row), SG.col_list[c])
+   deleteat!(SG.col_list[c], jj)
+  end
+ end
+ #scale_row!(SG.A, row_idx, best_val_red)
+ @assert !(0 in SG.A[row_idx].values)
+ add_scaled_row!(best_row, SG.A[row_idx], -val)
+ @assert iszero(SG.A[row_idx, best_col])
+ return SG
+end
+
+function update_after_addition!(L_row, row_idx::Int, best_col, SG::data_StructGauss)
+ SG.light_weight[row_idx] = 0
+ for c in SG.A[row_idx].pos
+  @assert c != best_col
+  SG.is_light_col[c] && sort!(push!(SG.col_list[c], L_row)) 
+  SG.is_light_col[c] && (SG.light_weight[row_idx]+=1)
+ end
+ return SG
+end
+
+function handle_new_light_weight!(i, SG)
+ w = SG.light_weight[i]
+ if w == 0
+  swap_i_into_base(i, SG)
+  SG.single_col[SG.base] = -1
+  #@show SG.col_list_perm[SG.base]
+  move_into_Y(SG.base, SG)
+  SG.base+=1
+ elseif w == 1
+  if i > SG.single_row_limit
+   swap_rows_perm(i, SG.single_row_limit, SG)
+  end
+  SG.single_row_limit += 1
+ end
+ return SG
+end
+
+function swap_rows_perm(i, j, SG)
+ if i != j
+  swap_rows!(SG.A, i, j) #swap!(A[i],A[j]) throws error later???
+  swap_entries(SG.single_col, i, j)
+  swap_entries(SG.col_list_perm, i, j)
+  swap_entries(SG.col_list_permi, SG.col_list_perm[i], SG.col_list_perm[j])
+  swap_entries(SG.light_weight, i, j)
+ end
+end 
+
+function swap_entries(v, i,j) #swaps entries v[i], v[j]
+ v[i],v[j] = v[j],v[i]
+end
+
+function swap_i_into_base(i, SG::data_StructGauss)
+ if i < SG.single_row_limit
+  swap_rows_perm(i, SG.base, SG)
  else
-  if (i != single_row_limit)
-   swap_rows_perm(A, base, single_row_limit, col_list_perm, col_list_permi)
-  end
- single_row_limit += 1
- swap_rows_perm(A, base, i, col_list_perm, col_list_permi)
- best_i == base  && (best_i = deepcopy(i))
+   if i != SG.single_row_limit 
+    swap_rows_perm(SG.base, SG.single_row_limit, SG)
+   end
+   SG.single_row_limit +=1
+   swap_rows_perm(SG.base, i, SG)
  end
- single_col[base] -= 1
- #A, Y, single_col, col_count = move_into_Y(Y,A, base)
- push!(Y, deepcopy(A[base]))
- for cc_ in A[base].pos
-  @assert !is_light_col[cc_]
-  @assert col_count[cc_] > 0
-  col_count[cc_]-=1
- end
- @assert length(A[best_i]) > 0
- A.nnz-=length(A[base])
- empty!(A[base].pos), empty!(A[base].values)
- return base+1, single_row_limit, i, best_i
 end
 
-#return is_light_col, light_weight, single_col, base, single_row_limit, Y, A, col_count, nlight
-#=
-#kleines Beispiel ohne Error
-p = ZZRingElem(47)
-F = GF(p)
-a = F(20)
-set_attribute!(F, :a=>a)
-
-#mittleres Beispiel ohne Error
-p = ZZRingElem(3808986227)
-F  = GF(p)
-a = GF(2964180501)
-set_attribute!(F, :a=>a)
-
-#gro�es Beispiel ohne Error
-p = ZZRingElem(28305054749008327163)
-F = GF(p)
-a = F(6879064112033849389)
-set_attribute!(F, :a=>a)
-=#
-
-#Beispiel AssertionError: c != best_c in 382
-#p = ZZRingElem(9048192719) 
-const to = TimerOutput()
-
-
-p = cryptoprime(35)
-F = GF(p)
-#a = F(4313590289)
-a = Hecke.primitive_element(F)
-set_attribute!(F, :a=>a)
-
-#von hier an f�r alle Beispiele gleich
-
-sieve(F, sieve_params(characteristic(F),0.02,1.01))
-A = get_attribute(F, :RelMat)
-l = get_attribute(F, :fb_length)
-TA = delete_zero_rows!(transpose(A), l)
-A = transpose(TA)
-
-@timeit to "p = $p" begin
-#function StructGauss(p, A, TA)
- #STRUCTURED GAUSS USING TA 
- bound_limit = 2^31 #oder mod?
- base = 1 #indices +1
- single_row_limit = 1
- light_weight = [length(A[i]) for i in 1:A.r]
-
- over_Z = true
- over_field = false
- norm_col = 1
-
- NEW = true
- REDUCE_IC_RELS_EXTRA=30000
-
- R = base_ring(A)
- if R == ZZ #|| R == zz
-  over_Z = true
- end
- M = div(p-1,2)
- #M2
-
- #429-466
- for i = 1:A.r
-   len = length(A[i])
-   if len == 0
-     delete_row!(A, i)
-   elseif len == 1
-     @assert single_row_limit <=i
-     if i != single_row_limit
-       swap_rows_perm(A, i, single_row_limit, col_list_perm, col_list_permi)
-     end
-     single_row_limit +=1
-   end
- end #single_row_limit = 1
-
- RR = ResidueRing(ZZ, M)
- B = change_base_ring(RR, deepcopy(A)) #right base_ring???
- #d2, kern = kernel(matrix(B))
- #@assert d2==1
- col_list = []; col_count = []
- for j = 1:A.c
-  push!(col_list, TA[j].pos)
-  push!(col_count, length(TA[j]))
- end
- #print("$(length(col_list)), ")
- #=
- for i = 1:A.r
-  col_list_perm[i] = i; col_list_permi[i] = i
-  for j in A[i].pos
-   =#
-
- #480: Mark all coloums light initially
-
- is_light_col = fill(true, A.c)
- is_single_col = fill(false, A.c)
- single_col = fill(-2, A.r) #single_col[i] = c >= 0 if col c has its only entry in row i, i always recent position
-
- nlight = A.c #number of light cols
- nsingle = 0 #number of single elem cols
- matrix_nentries = A.nnz
-
- #501: Initialize column list permutations and column lists.
- col_list_perm = [i for i = 1:A.r]  #perm gives new ordering of original A[i] via their indices
- col_list_permi = [i for i = 1:A.r] #A[permi[i]]=A[i] before permutation = list of sigma(i)
-
-
- #505-528  
- abs_row_bounds = []
- for i = 1:A.r
-   push!(abs_row_bounds, maximum(abs, A[i].values))
- end
-
- re_verb = true
- R = base_ring(A)
- Y = sparse_matrix(R)
- Y.c = A.c
-
- counter = 0
- #544-1127
- while nlight > 0 && base <= A.r #&& det_sign
-  global counter, matrix_nentries, nlight, nsingle, single_row_limit, base
-  counter +=1
-  col_consider_o = [c for c in 1:A.c]
-  col_consider_len_o = A.c + 1
-  First = true
-  nzero = 0
-  #558-635
-  while col_consider_len_o > 1 
-   col_consider_n = []
-   #562-630
-   while col_consider_len_o > 1
-     col_consider_len_o-=1
-     c = col_consider_o[col_consider_len_o]
-     if !is_light_col[c]
-      continue
-     end
-     if First && col_count[c] == 0
-       nzero+=1
-     #570-629  
-     elseif col_count[c] == 1
-      #print("c: $c, $(length(col_list)), ")
-      base, single_row_limit, nlight, nsingle, matrix_nentries = work_with_single_cols(c, matrix_nentries, nlight, nsingle, base, single_row_limit, col_consider_n, col_count)
-     end
-   end
-   col_consider_o = col_consider_n
-   col_consider_len_o = length(col_consider_o)+1
-   First = false
-  end
-  if (nlight == 0 || base == A.r)
-   break
-  end
-
-  best_i = -1
-  best_c = NaN
-  best_x = NaN
-  best_len = -1
-  best_is_one = false
-  best_fill = 1e10
-  Nrows = A.r - base + 1
-  scols = A.c - nsingle - nzero
-  #664-811
-  for i = base:single_row_limit-1  #here not the case in first loop
-   @vprint :StructGauss 3 "i: $i"
-   len = length(A[i])
-   w = light_weight[i]
-   @assert w == 1
-   c = find_light_entry(A[i].pos, is_light_col)
-   @assert c>=1
-   x = A[i, c]
-   @assert col_count[c] >= 1
-   @assert col_count[c] > 1 #which???
-   if (M !=0 && !iscoprime(x, M))
-    continue
-   end
-   #784-809
-   best_i = find_best_i(over_field, len, i, c, x, best_i, best_len, best_is_one)
-  end
-  #831-907
-  if best_i < 0
-   # find hext many heaviest light_cols by col_count (heavy extension)
-   base, single_row_limit, nlight = heavy_ext(nlight, nsingle, base, single_row_limit)
-   continue
-  end
-
-  @assert best_i!=-1
-  @assert length(A[best_i]) > 0 
-  best_v = A[best_i]#!!! search prob?
-  best_len = length(best_v)
-  @assert best_len > 0
-  @assert light_weight[best_i] == 1
-  best_c = find_light_entry(best_v.pos, is_light_col)
-  @assert is_light_col[best_c]
-  best_x = A[best_i, best_c]
-  @assert best_x != 0
-  @assert col_count[best_c]>=1 #or SMAT_PRIM_CTX
-  #if over_field
-  L = col_list[best_c]
-  @assert length(L) == col_count[best_c]
-  #944-1126
-  L_row=0
-  @assert length(A[best_i]) > 0
-  while length(L) > 1
-   @assert length(A[best_i]) > 0
-   i = 0
-   for k = length(L):-1:1
-    L_row = L[k]
-    i = col_list_permi[L_row]
-    if A[i] == best_v
-     continue
-    end
-    if i < base
-     continue
-    end
-    break #make sure that i is saved after loop
-   end
-   @assert i >= base && i!=best_i
-   v = A[i]
-   vlen = length(v)
-   #969-1125
-   @assert length(A[best_i]) > 0
-   while true
-    @assert best_c in v.pos
-    x = A[i, best_c]
-    @assert x!=0
-    if !over_field && over_Z
-     g = gcd(x, best_x)
-     xg = div(x, g)
-     best_xg = div(best_x, g)
-    else
-     xg = x
-     best_xg = best_x
-    end
-    for j = 1:vlen
-     c = v.pos[j]
-     @assert col_count[c] > 0
-     col_count[c]-=1
-     if (!NEW && is_light_col[c]) #never the case?
-      L_row_idx = findirst(isequal(L_row),col_list[c])#wo kommt L_row her???
-      deleteat!(col_list[c], L_row_idx)
-     end
-     if !over_field
-      v.values[j] *= best_xg
-     end
-    end
-    if NEW
-     L_row_idx = findfirst(isequal(L_row),col_list[best_c])
-     deleteat!(col_list[best_c], L_row_idx)
-    end
-    matrix_nentries -= vlen
-    #SVEC_ASSURE_SIZE(tvec, m_svecp_len(v) + best_len)
-    #@show A[i], A[best_i], xg, best_c
-    Hecke.add_scaled_row!(A, best_i, i, -xg)#Reihenfolge richtig???
-    if (M!=0)
-     v = A[i]
-     light_weight[i] = 0
-     #svec_integer_mod_symmetric(vec[i], M, M2)
-    end
-    #1060: Update new columns from counts and weight.
-    v = A[i]
-    vlen = length(A[i])
-    e = v.pos
-    w = 0
-    bound = -1
-    for j = 1:vlen
-     c = e[j]
-     @assert c != best_c
-     col_count[c]+=1
-     if (!NEW && is_light_col[c])
-      index = searchsortedfirst(col_list[c], L_row)
-      insert!(col_list[c] ,index, L_row)
-     end
-     if is_light_col[c]
-      w+=1
-     end
-     #TODO bound = 1079
-    end
-    light_weight[i] = w
-    #SVEC_CHECK(vec[i], use_fp)
-    matrix_nentries += vlen
-    if (w == 0)
-     base, single_row_limit, i, best_i = update_zero_weight_row(base, single_row_limit, i, best_i)
-    else
-     if w == 1
-      if i > single_row_limit
-       swap_rows_perm(A, i, single_row_limit, col_list_perm, col_list_permi)
-      end
-      single_row_limit+=1
-     end
-    end
-    break
-   end
-  end
- end#1127
- #A: 279x276
- #Y: 41x276
- #eine leere Spalte in A
- #239 leere Spalten in Y
- #nach col_count 276 empty
- #238 single_col
- if M!=0
-  for i = 1:A.c
-   if is_light_col[i] && col_count[i]!=0
-    is_light_col[i] = false
-    nlight -= 1
-   end
+function find_light_entry(position_array::Vector{Int64}, is_light_col::Vector{Bool})::Int64
+ for j in position_array[end:-1:1]
+  if is_light_col[j]
+   return j
   end
  end
+end
 
- #delete M2
- # = length(findall(isequal(true),is_light_col))#as long as nlight doesn't count properly ???
+function move_into_Y(i, SG::data_StructGauss)
+ @assert i == SG.base
+ push!(SG.Y, deepcopy(SG.A[SG.base]))
+ for base_c in SG.A[SG.base].pos
+  @assert !SG.is_light_col[base_c]
+  @assert !isempty(SG.col_list[base_c])
+ end
+ SG.A.nnz-=length(SG.A[SG.base])
+ empty!(SG.A[SG.base].pos), empty!(SG.A[SG.base].values)
+end
 
- nheavy = A.c - nlight - nsingle #???  nlight =-451, nsingle = 161
- heavy_map = fill(-1, A.c) #index in mapi of heavy col else -1
- heavy_mapi = [] #indices of heavy cols <
 
- j=1
- for i = 1:A.c
-  if !is_light_col[i] && !is_single_col[i] #heavy col
+function compute_kernel(SG)
+ m = ncols(SG.A)
+ update_light_cols!(SG)
+ @assert SG.nlight > -1
+ heavy_map = collect_dense_cols(SG)
+ d, _dense_kernel = dense_kernel3(heavy_map, SG)
+ _kernel, single_part = init_kernel(_dense_kernel, heavy_map, SG)
+ return compose_kernel(_kernel, single_part, SG)
+end
+
+function update_light_cols!(SG)
+ for i = 1:ncols(SG.A)
+  if SG.is_light_col[i] && !isempty(SG.col_list[i])
+   SG.is_light_col[i] = false
+   SG.nlight -= 1
+  end
+ end
+ return SG
+end
+
+function collect_dense_cols(SG)
+ m = ncols(SG.A)
+ nheavy = m - SG.nlight - SG.nsingle
+ heavy_map = fill(-1, m)
+ j = 1
+ for i = 1:m
+  if !SG.is_light_col[i] && !SG.is_single_col[i]
    heavy_map[i] = j
-   push!(heavy_mapi, i)
+   push!(SG.heavy_mapi,i)  
    j+=1
   end
  end
- @assert j == nheavy+1 
- S = sparse_matrix(R)# size A.r x nheavy
- S.c = nheavy #use push instead of r since no size f S initialized
+ @assert length(SG.heavy_mapi)==nheavy
+ return heavy_map
+end
 
- Y_light_weight = [length(y) for y in Y.rows]
- for i =1:Y.r
-  Y_light_weight[i] = length(Y[i])
+function dense_kernel(SG)
+ ST = sparse_matrix(base_ring(SG.A), 0, nrows(SG.Y))
+ YT = transpose(SG.Y)
+ for j in SG.heavy_mapi
+  push!(ST, YT[j])
  end
+ S = transpose(ST)
+ d, _dense_kernel = kernel(matrix(S))
+ return d, _dense_kernel
+end
 
- #sort!(Y.rows, by = x->length(x))#???change to light_weight 1206
- for i = 1:Y.r
-  Srow_pos = Vector{Int64}([])
-  Srow_val = Vector{ZZRingElem}([])
-  for j in Y[i].pos 
-   @assert(heavy_map[j]>=0)
-   push!(Srow_pos, heavy_map[j])
-   push!(Srow_val,Y[i,j])
-  end
-  sp_row = sparse_row(R, Srow_pos, Srow_val)
-  push!(S, sp_row)
- end
-
- d, S_sol = kernel(change_base_ring(RR, matrix(S)))
- #right now entries of sol integers 
- d == 1 || return d, []
- sol = Vector{ZZRingElem}([])
- for i = 1:A.c
-  if is_light_col[i]
-   push!(sol, 0)
+function init_kernel(_dense_kernel, heavy_map, SG)
+ m = ncols(SG.A)
+ R = base_ring(SG.A)
+ _kernel = fill(zero(R), m)
+ single_part = []
+ #@show(kern)
+ for i = 1:m
+  if SG.is_light_col[i]
+   _kernel[i]=zero(R)
   else
    j = heavy_map[i]
-   if j>=1
-    @assert(0<=lift(S_sol[j])<M)
-    push!(sol,lift(S_sol[j]))
+   if j>0
+    _kernel[i] = _dense_kernel[j,1]
    else
-    push!(sol,-1)
+    push!(single_part, i)
    end
   end
- end
+ end 
+ return _kernel, single_part
+end
 
- if S.r == 0 && S.c == 0
-  sol[norm_col] = 1 #??? what is norm_col
- end
-
+function compose_kernel(_kernel, single_part, SG)
  nfail = 0
-
- for i = base-1:-1:1 #1791 #base-1???
-  c = single_col[i]
-  if c>=0
+ failure = []
+ for i=SG.base-1:-1:1
+  c = SG.single_col[i]
+  if c>0
    y = 0
    x = NaN
-   j = 1
-   while j<= length(A[i])
-    cc = A[i].pos[j]
-    xx = A[i].values[j]
-    if cc == c
+   j=1
+   while j <= length(SG.A[i])
+    cc = SG.A[i].pos[j]
+    xx = SG.A[i].values[j]
+    if cc==c
      x = xx
-    elseif sol[cc] >= 0
-     y += xx*sol[cc]#???
+     j+=1
+    elseif !(cc in single_part)
+     y += (xx*_kernel[cc])
+     j+=1
     else
      break
     end
-    j+=1
    end
-   if j < length(A[i]) #wo kommt j her?!
-    nfail+=1
+   if j <= length(SG.A[i])
+    nfail +=1
+    push!(failure, i)
    else
-    y = y%M
-    #@assert x != NaN && x != 0
-    x = x%M
-    x = invmod(x, M)
-
-    y = -mulmod(x,y,M)#???negate = *(-1)?
-    y = y%M
-    sol[c] = y
+    _kernel[c]=-y*inv(x)
    end
   end
- end
+ end 
+ return _kernel, failure
+end
 
- if sol[norm_col]!=-1
-  x = invmod(sol[norm_col], M)
-  if x !=0 #always, since inv not 0???
-   for i = 1:A.c
-    if sol[i]!=-1
-     sol[i] = mulmod(sol[i], x, M)
+#TODO: scale instead of inverse
+function compose_kernel_Q(_kernel, single_part, SG)
+ nfail = 0
+ failure = []
+ for i=SG.base-1:-1:1
+  c = SG.single_col[i]
+  if c>0
+   y = 0
+   x = NaN
+   j=1
+   while j <= length(SG.A[i])
+    cc = SG.A[i].pos[j]
+    xx = SG.A[i].values[j]
+    if cc==c
+     x = xx
+     j+=1
+    elseif !(cc in single_part)
+     y += (xx*_kernel[cc])
+     j+=1
+    else
+     break
     end
    end
+   if j <= length(SG.A[i])
+    nfail +=1
+    push!(failure, i)
+   else
+    _kernel[c]=-y*inv(x)
+   end
   end
- end
- return d, sol
-#end
-
-end#time
-
-show(to)
-
-
-kern = lift(kern)
-
-for i = 1:l
- if sol[i]!=kern[i]
- print("$i, ")
  end 
- end
-#10x10 5x5 dichter Teil 
+ return _kernel, failure
+end
