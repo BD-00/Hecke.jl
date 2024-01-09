@@ -16,6 +16,7 @@ mutable struct data_StructGauss
  heavy_col_idx
  heavy_col_len
  heavy_mapi
+ heavy_map
 
  function data_StructGauss(A)
   Y = sparse_matrix(base_ring(A), 0, ncols(A))
@@ -32,11 +33,12 @@ mutable struct data_StructGauss
   collect(1:nrows(A)),
   fill(true, ncols(A)),
   fill(false, ncols(A)),
-  fill(-2, nrows(A)),
+  fill(0, nrows(A)),
   0,
   Int[],
   Int[],
-  Int[])
+  Int[],
+  fill(0, ncols(A)))
  end
 end
 
@@ -53,33 +55,24 @@ function _col_list(A)
  return col_list
 end
 
+
 function structured_gauss(A)
  SG = part_echolonize!(A)
- _kernel, _ = compute_kernel(SG)
- return _kernel
+ return compute_kernel(SG)
 end
 
-function structured_gauss_field(A) #change both parts
+function structured_gauss_field(A)
  SG = part_echolonize_field!(A)
- _kernel, _ = compute_kernel(SG)
- return _kernel
+ return compute_kernel_field(SG)
 end
 
-function structured_gauss_QQ(A)
- SG = part_echolonize!(A)
- _kernel, _ = compute_kernel(SG) #change this
- return _kernel
-end
-
-function structured_gauss_ZZ(A)#TODO: mod p butover Z
- SG = part_echolonize!(A)
- _kernel, _ = compute_kernel(SG)
- return _kernel
-end
-
+################################################################################
+#
+#  Partial Echolonization
+#
+################################################################################
 
 function part_echolonize!(A)
- over_field = false #more cases are tested this way
  A = delete_zero_rows!(A)
  n = nrows(A)
  m = ncols(A)
@@ -92,7 +85,7 @@ function part_echolonize!(A)
    SG.is_light_col[i] && @assert length(SG.col_list[i]) != 1
   end
   (SG.nlight == 0 || SG.base > n) && break
-  best_single_row = find_best_single_row(SG, over_field)
+  best_single_row = find_best_single_row(SG)
   best_single_row < 0 && @assert(SG.base == SG.single_row_limit)
   
   if best_single_row < 0
@@ -107,7 +100,6 @@ function part_echolonize!(A)
 end
 
 function part_echolonize_field!(A)
- over_field = false #more cases are tested this way
  A = delete_zero_rows!(A)
  n = nrows(A)
  m = ncols(A)
@@ -130,6 +122,21 @@ function part_echolonize_field!(A)
   end
 
   eliminate_and_update_field!(best_single_row, SG)
+ end
+ return SG
+end
+
+function single_rows_to_top!(SG)
+ for i = 1:nrows(SG.A)
+  len = length(SG.A[i])
+  @assert !iszero(len)
+  if len == 1
+   @assert SG.single_row_limit <=i
+   if i != SG.single_row_limit
+    swap_rows_perm(i, SG.single_row_limit, SG)
+   end
+   SG.single_row_limit +=1
+  end
  end
  return SG
 end
@@ -196,22 +203,7 @@ function build_part_ref_field!(SG)
  end
 end
 
-function single_rows_to_top!(SG)
- for i = 1:nrows(SG.A)
-  len = length(SG.A[i])
-  @assert !iszero(len)
-  if len == 1
-   @assert SG.single_row_limit <=i
-   if i != SG.single_row_limit
-    swap_rows_perm(i, SG.single_row_limit, SG)
-   end
-   SG.single_row_limit +=1
-  end
- end
- return SG
-end
-
-function find_best_single_row(SG, over_field)
+function find_best_single_row(SG)
  best_single_row = -1
  best_col = NaN
  best_val = NaN
@@ -225,7 +217,7 @@ function find_best_single_row(SG, over_field)
   j_light = find_light_entry(single_row.pos, SG.is_light_col)
   single_row_val = SG.A[i, j_light]
   @assert length(SG.col_list[j_light]) > 1
-  is_one = over_field||isone(single_row_val)||isone(-single_row_val)
+  is_one = isone(single_row_val)||isone(-single_row_val)
   if best_single_row < 0
    best_single_row = i
    best_col = j_light
@@ -272,7 +264,7 @@ function find_dense_cols(SG)
  SG.heavy_col_idx = fill(-1, SG.heavy_ext) #indices (descending order for same length)
  SG.heavy_col_len = fill(-1, SG.heavy_ext)#length of cols in heavy_idcs (ascending)
  light_cols = findall(x->SG.is_light_col[x], 1:m)
- #@show(light_cols)
+
  for i = m:-1:1
   if SG.is_light_col[i]
    col_len = length(SG.col_list[i])
@@ -321,6 +313,22 @@ function turn_heavy(SG)
  end
  SG.nlight -= SG.heavy_ext
  #SG.nlight<0 && print("nlight < 0 extension case")
+end
+
+function handle_new_light_weight!(i, SG)
+ w = SG.light_weight[i]
+ if w == 0
+  swap_i_into_base(i, SG)
+  SG.single_col[SG.base] = 0
+  move_into_Y(SG.base, SG)
+  SG.base+=1
+ elseif w == 1
+  if i > SG.single_row_limit
+   swap_rows_perm(i, SG.single_row_limit, SG)
+  end
+  SG.single_row_limit += 1
+ end
+ return SG
 end
 
 function eliminate_and_update!(best_single_row, SG)
@@ -434,21 +442,14 @@ function update_after_addition!(L_row, row_idx::Int, best_col, SG::data_StructGa
  return SG
 end
 
-function handle_new_light_weight!(i, SG)
- w = SG.light_weight[i]
- if w == 0
-  swap_i_into_base(i, SG)
-  SG.single_col[SG.base] = -1
-  #@show SG.col_list_perm[SG.base]
-  move_into_Y(SG.base, SG)
-  SG.base+=1
- elseif w == 1
-  if i > SG.single_row_limit
-   swap_rows_perm(i, SG.single_row_limit, SG)
-  end
-  SG.single_row_limit += 1
- end
- return SG
+################################################################################
+#
+#  Small Auxiliary Functions
+#
+################################################################################
+
+function swap_entries(v, i,j) #swaps entries v[i], v[j]
+ v[i],v[j] = v[j],v[i]
 end
 
 function swap_rows_perm(i, j, SG)
@@ -460,10 +461,6 @@ function swap_rows_perm(i, j, SG)
   swap_entries(SG.light_weight, i, j)
  end
 end 
-
-function swap_entries(v, i,j) #swaps entries v[i], v[j]
- v[i],v[j] = v[j],v[i]
-end
 
 function swap_i_into_base(i, SG::data_StructGauss)
  if i < SG.single_row_limit
@@ -496,15 +493,28 @@ function move_into_Y(i, SG::data_StructGauss)
  empty!(SG.A[SG.base].pos), empty!(SG.A[SG.base].values)
 end
 
+################################################################################
+#
+#  Kernel Computation
+#
+################################################################################
 
-function compute_kernel(SG)
- m = ncols(SG.A)
+function compute_kernel(SG, with_light = true)
  update_light_cols!(SG)
  @assert SG.nlight > -1
- heavy_map = collect_dense_cols(SG)
- d, _dense_kernel = dense_kernel3(heavy_map, SG)
- _kernel, single_part = init_kernel(_dense_kernel, heavy_map, SG)
- return compose_kernel(_kernel, single_part, SG)
+ collect_dense_cols!(SG)
+ _nullity, _dense_kernel = dense_kernel(SG)
+ l, K = init_kernel(_nullity, _dense_kernel, SG, with_light)
+ return compose_kernel(l, K, SG)
+end
+ 
+function compute_kernel_field(SG, with_light = true)
+ update_light_cols!(SG)
+ @assert SG.nlight > -1
+ collect_dense_cols!(SG)
+ _nullity, _dense_kernel = dense_kernel(SG)
+ l, K = init_kernel(_nullity, _dense_kernel, SG, with_light)
+ return compose_kernel_field(l, K, SG)
 end
 
 function update_light_cols!(SG)
@@ -517,20 +527,19 @@ function update_light_cols!(SG)
  return SG
 end
 
-function collect_dense_cols(SG)
+function collect_dense_cols!(SG)
  m = ncols(SG.A)
  nheavy = m - SG.nlight - SG.nsingle
- heavy_map = fill(-1, m)
  j = 1
  for i = 1:m
   if !SG.is_light_col[i] && !SG.is_single_col[i]
-   heavy_map[i] = j
+   SG.heavy_map[i] = j
    push!(SG.heavy_mapi,i)  
    j+=1
   end
  end
  @assert length(SG.heavy_mapi)==nheavy
- return heavy_map
+ return
 end
 
 function dense_kernel(SG)
@@ -544,25 +553,34 @@ function dense_kernel(SG)
  return d, _dense_kernel
 end
 
-function init_kernel(_dense_kernel, heavy_map, SG)
- m = ncols(SG.A)
+function init_kernel(_nullity, _dense_kernel, SG, with_light=true)
  R = base_ring(SG.A)
- _kernel = fill(zero(R), m)
- single_part = []
- #@show(kern)
+ m = ncols(SG.A)
+ if with_light
+  l = _nullity+SG.nlight
+ else
+  l = _nullity
+ end
+ K = zeros(R, m, l)
+ #initialisation
+ ilight = 1
  for i = 1:m
   if SG.is_light_col[i]
-   _kernel[i]=zero(R)
-  else
-   j = heavy_map[i]
+   if with_light
+    @assert ilight <= SG.nlight
+    K[i, _nullity+ilight] = one(R)
+    ilight +=1
+   end
+  else 
+   j = SG.heavy_map[i]
    if j>0
-    _kernel[i] = _dense_kernel[j,1]
-   else
-    push!(single_part, i)
+    for c = 1:_nullity
+     K[i,c] = _dense_kernel[j, c]
+    end
    end
   end
- end 
- return _kernel, single_part
+ end
+ return l, K
 end
 
 function compose_kernel(_kernel, single_part, SG)
@@ -598,36 +616,137 @@ function compose_kernel(_kernel, single_part, SG)
  return _kernel, failure
 end
 
-#TODO: scale instead of inverse
-function compose_kernel_Q(_kernel, single_part, SG)
- nfail = 0
- failure = []
- for i=SG.base-1:-1:1
+function compose_kernel(l, K, SG)
+ R = base_ring(SG.A)
+ n = nrows(SG.A)
+ for i = n:-1:1
   c = SG.single_col[i]
   if c>0
-   y = 0
-   x = NaN
-   j=1
-   while j <= length(SG.A[i])
-    cc = SG.A[i].pos[j]
-    xx = SG.A[i].values[j]
-    if cc==c
+   x = R(0)
+   y = zeros(R,l)
+   for idx in 1:length(SG.A[i])
+    cc = SG.A[i].pos[idx]
+    xx = SG.A[i].values[idx]
+    if cc == c
      x = xx
-     j+=1
-    elseif !(cc in single_part)
-     y += (xx*_kernel[cc])
-     j+=1
     else
-     break
+     for k = 1:l
+      kern_c = K[cc,k]
+      !iszero(kern_c) && (y[k]-=xx*kern_c)
+     end
     end
    end
-   if j <= length(SG.A[i])
-    nfail +=1
-    push!(failure, i)
+   for k = 1:l
+    x_inv = try
+     inv(x)
+    catch
+     R(0)
+    end
+    if iszero(x_inv)
+     K[:,k] *= x
+     K[c, k] = y[k]
+    else
+     K[c, k] = y[k]*x_inv
+    end
+   end
+  end
+ end
+ return l, K
+end
+
+function compose_kernel_field(l, K, SG)
+ R = base_ring(SG.A)
+ n = nrows(SG.A)
+ for i = n:-1:1
+  c = SG.single_col[i]
+  if c>0
+   y = zeros(R,l)
+   for idx in 1:length(SG.A[i])
+    cc = SG.A[i].pos[idx]
+    xx = SG.A[i].values[idx]
+    if cc == c
+     @assert isone(xx)
+    else
+     for k = 1:l
+      kern_c = K[cc,k]
+      !iszero(kern_c) && (y[k]-=xx*kern_c)
+     end
+    end
+   end
+   for k = 1:l
+    K[c, k] = y[k]
+   end
+  end
+ end
+ return l, K
+end
+
+
+function kernel_matrix(_nullity, _dense_kernel, SG)
+ R = base_ring(SG.A)
+ n = nrows(SG.A)
+ m = ncols(SG.A)
+ l = _nullity+SG.nlight
+ K = zeros(R, m, l)
+ #initialisation
+ ilight = 1
+ for i = 1:m
+  if SG.is_light_col[i]
+   @assert ilight <= SG.nlight
+   K[i, _nullity+ilight] = one(R)
+   ilight +=1
+  else 
+   j = SG.heavy_map[i]
+   if j>0
+    for c = 1:_nullity
+     K[i,c] = _dense_kernel[j, c]
+    end
+   end
+  end
+ end
+#compose kernel in single cols
+ for i = n:-1:1
+  c = SG.single_col[i]
+  if c>0
+   y = zeros(R,l)
+   for idx in 1:length(SG.A[i])
+    cc = SG.A[i].pos[idx]
+    xx = SG.A[i].values[idx]
+    if cc == c
+     @assert isone(xx)
+    else
+     for k = 1:l
+      kern_c = K[cc,k]
+      !iszero(kern_c) && (y[k]-=xx*kern_c)
+     end
+    end
+   end
+   for k = 1:l
+    K[c, k] = y[k]
+   end
+  end
+ end
+ return(l, K)
+end
+
+#=
+function init_kernel(_dense_kernel, SG)
+ m = ncols(SG.A)
+ R = base_ring(SG.A)
+ _kernel = fill(zero(R), m)
+ single_part = []
+ for i = 1:m
+  if SG.is_light_col[i]
+   _kernel[i]=zero(R)
+  else
+   j = SG.heavy_map[i]
+   if j>0
+    _kernel[i] = _dense_kernel[j,1]
    else
-    _kernel[c]=-y*inv(x)
+    push!(single_part, i)
    end
   end
  end 
- return _kernel, failure
+ return _kernel, single_part
 end
+=#
