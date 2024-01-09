@@ -840,10 +840,6 @@ function swap_rows_perm(i, j, SG)
  end
 end 
 
-function swap_entries(v, i,j) #swaps entries v[i], v[j]
- v[i],v[j] = v[j],v[i]
-end
-
 function swap_i_into_base(i, SG::data_StructGauss)
  if i < SG.single_row_limit
   swap_rows_perm(i, SG.base, SG)
@@ -869,12 +865,12 @@ function init_kernel(_dense_kernel, SG)
   else
    j = SG.heavy_map[i]
    if j>0
-    _kernel[i] = _dense_kernel[j,1]
-   else
-    push!(single_part, i)
+    for c = 1:_nullity
+     K[i,c] = _dense_kernel[j, c]
+    end
    end
   end
- end 
- return _kernel, single_part
+ end
+ return l, K
 end
 =#
