@@ -1,5 +1,4 @@
-some_nullspace(A::SMat) = w=#
-iedemann(A::SMat, transpose(A)::SMat)
+some_nullspace(A::SMat) = wiedemann(A::SMat, transpose(A)::SMat)
 
 #(p-1)/2 prime 
 @doc raw"""
@@ -110,7 +109,7 @@ function rand_srow(l,n,b,R)
 		#generate ZZRingElem sparse_row, indx not greater than n limited by n
 		#l values not greater than b
 		val =  rand(1:b,l)
-		pos = randperm!(Vector{Int}(undef, n))[1:l]
+		pos = Hecke.randperm!(Vector{Int}(undef, n))[1:l]
 		return sparse_row(R,pos,val)
 end
 
@@ -174,4 +173,3 @@ end
 
 my_mul!(c::Vector{T}, A::SMat{T}, b::Vector{T}) where T <:Union{FpFieldElem, ZZModRingElem} = multi!(c, A, b)
 my_mul!(c::Vector{T}, A::SMat{T}, b::Vector{T}) where T <:Union{fpFieldElem, zzModRingElem} = mul!(c, A, b)
-

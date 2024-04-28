@@ -1,5 +1,104 @@
 ###############################################################################
 #
+#   PREPROCESSING FOR SPARSE MATRICES
+#
+###############################################################################
+
+function smat_prepro(A, l = 0)
+ R = base_ring(A)
+ n = nrows(A)
+ m = ncols(A)
+ col_list = [Array{Int64}([]) for i = 1:m]
+ for i in 1:n
+  for c in A[i].pos
+   col = col_list[c]
+   push!(col, i)
+  end
+ end
+ col_count = [length(col_list[i]) for i = 1:m]
+
+ consider_cols = [i for i = m:-1:l+1] #singleton col candidates
+ two_elem_cols = Array{Int64}([]) #2-elem col candidates
+ while !isempty(consider_cols)
+  #go over singletons
+  consider_cols_c = Array{Int64}([])
+  for i in consider_cols
+   i>l && col_count[i] == 2 && push!(two_elem_cols, i)
+   if col_count[i] == 1
+    r = first(col_list[i])
+    for idx in A[r].pos
+     del_idx = searchsortedfirst(col_list[idx], r)
+     deleteat!(col_list[idx], del_idx)
+     col_count[idx]-=1
+     idx>l && col_count[idx] == 1 && push!(consider_cols_c, idx)
+     idx>l && col_count[idx] == 2 && push!(two_elem_cols, idx)
+    end
+    #delete_row!(A, r)
+    A.nnz -=length(A[r])
+    empty!(A[r].pos)
+    empty!(A[r].values)
+   end
+  end
+  consider_cols, consider_cols_c = consider_cols_c, Array{Int64}([])
+  two_elem_cols_c = Array{Int64}([])
+  for i in two_elem_cols
+   if col_count[i] == 2
+    fir, sec = col_list[i][1], col_list[i][2]
+    if length(A[fir]) <= length(A[sec])  
+     piv = fir; r = sec
+    else
+     piv = sec; r = fir
+    end 
+    i_piv = searchsortedfirst(A[piv].pos, i)
+    i_r = searchsortedfirst(A[r].pos, i)
+    v_piv = A[piv].values[i_piv]
+    v_r = A[r].values[i_r]
+    if R == ZZ || !isprime(modulus(R)) #TODO: more general over_field or not. check what can be a field
+     g = gcd(v_piv, v_r)
+     scale_row2!(A, r, -div(v_piv, g), col_list, col_count, consider_cols, two_elem_cols_c)#Null hier aus col_list nehmen  
+     add_scaled_row!(A, piv, r,  div(v_r, g))
+    elseif isprime(modulus(R))
+     scale_row!(A, piv, inv(v_piv))
+     add_scaled_row!(A, piv, r, -v_r)
+    end
+    for piv_idx in A[piv].pos
+     piv_c = col_list[piv_idx]
+     r_idx = findfirst(x->x>=r,piv_c)
+     if iszero(A[r, piv_idx]) #when?
+      deleteat!(piv_c, r_idx) #make sure that exists
+      col_count[piv_idx]-=1
+     elseif isnothing(r_idx)
+      push!(piv_c, r)
+     elseif piv_c[r_idx] != r
+      insert!(piv_c, r_idx, r)
+      col_count[piv_idx]+=1
+     end 
+     d = searchsortedfirst(piv_c, piv)
+     deleteat!(piv_c, d)
+     col_count[piv_idx]-=1
+     piv_idx>l && col_count[piv_idx] == 1 && push!(consider_cols, piv_idx)
+     piv_idx>l && col_count[piv_idx] == 2 && push!(two_elem_cols_c, piv_idx)
+    end
+    #delete_row!(A, piv)
+    A.nnz-=length(A[piv])
+    empty!(A[piv].pos)
+    empty!(A[piv].values)
+   end
+  end
+  two_elem_cols, two_elem_cols_c = two_elem_cols_c, Array{Int64}([])
+ end
+ for i in 1:length(col_count)
+  col_count[i]==1 && @show(1, i, col_list[i], consider_cols)
+  col_count[i]==2 && @show(2, i, col_list[i], two_elem_cols)
+ end
+ @assert !(1 in col_count[l+1:end]) && !(2 in col_count[l+1:end])
+ return(A)
+end
+
+#TODO arrays verwalten mit neuen Spalten und zweites Array jeweils plus Reihenfolge 
+
+###############################################################################
+#
 #   PREPROCESSING (FOR WIEDEMANN)
 #
 ###############################################################################
@@ -106,7 +205,7 @@ function sp_prepro_k(A::SMat{T}, TA::SMat{T}, l, k, forbidden_cols) where T <: U
 end 
 
 ########## preprocessing ##########
-function sp_prepro(A::SMat{T}, TA::SMat{T}, l, iter=5, forbidden_cols=[]) where T
+function sp_prepro(A::SMat{T}, TA::SMat{T}, l, iter=2, forbidden_cols=[]) where T
   A, TA = sp_prepro_1(A, TA, l)
   for k in 2:iter
     A, TA = sp_prepro_k(A, TA, l, k, forbidden_cols)
@@ -270,3 +369,20 @@ function change_base_ring(R::ZZRing, A::SMat{T}) where T
   end
   return z
 end
+
+function scale_row2!(A::SMat{T}, i::Int, c::T, col_list, col_count, consider_cols, two_elem_cols_c) where T
+ for j=1:length(A[i].pos)
+  A[i].values[j] *= c
+  if iszero(A[i].values[j])
+   A.nnz -= 1
+   d = col_list[j]
+   idx = searchsortedfirst(d, i)
+   deleteat!(d, idx)
+   deleteat!(A[i].pos, j)
+   deleteat!(A[i].values, j)
+   col_count[j]-=1
+   col_count[j] == 1 && push!(consider_cols, j)
+   col_count[j] == 2 && push!(two_elem_cols_c, j)
+  end
+ end
+end #TODO Einträge aus pos und values löschen

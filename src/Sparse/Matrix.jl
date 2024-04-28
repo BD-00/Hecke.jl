@@ -5,6 +5,7 @@
 ################################################################################
 
 function SMatSpace(R::Ring, r::Int, c::Int; cached = true)
+function SMatSpace(R::Ring, r::Int, c::Int; cached = true)
   T = elem_type(R)
   return SMatSpace{T}(R, r, c, cached)
 end
@@ -38,32 +39,6 @@ Return the number of columns of $A$.
 """
 function ncols(A::SMat)
   return A.c
-end
-
-#used in HNF.jl:
-# sparse_row operations usually involve a temporary intermediate row
-# for large matrices, this kills the GC performance, so we allow
-# to store up to 10 sparse auxiliaries in the matrix..
-# usage:
-# sr = get_tmp(A)
-# add_scaled_row(..., sr)
-# release_tmp(A, sr)
-function get_tmp(A::SMat)
-  if isdefined(A, :tmp) && length(A.tmp) > 0
-    return pop!(A.tmp)
-  end
-  return sparse_row(base_ring(A))
-end
-
-function release_tmp(A::SMat{T}, s::SRow{T}) where T
-  return
-  if isdefined(A, :tmp)
-    if length(A.tmp) < 10
-      push!(A.tmp, s)
-    end
-  else
-    A.tmp = [s]
-  end
 end
 
 @doc raw"""
@@ -145,6 +120,7 @@ density(A::SMat) = 1.0 - sparsity(A)
 
 function show(io::IO, A::SMat{T}) where T
   print(io, "Sparse ", A.r, " x ", A.c, " matrix with ")
+  print(io, A.nnz, " non-zero entries\n")
   print(io, A.nnz, " non-zero entries\n")
 end
 
@@ -289,6 +265,26 @@ function sparse_matrix(A::MatElem; keepzrows::Bool = true)
     end
     push!(m.rows, r)
     m.r += 1
+  for i=1:nrows(A)
+    if iszero_row(A, i)
+      if !keepzrows
+        continue
+      else
+        r = sparse_row(R)
+      end
+    else
+      r = sparse_row(R)
+      for j = 1:ncols(A)
+        t = A[i, j]
+        if t != 0
+          m.nnz += 1
+          push!(r.values, R(t))
+          push!(r.pos, j)
+        end
+      end
+    end
+    push!(m.rows, r)
+    m.r += 1
   end
   return m
 end
@@ -304,6 +300,7 @@ function sparse_matrix(A::Matrix{T}) where {T <: RingElement}
   m.c = Base.size(A, 2)
   m.r = 0
   for i in 1:size(A, 1)
+    if iszero_row(A, i)
     if iszero_row(A, i)
       push!(m, sparse_row(parent(A[1, 1])))
       continue
@@ -440,6 +437,7 @@ end
 
 ################################################################################
 #
+#  Make sparse matrices iteratable
 #  Make sparse matrices iteratable
 #
 ################################################################################
@@ -618,6 +616,7 @@ function +(A::SMat{T}, B::SMat{T}) where T
   nrows(A) != nrows(B) && error("Matrices must have same number of rows")
   ncols(A) != ncols(B) && error("Matrices must have same number of columns")
   C = sparse_matrix(base_ring(A))
+  C = sparse_matrix(base_ring(A))
   m = min(nrows(A), nrows(B))
   for i=1:m
     push!(C, A[i] + B[i])
@@ -634,6 +633,7 @@ end
 function -(A::SMat{T}, B::SMat{T}) where T
   nrows(A) != nrows(B) && error("Matrices must have same number of rows")
   ncols(A) != ncols(B) && error("Matrices must have same number of columns")
+  C = sparse_matrix(base_ring(A))
   C = sparse_matrix(base_ring(A))
   m = min(nrows(A), nrows(B))
   for i=1:m
@@ -965,6 +965,7 @@ end
 ################################################################################
 #
 #  Vertical concatentation
+#  Vertical concatentation
 #
 ################################################################################
 
@@ -999,6 +1000,7 @@ end
 
 ################################################################################
 #
+#  Horizontal concatentation
 #  Horizontal concatentation
 #
 ################################################################################
@@ -1464,6 +1466,12 @@ end
 
 Return a sparse $n$ times $n$ zero matrix over $R$.
 """
+function zero_matrix(::Type{SMat}, R::Ring, n::Int)
+  S = sparse_matrix(R)
+  S.rows = [sparse_row(R) for i=1:n]
+  S.c = S.r = n
+  return S
+end
 function zero_matrix(::Type{SMat}, R::Ring, n::Int)
   S = sparse_matrix(R)
   S.rows = [sparse_row(R) for i=1:n]
