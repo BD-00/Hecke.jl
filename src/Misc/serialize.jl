@@ -1,74 +1,74 @@
 
 #TODO: do binary...although this is exactly what BigInt does
 
-function serialize(s::AbstractSerializer, t::ZZRingElem)
-  Serialization.serialize_type(s, ZZRingElem)
-  return serialize(s, base(t, 62))
-end
-
-function deserialize(s::AbstractSerializer, ::Type{ZZRingElem})
-  return parse(ZZRingElem, deserialize(s), 62)
-end
-
-function serialize(s::AbstractSerializer, t::QQFieldElem)
-  Serialization.serialize_type(s, QQFieldElem)
-  serialize(s, base(numerator(t), 62))
-  return serialize(s, base(denominator(t), 62))
-end
-
-function deserialize(s::AbstractSerializer, ::Type{QQFieldElem})
-  n = parse(ZZRingElem, deserialize(s), 62)
-  d = parse(ZZRingElem, deserialize(s), 62)
-  return QQFieldElem(n, d)
-end
-
-function serialize(s::AbstractSerializer, t::PolyElem{T}) where T
-  Serialization.serialize_type(s, PolyElem{T})
-  serialize(s, length(t))
-  for i=0:length(t)
-    serialize(s, coeff(t, i))
-  end
-end
-
-function deserialize(s::AbstractSerializer, ::Type{PolyElem{T}}) where T
-  L = T[]
-  l = deserialize(s)
-  for i=0:l
-    push!(L, deserialize(s))
-  end
-  R = parent(L[1])
-  Rx, x = polynomial_ring(R, :S, cached=false)
-  return Rx(L)
-end
-
-function serialize(s::AbstractSerializer, t::AnticNumberField)
-  Serialization.serialize_type(s, AnticNumberField)
-  return serialize(s, t.pol)
-end
-
-function deserialize(s::AbstractSerializer, ::Type{AnticNumberField})
-  return number_field(deserialize(s), cached=false)[1]
-end
-
-function serialize(s::AbstractSerializer, t::NfToNfMor)
-  Serialization.serialize_type(s, NfToNfMor)
-  return serialize(s, (domain(t), codomain(t), t.prim_img))
-end
-
-function deserialize(s::AbstractSerializer, ::Type{NfToNfMor})
-  K, L, a = deserialize(s)
-  return NfToNfMor(K, L, a)
-end
-
+#function serialize(s::AbstractSerializer, t::ZZRingElem)
+#  Serialization.serialize_type(s, ZZRingElem)
+#  return serialize(s, base(t, 62))
+#end
+#
+#function deserialize(s::AbstractSerializer, ::Type{ZZRingElem})
+#  return parse(ZZRingElem, deserialize(s), 62)
+#end
+#
+#function serialize(s::AbstractSerializer, t::QQFieldElem)
+#  Serialization.serialize_type(s, QQFieldElem)
+#  serialize(s, base(numerator(t), 62))
+#  return serialize(s, base(denominator(t), 62))
+#end
+#
+#function deserialize(s::AbstractSerializer, ::Type{QQFieldElem})
+#  n = parse(ZZRingElem, deserialize(s), 62)
+#  d = parse(ZZRingElem, deserialize(s), 62)
+#  return QQFieldElem(n, d)
+#end
+#
+#function serialize(s::AbstractSerializer, t::PolyRingElem{T}) where T
+#  Serialization.serialize_type(s, PolyRingElem{T})
+#  serialize(s, length(t))
+#  for i=0:length(t)
+#    serialize(s, coeff(t, i))
+#  end
+#end
+#
+#function deserialize(s::AbstractSerializer, ::Type{PolyRingElem{T}}) where T
+#  L = T[]
+#  l = deserialize(s)
+#  for i=0:l
+#    push!(L, deserialize(s))
+#  end
+#  R = parent(L[1])
+#  Rx, x = polynomial_ring(R, :S, cached=false)
+#  return Rx(L)
+#end
+#
+#function serialize(s::AbstractSerializer, t::AbsSimpleNumField)
+#  Serialization.serialize_type(s, AbsSimpleNumField)
+#  return serialize(s, t.pol)
+#end
+#
+#function deserialize(s::AbstractSerializer, ::Type{AbsSimpleNumField})
+#  return number_field(deserialize(s), cached=false)[1]
+#end
+#
+#function serialize(s::AbstractSerializer, t::NumFieldHom{AbsSimpleNumField, AbsSimpleNumField})
+#  Serialization.serialize_type(s, NumFieldHom{AbsSimpleNumField, AbsSimpleNumField})
+#  return serialize(s, (domain(t), codomain(t), t.prim_img))
+#end
+#
+#function deserialize(s::AbstractSerializer, ::Type{NumFieldHom{AbsSimpleNumField, AbsSimpleNumField}})
+#  K, L, a = deserialize(s)
+#  return NumFieldHom{AbsSimpleNumField, AbsSimpleNumField}(K, L, a)
+#end
+#
 add_verbosity_scope(:Par)
 
 function _bizarre(a::Int, b::Int)
   return length(Hecke.class_group(Hecke.wildanger_field(a, b)[1])[1])
 end
 
-function parallel_work(f::Function, r::UnitRange)
+function parallel_work(f::Function, r::AbstractUnitRange)
   l = length(workers())
-  @vprint :Par 1 "using $l workers\n"
+  @vprintln :Par 1 "using $l workers"
   cache = []
   st = start(r)
   res = []
@@ -98,7 +98,7 @@ function parallel_work(f::Function, r::UnitRange)
       no_job -= 1
     end
   end
-  @vprint :Par 2 "Finishing off..\n"
+  @vprintln :Par 2 "Finishing off.."
   push!(res, ((1,2,3.0,4), 5.0))
   while no_job > 0
     tw -= time()
@@ -122,4 +122,3 @@ function addprocs(machines::AbstractVector; tunnel=false, sshflags=``, max_paral
   end
   return new
 end
-

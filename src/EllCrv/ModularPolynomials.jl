@@ -1,5 +1,3 @@
-export atkin_modular_polynomial, classical_modular_polynomial
-
 const default_class_mod_pol_db = joinpath(artifact"ClassicalModularPolynomialsDB", "ClassicalModularPolynomialsDB", "data")
 
 const _classical_modular_polynomial_cache = Dict{Any, Any}()
@@ -28,9 +26,9 @@ function classical_modular_polynomial(R::MPolyRing, n::Int)
       b, coeffs = _parse(Vector{ZZRingElem}, io)
       C = MPolyBuildCtx(R)
       for i in 1:length(exps)
-        push_term!(C, coeffs[i], exps[i])
+        push_term!(C, base_ring(R)(coeffs[i]), exps[i])
         if exps[i][1] != exps[i][2]
-          push_term!(C, coeffs[i], reverse(exps[i]))
+          push_term!(C, base_ring(R)(coeffs[i]), reverse(exps[i]))
         end
       end
       return finish(C)
@@ -58,7 +56,7 @@ function atkin_modular_polynomial(n::Int)
 end
 
 function atkin_modular_polynomial(R::MPolyRing, n::Int)
-  @req isprime(n) "Level ($n) must be prime"
+  @req is_prime(n) "Level ($n) must be prime"
   @req 1 <= n <= 400 "Database only contains Atkin modular polynomials up to level 400"
   get!(_atkin_modular_polynomial_cache, (R, n)) do
     open(joinpath(default_atkin_mod_pol_db, "$n")) do io
@@ -70,7 +68,7 @@ function atkin_modular_polynomial(R::MPolyRing, n::Int)
       b, coeffs = _parse(Vector{ZZRingElem}, io)
       C = MPolyBuildCtx(R)
       for i in 1:length(exps)
-        push_term!(C, coeffs[i], exps[i])
+        push_term!(C, base_ring(R)(coeffs[i]), exps[i])
       end
       return finish(C)
     end

@@ -183,6 +183,8 @@ function enum_ctx_start(E::enum_ctx{A,B,C}, c::ZZRingElem) where {A,B,C}
   E.cnt = 0
 end
 
+#start enumeration at the element x, the bound on the length
+#is the length of x * eps
 function enum_ctx_start(E::enum_ctx{A,B,C}, x::ZZMatrix; eps::Float64=1.0) where {A,B,C}
   E.x = x
   for i=E.limit-1:-1:1
@@ -202,33 +204,54 @@ function enum_ctx_start(E::enum_ctx{A,B,C}, x::ZZMatrix; eps::Float64=1.0) where
   E.last_non_zero = maximum(findall(i->E.x[1, i] != 0, 1:E.limit))+1
 end
 
-#for pol-red-abs we need s.th. else I think
-#
+#start enumeration at the first element having a 1 at position i (and zeros
+#for all j>i.
+#the length is going to be the length of the i-th unit vector * eps
+#(the actual vector might be shorter)
+function enum_ctx_start(E::enum_ctx{A,B,C}, i::Int; eps::Float64=1.0) where {A,B,C}
+  for j=1:E.limit
+    if j == i
+      E.x[1, j] = 1
+    else
+      E.x[1, j] = 0
+    end
+  end
+  E.last_non_zero = i+1
+
+  for k=E.limit-1:-1:1
+    E.tail[k] = sum(E.C[k, j]*C(E.x[1,j]) for j=k+1:E.limit)
+  end
+  b = sum(E.C[j,j]*(C(E.x[1,j]) + E.tail[j])^2 for j=1:E.limit) #curr. length
+  #@show b, C((x*E.G*x')[1,1])
+  #@assert b == C((x*E.G*x')[1,1])
+  E.c = ceil(ZZRingElem, b*C(E.d)*eps)
+  E.l[E.limit] = C(E.c//E.d)
+  for j=E.limit-1:-1:1
+    E.l[j] = E.l[j+1] - E.C[j+1,j+1]*(C(E.x[1,j+1]) + E.tail[j+1])^2
+  end
+  for j=E.limit:-1:1
+    E.L[j], E.U[j] = enum_ctx_local_bound(-E.tail[j], E.l[j]/E.C[j,j])
+    if j < i
+      E.x[1, j] = A(Base.ceil((E.L[j] +E.U[j])/2))
+      E.tail[j] = sum(E.C[j, k]*C(E.x[1,k]) for k=j+1:E.limit)
+      E.l[j] = E.l[j+1] - E.C[j+1,j+1]*(C(E.x[1,j+1]) + E.tail[j+1])^2
+    end
+  end
+end
+
 #
 #missing: lower bound
 #         reference vector (eventually)
 #         length
 #         proper lattice type
 
-@inline function fmpz_mat_entry(a::ZZMatrix, r::Int, c::Int)
-  return ccall((:fmpz_mat_entry, libflint), Ptr{ZZRingElem},
-               (Ref{ZZMatrix}, Int, Int), a, r - 1, c - 1)
-#@inline function fmpz_mat_entry(a::ZZMatrix, r::Int, c::Int)
-    #return unsafe_load(reinterpret(Ptr{Ptr{ZZRingElem}}, a.rows), r)+(c-1)*sizeof(Ptr)
-end
-
 @inline function fmpz_mat_entry_incref!(a::ZZMatrix, r::Int, c::Int)
-  z = ccall((:fmpz_mat_entry, libflint), Ptr{ZZRingElem},
-               (Ref{ZZMatrix}, Int, Int), a, r - 1, c - 1)
+  z = Nemo.mat_entry_ptr(a, r, c)
   ccall((:fmpz_add_ui, libflint), Nothing, (Ptr{ZZRingElem}, Ptr{ZZRingElem}, Int), z, z, 1)
-  #z = fmpz_mat_entry(a, r, c)
-  #unsafe_store!(reinterpret(Ptr{Int}, z), unsafe_load(reinterpret(Ptr{Int}, z), 1)+1, 1)
-  ##ccall((:fmpz_add_ui, libflint), Nothing, (Ptr{ZZRingElem}, Ptr{ZZRingElem}, Int), z, z, 1)
 end
 
 function fmpz_mat_entry_add_ui!(a::ZZMatrix, r::Int, c::Int, v::UInt)
-  z = ccall((:fmpz_mat_entry, libflint), Ptr{ZZRingElem},
-               (Ref{ZZMatrix}, Int, Int), a, r - 1, c - 1)
+  z = Nemo.mat_entry_ptr(a, r, c)
   ccall((:fmpz_add_ui, libflint), Nothing, (Ptr{ZZRingElem}, Ptr{ZZRingElem}, Int), z, z, v)
 end
 
@@ -357,11 +380,11 @@ end
 
 ################################################################################
 #
-#  Enumerating using arb objects
+#  Enumerating using ArbFieldElem objects
 #
 ################################################################################
 
-function pseudo_cholesky(G::arb_mat)
+function pseudo_cholesky(G::ArbMatrix)
   n = ncols(G)
   C = deepcopy(G)
   for i = 1:n-1
@@ -397,12 +420,12 @@ function pseudo_cholesky(G::arb_mat)
 end
 
 
-function enumerate_using_gram(G::arb_mat, c::arb)
+function enumerate_using_gram(G::ArbMatrix, c::ArbFieldElem)
   E = EnumCtxArb(pseudo_cholesky(G))
   return _enumerate(E, c, nrows(G), zero_matrix(FlintZZ, 1, nrows(G)))
 end
 
-function _enumerate(E::EnumCtxArb, c::arb, i::Int, x::ZZMatrix)
+function _enumerate(E::EnumCtxArb, c::ArbFieldElem, i::Int, x::ZZMatrix)
   # assume x_n,x_n-1,...,x_i+1 are set
   # compute the bound for x_i
   G = E.G
@@ -411,12 +434,12 @@ function _enumerate(E::EnumCtxArb, c::arb, i::Int, x::ZZMatrix)
   #recprint(n-i)
   #println("I am at level $i with $x")
 
-  @vprint :LatEnum "$(recprint(n - i)) Gii: , $(G[i,i])\n"
-  @vprint :LatEnum "$(recprint(n - i)) c: $(ArbField(p)(c))\n"
+  @vprintln :LatEnum "$(recprint(n - i)) Gii: , $(G[i,i])"
+  @vprintln :LatEnum "$(recprint(n - i)) c: $(ArbField(p)(c))"
 
   C = ArbField(p)(c)//G[i,i]
 
-  @vprint :LatEnum "$(recprint(n - i)) C: $C\n"
+  @vprintln :LatEnum "$(recprint(n - i)) C: $C"
 
   if !contains_zero(C)
     C = sqrt(C)
@@ -430,15 +453,15 @@ function _enumerate(E::EnumCtxArb, c::arb, i::Int, x::ZZMatrix)
     tm = arf_struct(0, 0, 0, 0)
     ccall((:arf_init, libarb), Nothing, (Ref{arf_struct}, ), tm)
 
-    ccall((:arb_get_abs_ubound_arf, libarb), Nothing, (Ref{arf_struct}, Ref{arb}), tm, C)
-    ccall((:arb_set_arf, libarb), Nothing, (Ref{arb}, Ref{arf_struct}), C, tm)
+    ccall((:arb_get_abs_ubound_arf, libarb), Nothing, (Ref{arf_struct}, Ref{ArbFieldElem}), tm, C)
+    ccall((:arb_set_arf, libarb), Nothing, (Ref{ArbFieldElem}, Ref{arf_struct}), C, tm)
 
     ccall((:arf_clear, libarb), Nothing, (Ref{arf_struct}, ), tm)
 
     @hassert :LatEnum !contains_zero(C)
   end
 
-  @vprint :LatEnum "$(recprint(n - i)) C: $C\n"
+  @vprintln :LatEnum "$(recprint(n - i)) C: $C"
 
   CC = ArbField(p)(0)
 
@@ -449,9 +472,9 @@ function _enumerate(E::EnumCtxArb, c::arb, i::Int, x::ZZMatrix)
   lb = -CC - C
   ub = -CC + C
 
-  tr_ptr = ccall((:arb_rad_ptr, libarb), Ptr{Nemo.mag_struct}, (Ref{arb}, ), lb)
+  tr_ptr = ccall((:arb_rad_ptr, libarb), Ptr{Nemo.mag_struct}, (Ref{ArbFieldElem}, ), lb)
 
-  tm_ptr = ccall((:arb_mid_ptr, libarb), Ptr{arf_struct}, (Ref{arb}, ), lb)
+  tm_ptr = ccall((:arb_mid_ptr, libarb), Ptr{arf_struct}, (Ref{ArbFieldElem}, ), lb)
   u = arf_struct(0, 0, 0, 0)
   ccall((:arf_init, libarb), Nothing, (Ref{arf_struct}, ), u)
 
@@ -460,8 +483,8 @@ function _enumerate(E::EnumCtxArb, c::arb, i::Int, x::ZZMatrix)
   lbfmpz = ZZRingElem()
   ccall((:arf_get_fmpz, libarb), Nothing, (Ref{ZZRingElem}, Ref{arf_struct}, Cint), lbfmpz, u, 4)
 
-  tr = ccall((:arb_rad_ptr, libarb), Ptr{Nemo.mag_struct}, (Ref{arb}, ), ub)
-  tm = ccall((:arb_mid_ptr, libarb), Ptr{arf_struct}, (Ref{arb}, ), ub)
+  tr = ccall((:arb_rad_ptr, libarb), Ptr{Nemo.mag_struct}, (Ref{ArbFieldElem}, ), ub)
+  tm = ccall((:arb_mid_ptr, libarb), Ptr{arf_struct}, (Ref{ArbFieldElem}, ), ub)
 
   ccall((:arf_set_mag, libarb), Nothing, (Ref{arf_struct}, Ptr{Nemo.mag_struct}), u, tr)
   ccall((:arf_sub, libarb), Nothing, (Ref{arf_struct}, Ptr{arf_struct}, Ref{arf_struct}, Int, Cint), u, tm, u, p, 3) # 3 is round to +infty
@@ -470,26 +493,26 @@ function _enumerate(E::EnumCtxArb, c::arb, i::Int, x::ZZMatrix)
 
   ccall((:arf_clear, libarb), Nothing, (Ref{arf_struct}, ), u)
 
-  @vprint :LatEnum "$(recprint(n - i)) Coordinate $i between $lbfmpz and $ubfmpz\n"
+  @vprintln :LatEnum "$(recprint(n - i)) Coordinate $i between $lbfmpz and $ubfmpz"
 
   A = Vector{Vector{ZZRingElem}}()
 
   if i == 1
-    @vprint :LatEnum "$(recprint(n - i)) his is depth $i\n"
+    @vprintln :LatEnum "$(recprint(n - i)) his is depth $i"
 
     for j in Int(lbfmpz):Int(ubfmpz)
-      @vprint :LatEnum "$(recprint(n - i)) j is $j\n"
+      @vprintln :LatEnum "$(recprint(n - i)) j is $j"
       if is_negative(c - G[i,i]*(j + CC)^2)
-        @vprint :LatEnum "$(recprint(n - i)) Something is negative\n"
+        @vprintln :LatEnum "$(recprint(n - i)) Something is negative"
         continue
       end
       push!(A, [ ZZRingElem(j) ])
     end
   else
     for j in Int(lbfmpz):Int(ubfmpz)
-      @vprint :LatEnum "$(recprint(n - i)) $x $i $j: $c $(G[i,i]) $CC\n"
-      @vprint :LatEnum "$(recprint(n - i)) $x $i $j $(G[i,i]*j^2)\n"
-      @vprint :LatEnum "$(recprint(n - i)) $x $i $j: $(c - G[i,i]*(j + CC)^2)\n"
+      @vprintln :LatEnum "$(recprint(n - i)) $x $i $j: $c $(G[i,i]) $CC"
+      @vprintln :LatEnum "$(recprint(n - i)) $x $i $j $(G[i,i]*j^2)"
+      @vprintln :LatEnum "$(recprint(n - i)) $x $i $j: $(c - G[i,i]*(j + CC)^2)"
       t = c - G[i,i]*(j + CC)^2
 
       if is_negative(t)

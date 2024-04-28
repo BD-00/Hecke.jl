@@ -14,12 +14,12 @@ end
   K, a = number_field(x^32 + 2, "a")
 
   b = @inferred rand([a], -10:10)
-  @test b isa nf_elem
-  @test_throws ErrorException rand(nf_elem[], -10:10)
+  @test b isa AbsSimpleNumFieldElem
+  @test_throws ErrorException rand(AbsSimpleNumFieldElem[], -10:10)
 
   b = @inferred rand(basis(K), 1:100, 10)
   @test count(!iszero, (coeff(b, i) for i in 0:31)) <= 10
-  @test_throws ErrorException rand(nf_elem[], -10:10, 5)
+  @test_throws ErrorException rand(AbsSimpleNumFieldElem[], -10:10, 5)
   @test_throws ErrorException rand([a, a^2], -10:10, -10)
   @test_throws ErrorException rand(basis(K), -10:10, 100)
 
@@ -29,7 +29,7 @@ end
   @test_throws ErrorException rand!(b, basis(K), 1:100, -100)
 
   @inferred rand!(b, basis(K), 1:100)
-  @test_throws ErrorException rand!(b, nf_elem[], 1:100)
+  @test_throws ErrorException rand!(b, AbsSimpleNumFieldElem[], 1:100)
 end
 
 @testset "Polynomial" begin
@@ -136,19 +136,28 @@ end
   f = x^4 + 24*x^2+28
   K, a = number_field(f, "a", cached = false);
   g = x^8-1
-  @test length(factor(g, K)) == 4
+  @test length(factor(K, g)) == 4
 
   K, a = number_field(x^3 - 2, "a")
   Kx, x = polynomial_ring(K, "x")
   fa = factor(x^4+(1//2*a^2 + 1*a + 2)*x^3+(a^2 + 2*a + 2)*x^2+(1//2*a^2 + 1*a + 2)*x+1)
   @test length(fa) == 3
+
+  # 1072
+  R, x = polynomial_ring(QQ, "x");
+  F, z = number_field(x^2+1);
+  f = polynomial(F, [1, 2, 3])
+  facts = factor(f)
+  @test unit(facts) * prod(p^e for (p, e) in facts) == f
+  facs = factor_squarefree(f)
+  @test unit(facts) * prod(p^e for (p, e) in facts) == f
 end
 
 @testset "Root computation" begin
   Qx, x = QQ["x"]
   f = x^3-39*x-65
   K, a = number_field(f, "a")
-  r = @inferred roots(f, K)
+  r = @inferred roots(K, f)
   @test length(r) == 3
   @test all(iszero, (f(b) for b in r))
 end

@@ -1,6 +1,6 @@
 ################################################################################
 #
-#    NfOrd/TorsionUnits.jl : Torsion units in generic number field orders
+#    AbsSimpleNumFieldOrder/TorsionUnits.jl : Torsion units in generic number field orders
 #
 # This file is part of Hecke.
 #
@@ -32,8 +32,6 @@
 #
 ################################################################################
 
-export torsion_unit_group, torsion_units, torsion_units_generator, torsion_units_order
-
 ################################################################################
 #
 #  Torsion unit test
@@ -41,7 +39,7 @@ export torsion_unit_group, torsion_units, torsion_units_generator, torsion_units
 ################################################################################
 
 @doc raw"""
-    is_torsion_unit(x::NfOrdElem, checkisunit::Bool = false) -> Bool
+    is_torsion_unit(x::AbsSimpleNumFieldOrderElem, checkisunit::Bool = false) -> Bool
 
 Returns whether $x$ is a torsion unit, that is, whether there exists $n$ such
 that $x^n = 1$.
@@ -49,7 +47,7 @@ that $x^n = 1$.
 If `checkisunit` is `true`, it is first checked whether $x$ is a unit of the
 maximal order of the number field $x$ is lying in.
 """
-function is_torsion_unit(x::NfOrdElem, checkisunit::Bool = false)
+function is_torsion_unit(x::AbsSimpleNumFieldOrderElem, checkisunit::Bool = false)
   return is_torsion_unit(x.elem_in_nf, checkisunit)
 end
 
@@ -60,7 +58,7 @@ end
 ################################################################################
 
 @doc raw"""
-    torsion_unit_order(x::NfOrdElem, n::Int)
+    torsion_unit_order(x::AbsSimpleNumFieldOrderElem, n::Int)
 
 Given a torsion unit $x$ together with a multiple $n$ of its order, compute
 the order of $x$, that is, the smallest $k \in \mathbb Z_{\geq 1}$ such
@@ -68,7 +66,7 @@ that $x^k = 1$.
 
 It is not checked whether $x$ is a torsion unit.
 """
-function torsion_unit_order(x::NfOrdElem, n::Int)
+function torsion_unit_order(x::AbsSimpleNumFieldOrderElem, n::Int)
   return torsion_unit_order(x.elem_in_nf, n)
 end
 
@@ -115,30 +113,30 @@ end
 ################################################################################
 
 @doc raw"""
-    torsion_units(O::NfOrd) -> Vector{NfOrdElem}
+    torsion_units(O::AbsSimpleNumFieldOrder) -> Vector{AbsSimpleNumFieldOrderElem}
 
 Given an order $O$, compute the torsion units of $O$.
 """
-function torsion_units(O::T) where T <: Union{NfAbsOrd, NfRelOrd}
+function torsion_units(O::T) where T <: Union{AbsNumFieldOrder, RelNumFieldOrder}
   g, ord = torsion_units_gen_order(O)
   return powers(g, ord-1)
 end
 
 @doc raw"""
-    torsion_units_generator(O::NfOrd) -> NfOrdElem
+    torsion_units_generator(O::AbsSimpleNumFieldOrder) -> AbsSimpleNumFieldOrderElem
 
 Given an order $O$, compute a generator of the torsion units of $O$.
 """
-function torsion_units_generator(O::T) where T <: Union{NfAbsOrd, NfRelOrd}
+function torsion_units_generator(O::T) where T <: Union{AbsNumFieldOrder, RelNumFieldOrder}
   return torsion_units_gen_order(O)[1]
 end
 
 @doc raw"""
-    torsion_units_gen_order(O::NfOrd) -> NfOrdElem
+    torsion_units_gen_order(O::AbsSimpleNumFieldOrder) -> AbsSimpleNumFieldOrderElem
 
 Given an order $O$, compute a generator of the torsion units of $O$ as well as its order.
 """
-function torsion_units_gen_order(O::T) where T <: Union{NfAbsOrd, NfRelOrd}
+function torsion_units_gen_order(O::T) where T <: Union{AbsNumFieldOrder, RelNumFieldOrder}
   ord, g = _torsion_units_gen(nf(O))
   if is_maximal_known_and_maximal(O)
     return O(g), ord
@@ -167,12 +165,12 @@ function torsion_units_gen_order(O::T) where T <: Union{NfAbsOrd, NfRelOrd}
 end
 
 @doc raw"""
-    torsion_unit_group(O::NfOrd) -> GrpAb, Map
+    torsion_unit_group(O::AbsSimpleNumFieldOrder) -> GrpAb, Map
 
 Given an order $\mathcal O$, returns the torsion units as an abelian group $G$
 together with a map $G \to \mathcal O^\times$.
 """
-function torsion_unit_group(O::T) where T <: Union{NfAbsOrd, NfRelOrd}
+function torsion_unit_group(O::T) where T <: Union{AbsNumFieldOrder, RelNumFieldOrder}
   g, ord = torsion_units_gen_order(O)
   f = AbToNfOrdMultGrp(O, ord, O(g))
   return domain(f), f
@@ -185,7 +183,7 @@ end
 ################################################################################
 
 
-function _torsion_units_lattice_enum(O::NfOrd)
+function _torsion_units_lattice_enum(O::AbsSimpleNumFieldOrder)
   n = degree(O)
   K = nf(O)
   r1, r2 = signature(K)
@@ -228,7 +226,7 @@ function _torsion_units_lattice_enum(O::NfOrd)
 
     gram_found = true
 
-    @vprint :UnitGroup 1 "Computing Gram matrix with precision $p ... \n"
+    @vprintln :UnitGroup 1 "Computing Gram matrix with precision $p ..."
 
     for i in 1:n, j in 1:n
       M[i,j] = _t2_pairing(B[i], B[j], p)
@@ -244,12 +242,12 @@ function _torsion_units_lattice_enum(O::NfOrd)
     end
   end
 
-  @vprint :UnitGroup 1 "Gram matrix is $M\n"
+  @vprintln :UnitGroup 1 "Gram matrix is $M"
 
-  @vprint :UnitGroup 1 "Enumerating elements with T_2 bounded by $n ... \n"
+  @vprintln :UnitGroup 1 "Enumerating elements with T_2 bounded by $n ..."
   l = enumerate_using_gram(M, A(n))
 
-  R = Vector{NfOrdElem}()
+  R = Vector{AbsSimpleNumFieldOrderElem}()
 
   for i in l
     if O(i) == zero(O)
@@ -298,7 +296,7 @@ const _euler_phi_inverse_maximum =
 
 # One should/could also try to be closer to Algorithm 1
 # in Molin, "On the calculation of roots of unity in a number field"
-function _torsion_group_order_divisor(K::AnticNumberField)
+function _torsion_group_order_divisor(K::AbsSimpleNumField)
 
   if degree(K) <= 250
     upper_bound = _euler_phi_inverse_maximum[degree(K)]
@@ -356,7 +354,7 @@ function _torsion_group_order_divisor(K::AnticNumberField)
     else
       stable = 0
     end
-    if !divisible(ZZRingElem(degree(K)), euler_phi(m_new))
+    if !is_divisible_by(ZZRingElem(degree(K)), euler_phi(m_new))
       stable = 0
     end
 
@@ -418,7 +416,7 @@ function _torsion_group_order_divisor(K::NumField)
     else
       stable = 0
     end
-    if !divisible(ZZRingElem(absolute_degree(K)), euler_phi(m_new))
+    if !is_divisible_by(ZZRingElem(absolute_degree(K)), euler_phi(m_new))
       stable = 0
     end
 
@@ -431,7 +429,7 @@ function _torsion_group_order_divisor(K::NumField)
 end
 
 
-function _torsion_units_gen(K::AnticNumberField)
+function _torsion_units_gen(K::AbsSimpleNumField)
  return get_attribute!(K, :torsion_units) do
   r1, r2 = signature(K)
   if r1 > 0
@@ -462,7 +460,7 @@ function _torsion_units_gen(K::AnticNumberField)
     end
   end
   return ord, gen
- end::Tuple{Int, nf_elem}
+ end::Tuple{Int, AbsSimpleNumFieldElem}
 end
 
 function _torsion_units_gen(K::NumField)
@@ -486,7 +484,7 @@ function _torsion_units_gen(K::NumField)
     end
     for i = v:-1:1
       f = cyclotomic(Int(p)^i, x)
-      r = roots(f, K)
+      r = roots(K, f)
       if length(r) > 0
         mul!(gen, gen, r[1])
         ord *= Int(p)^(i)

@@ -17,7 +17,7 @@ function principal_generator_eichler(I::AlgAssRelOrdIdl)
 
       # Consider orders[i] as an ideal.
       # The basis pseudo-matrix is probably not in HNF, but we don't need this.
-      OO = ideal(A, basis_pmatrix(orders[i], copy = false), true)
+      OO = ideal(A, basis_pmatrix(orders[i], copy = false); M_in_hnf=true)
       r = lcm(r, denominator(OO, orders[j]))
     end
   end
@@ -125,7 +125,7 @@ function _eichler_find_transforming_unit_maximal(M::T, N::T) where { T <: Union{
 end
 
 # Finds at least n units in the order F.maximal_orders[order_num]
-function _find_some_units(F::FieldOracle{S, T, U, M}, order_num::Int, n::Int) where { S <: AbsAlgAss{nf_elem}, T, U, M }
+function _find_some_units(F::FieldOracle{S, T, U, M}, order_num::Int, n::Int) where { S <: AbstractAssociativeAlgebra{AbsSimpleNumFieldElem}, T, U, M }
   O = F.maximal_orders[order_num]
   units = Vector{elem_type(O)}()
   while length(units) < n
@@ -146,7 +146,7 @@ function _find_some_units(F::FieldOracle{S, T, U, M}, order_num::Int, n::Int) wh
   return units
 end
 
-function _eichler_find_transforming_unit_recurse(I::S, J::S, primes::Vector{T}) where { S <: Union{ AlgAssAbsOrdIdl, AlgAssRelOrdIdl }, T <: Union{ Int, ZZRingElem, NfAbsOrdIdl, NfRelOrdIdl } }
+function _eichler_find_transforming_unit_recurse(I::S, J::S, primes::Vector{T}) where { S <: Union{ AlgAssAbsOrdIdl, AlgAssRelOrdIdl }, T <: Union{ Int, ZZRingElem, AbsNumFieldOrderIdeal, RelNumFieldOrderIdeal } }
   if length(primes) == 1
     u = _eichler_find_transforming_unit_maximal(I, J)
     return elem_in_algebra(u, copy = false)
@@ -206,8 +206,6 @@ function _eichler_find_transforming_unit(I::AlgAssRelOrdIdl, J::AlgAssRelOrdIdl)
   return t
 end
 
-degree(F::Union{ fpField, Generic.ResidueField{ZZRingElem} }) = 1
-
 function get_coeff_fmpz!(x::fqPolyRepFieldElem, n::Int, z::ZZRingElem)
   ccall((:fmpz_set_ui, libflint), Nothing, (Ref{ZZRingElem}, UInt), z, ccall((:nmod_poly_get_coeff_ui, libflint), UInt, (Ref{fqPolyRepFieldElem}, Int), x, n))
   return z
@@ -215,16 +213,6 @@ end
 
 function get_coeff_fmpz!(x::FqPolyRepFieldElem, n::Int, z::ZZRingElem)
   ccall((:fmpz_poly_get_coeff_fmpz, libflint), Nothing, (Ref{ZZRingElem}, Ref{FqPolyRepFieldElem}, Int), z, x, n)
-  return z
-end
-
-function lift!(x::fpFieldElem, z::ZZRingElem)
-  ccall((:fmpz_set_ui, libflint), Nothing, (Ref{ZZRingElem}, UInt), z, x.data)
-  return z
-end
-
-function lift!(x::Generic.ResidueFieldElem{ZZRingElem}, z::ZZRingElem)
-  ccall((:fmpz_set, libflint), Nothing, (Ref{ZZRingElem}, Ref{ZZRingElem}), z, x.data)
   return z
 end
 
@@ -248,7 +236,7 @@ function find_path(generators::Vector{T}, v::T, w::T) where { T <: MatElem }
     return n
   end
 
-  function _weight(v::MatElem{T}, n::ZZRingElem, t::ZZRingElem, jmax::Int) where { T <: Union{ fpFieldElem, Generic.ResidueFieldElem{ZZRingElem} } }
+  function _weight(v::MatElem{T}, n::ZZRingElem, t::ZZRingElem, jmax::Int) where { T <: Union{ fpFieldElem, EuclideanRingResidueFieldElem{ZZRingElem} } }
     n = zero!(n)
     for i = 1:nrows(v)
       n = add!(n, n, lift!(v[i, 1], t))

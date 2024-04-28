@@ -41,7 +41,7 @@
 # A graph G consists of nested dictionaries to store edges with data attached.
 # Additionally, we keep track of the degree of each vertex in the G.degrees
 # field. Whenever we modify G by appending or deleting vertices, we check
-# wether the degree of a vertex becomes < 2. If so, we store the vertex in
+# whether the degree of a vertex becomes < 2. If so, we store the vertex in
 # G.new_low_degrees.
 
 function Base.show(io::IO, G::Graph{T, M}) where {T, M}
@@ -369,7 +369,7 @@ end
 function Base.show(io::IO, L::RelLattice{T, D}) where {T, D}
   print("Relation lattice for $T with underlying graph \n$(L.graph)\n")
   print("In weak dict: $(length(L.weak_vertices))\n")
-  print("In dict: $(length(L.block_gc))\n")
+  print("In dict: $(length(L.block_gc))")
 end
 
 # The finalizer, which must be attached to a every group in the lattice.
@@ -405,7 +405,7 @@ function Base.append!(L::RelLattice{T, D}, A::T) where {T, D}
 end
 
 # Add a map to a lattice of groups
-# .. sugar for ablian groups ...
+# .. sugar for abelian groups ...
 function Base.append!(L::GrpAbLattice, f::Map)
   return Base.append!(L, domain(f), codomain(f), f.map)
 end
@@ -471,7 +471,7 @@ function update!(L::RelLattice)
       Base.delete!(L.weak_vertices_rev, k)
       continue
     end
-    @assert L.weak_vertices_rev[k].value != nothing
+    @assert L.weak_vertices_rev[k].value !== nothing
     a = L.weak_vertices_rev[k].value
     @assert k == objectid(a)
     @assert L.graph.degrees[k] < 2
@@ -517,6 +517,10 @@ end
 # "overgroup" M. If so, the second return value is M and the third and fourth
 # return values describe the map from G to M and H to M respectively.
 function can_map_into_overstructure(L::RelLattice{T, D}, G::T, H::T) where {T, D}
+  if G === H
+    return true, G, L.make_id(G)::D, L.make_id(G)::D
+  end
+
   if !(G in keys(L.weak_vertices) && H in keys(L.weak_vertices))
     return false, G, L.zero, L.zero
   end
@@ -524,7 +528,7 @@ function can_map_into_overstructure(L::RelLattice{T, D}, G::T, H::T) where {T, D
   if b
     @assert pG[1] == pH[1]
     M = L.weak_vertices_rev[pG[1]].value::T
-    @assert M != nothing
+    @assert M !== nothing
 
     mG = eval_path(L, M, pG)
     mH = eval_path(L, M, pH)

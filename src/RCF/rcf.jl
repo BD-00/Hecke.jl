@@ -1,5 +1,3 @@
-export kummer_extension, ray_class_field, hilbert_class_field, prime_decomposition_type, defining_modulus
-
 add_verbosity_scope(:ClassField)
 add_assertion_scope(:ClassField)
 
@@ -11,7 +9,7 @@ add_assertion_scope(:ClassField)
 ###############################################################################
 
 @doc raw"""
-    number_field(CF::ClassField) -> NfRelNS{nf_elem}
+    number_field(CF::ClassField) -> RelNonSimpleNumField{AbsSimpleNumFieldElem}
 
 Given a (formal) abelian extension, compute the class field by finding defining
 polynomials for all prime power cyclic subfields.
@@ -27,7 +25,7 @@ function number_field(CF::ClassField{S, T}; redo::Bool = false, using_norm_relat
   ord = torsion_units_order(base_field(CF))
   G = codomain(CF.quotientmap)
   @assert is_snf(G)
-  q = GrpAbFinGenElem[G[i] for i=1:ngens(G)]
+  q = FinGenAbGroupElem[G[i] for i=1:ngens(G)]
   for i=1:ngens(G)
     o = G.snf[i]
     lo = factor(o)
@@ -46,15 +44,15 @@ function number_field(CF::ClassField{S, T}; redo::Bool = false, using_norm_relat
   if isempty(res)
     @assert isone(degree(CF))
     Ky = polynomial_ring(base_field(CF), "y", cached = false)[1]
-    CF.A = number_field(Generic.Poly{nf_elem}[gen(Ky)-1], check = false, cached = false)[1]
+    CF.A = number_field(Generic.Poly{AbsSimpleNumFieldElem}[gen(Ky)-1], check = false, cached = false)[1]
   else
-    CF.A = number_field(Generic.Poly{nf_elem}[x.A.pol for x = CF.cyc], check = false, cached = false)[1]
+    CF.A = number_field(Generic.Poly{AbsSimpleNumFieldElem}[x.A.pol for x = CF.cyc], check = false, cached = false)[1]
   end
   return CF.A
 end
 
-function ray_class_field_cyclic_pp(CF::ClassField{S, T}, mQ::GrpAbFinGenMap; over_subfield::Bool = false, using_stark_units::Bool = false) where {S, T}
-  @vprint :ClassField 1 "cyclic prime power class field of degree $(degree(CF))\n"
+function ray_class_field_cyclic_pp(CF::ClassField{S, T}, mQ::FinGenAbGroupHom; over_subfield::Bool = false, using_stark_units::Bool = false) where {S, T}
+  @vprintln :ClassField 1 "cyclic prime power class field of degree $(degree(CF))"
   CFpp = ClassField_pp{S, T}()
   CFpp.quotientmap = compose(CF.quotientmap, mQ)
   CFpp.rayclassgroupmap = CF.rayclassgroupmap
@@ -75,13 +73,13 @@ function ray_class_field_cyclic_pp(CFpp::ClassField_pp; using_stark_units::Bool 
       return CFpp
     end
   end
-  @vprint :ClassField 1 "computing the S-units...\n"
+  @vprintln :ClassField 1 "computing the S-units..."
   @vtime :ClassField 1 _rcf_S_units(CFpp)
-  @vprint :ClassField 1 "finding the Kummer extension...\n"
+  @vprintln :ClassField 1 "finding the Kummer extension..."
   @vtime :ClassField 1 _rcf_find_kummer(CFpp)
-  @vprint :ClassField 1 "reducing the generator...\n"
+  @vprintln :ClassField 1 "reducing the generator..."
   @vtime :ClassField 1 _rcf_reduce(CFpp)
-  @vprint :ClassField 1 "descending ...\n"
+  @vprintln :ClassField 1 "descending ..."
   @vtime :ClassField 1 _rcf_descent(CFpp)
   return CFpp
 end
@@ -92,8 +90,8 @@ end
 #
 ################################################################################
 
-function ray_class_field_cyclic_pp_Brauer(CF::ClassField{S, T}, mQ::GrpAbFinGenMap) where {S, T}
-  @vprint :ClassField 1 "cyclic prime power class field of degree $(order(codomain(mQ)))\n"
+function ray_class_field_cyclic_pp_Brauer(CF::ClassField{S, T}, mQ::FinGenAbGroupHom) where {S, T}
+  @vprintln :ClassField 1 "cyclic prime power class field of degree $(order(codomain(mQ)))"
   CFpp = ClassField_pp{S, T}()
   CFpp.quotientmap = compose(CF.quotientmap, mQ)
   CFpp.rayclassgroupmap = CF.rayclassgroupmap
@@ -110,24 +108,24 @@ function  ray_class_field_cyclic_pp_Brauer(CFpp::ClassField_pp{S, T}) where {S, 
   @vtime :ClassField 1 OCE = maximal_order(absolute_simple_field(CE))
   @vtime :ClassField 1 lll(OCE)
 
-  @vprint :ClassField 1 "computing the S-units...\n"
+  @vprintln :ClassField 1 "computing the S-units..."
   @vtime :ClassField 1 _rcf_S_units_using_Brauer(CFpp)
   mr = CFpp.rayclassgroupmap
   mq = CFpp.quotientmap
-  KK = kummer_extension(e, FacElem{nf_elem, AnticNumberField}[CFpp.a])
+  KK = kummer_extension(e, FacElem{AbsSimpleNumFieldElem, AbsSimpleNumField}[CFpp.a])
   ng, mng = norm_group(KK, CE.mp[2], mr)
   attempt = 1
   while !iszero(mng*mq)
     attempt += 1
-    @vprint :ClassField 1 "attempt number $(attempt)\n"
+    @vprintln :ClassField 1 "attempt number $(attempt)"
     _rcf_S_units_enlarge(CE, CFpp)
-    KK = kummer_extension(e, FacElem{nf_elem, AnticNumberField}[CFpp.a])
+    KK = kummer_extension(e, FacElem{AbsSimpleNumFieldElem, AbsSimpleNumField}[CFpp.a])
     ng, mng = norm_group(KK, CE.mp[2], mr)
   end
 
-  @vprint :ClassField 1 "reducing the generator...\n"
+  @vprintln :ClassField 1 "reducing the generator..."
   @vtime :ClassField 1 _rcf_reduce(CFpp)
-  @vprint :ClassField 1 "descending ...\n"
+  @vprintln :ClassField 1 "descending ..."
   @vtime :ClassField 1 _rcf_descent(CFpp)
   return CFpp
 end
@@ -148,7 +146,7 @@ function _rcf_S_units_enlarge(CE, CF::ClassField_pp)
   end
   e = degree(CF)
   @vtime :ClassField 3 S, mS = NormRel._sunit_group_fac_elem_quo_via_brauer(nf(OK), lP, e, saturate_units = true)
-  KK = kummer_extension(e, FacElem{nf_elem, AnticNumberField}[mS(S[i]) for i=1:ngens(S)])
+  KK = kummer_extension(e, FacElem{AbsSimpleNumFieldElem, AbsSimpleNumField}[mS(S[i]) for i=1:ngens(S)])
   CF.bigK = KK
   lf = factor(minimum(defining_modulus(CF)[1]))
   lfs = Set(collect(keys(lf.fac)))
@@ -161,11 +159,11 @@ end
 function _rcf_S_units_using_Brauer(CF::ClassField_pp)
 
   f = defining_modulus(CF)[1]
-  @vprint :ClassField 2 "Kummer extension with modulus $f\n"
+  @vprintln :ClassField 2 "Kummer extension with modulus $f"
   k1 = base_field(CF)
 
   #@assert Hecke.is_prime_power(e)
-  @vprint :ClassField 2 "Adjoining the root of unity\n"
+  @vprintln :ClassField 2 "Adjoining the root of unity"
   C = cyclotomic_extension(k1, degree(CF))
   @vtime :ClassField 2 automorphism_list(C, copy = false)
   G, mG = automorphism_group(C.Ka)
@@ -195,13 +193,13 @@ function _s_unit_for_kummer_using_Brauer(C::CyclotomicExt, f::ZZRingElem)
     end
   end
   K = absolute_simple_field(C)
-  @vprint :ClassField 2 "Maximal order of cyclotomic extension\n"
+  @vprintln :ClassField 2 "Maximal order of cyclotomic extension"
   ZK = maximal_order(K)
   if isdefined(ZK, :lllO)
-    ZK = ZK.lllO::NfOrd
+    ZK = ZK.lllO::AbsSimpleNumFieldOrder
   end
 
-  lP = Hecke.NfOrdIdl[]
+  lP = Hecke.AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}[]
 
   for p = keys(lf.fac)
     #I remove the primes that can't be in the conductor
@@ -224,9 +222,9 @@ function _s_unit_for_kummer_using_Brauer(C::CyclotomicExt, f::ZZRingElem)
       end
     end
   end
-  @vprint :ClassField 3 "Computing S-units with $(length(lP)) primes\n"
-  @vtime :ClassField 3 S, mS = NormRel._sunit_group_fac_elem_quo_via_brauer(C.Ka, lP, e, saturate_units = true)::Tuple{GrpAbFinGen, MapSUnitGrpFacElem}
-  KK = kummer_extension(e, FacElem{nf_elem, AnticNumberField}[mS(S[i]) for i = 1:ngens(S)])
+  @vprintln :ClassField 3 "Computing S-units with $(length(lP)) primes"
+  @vtime :ClassField 3 S, mS = NormRel._sunit_group_fac_elem_quo_via_brauer(C.Ka, lP, e, saturate_units = true)::Tuple{FinGenAbGroup, MapSUnitGrpFacElem}
+  KK = kummer_extension(e, FacElem{AbsSimpleNumFieldElem, AbsSimpleNumField}[mS(S[i]) for i = 1:ngens(S)])
   C.kummer_exts[lfs] = (lP, KK)
   return lP, KK
 end
@@ -241,9 +239,9 @@ function find_gens(mR::Map, S::PrimesSet, cp::ZZRingElem=ZZRingElem(1))
 # mR: SetIdl -> GrpAb (inv of ray_class_group or Frobenius or so)
   ZK = order(domain(mR))
   R = codomain(mR)
-  sR = GrpAbFinGenElem[]
+  sR = FinGenAbGroupElem[]
 #  lp = elem_type(domain(mR))[]
-  lp = NfOrdIdl[]
+  lp = AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}[]
 
   q, mq = quo(R, sR, false)
   s, ms = snf(q)
@@ -254,7 +252,7 @@ function find_gens(mR::Map, S::PrimesSet, cp::ZZRingElem=ZZRingElem(1))
     if cp % p == 0 || index(ZK) % p == 0
       continue
     end
-    @vprint :ClassField 2 "doing $p\n"
+    @vprintln :ClassField 2 "doing $p"
     lP = prime_decomposition(ZK, p)
 
     f=R[1]
@@ -301,7 +299,7 @@ function find_gens_descent(mR::Map, A::ClassField_pp, cp::ZZRingElem)
   C = cyclotomic_extension(nf(ZK), degree(A))
   R = codomain(mR)
   Zk = order(codomain(A.rayclassgroupmap))
-  sR = GrpAbFinGenElem[]
+  sR = FinGenAbGroupElem[]
   lp = elem_type(domain(mR))[]
   q, mq = quo(R, sR, false)
   s, ms = snf(q)
@@ -309,7 +307,7 @@ function find_gens_descent(mR::Map, A::ClassField_pp, cp::ZZRingElem)
   PPS = A.bigK.frob_gens[1]
   for p in PPS
     P = intersect_prime(C.mp[2], p, Zk)
-    local f::GrpAbFinGenElem
+    local f::FinGenAbGroupElem
     try
       f = mR(P)
     catch e
@@ -344,14 +342,14 @@ function find_gens_descent(mR::Map, A::ClassField_pp, cp::ZZRingElem)
   end
 
   if degree(C.Kr) != 1
-    RR = residue_ring(FlintZZ, degree(A))
+    RR = residue_ring(FlintZZ, degree(A))[1]
     U, mU = unit_group(RR)
     if degree(C.Kr) < order(U)  # there was a common subfield, we
                               # have to pass to a subgroup
 
       f = C.Kr.pol
       # Can do better. If the group is cyclic (e.g. if p!=2), we already know the subgroup!
-      s, ms = sub(U, GrpAbFinGenElem[x for x in U if iszero(f(gen(C.Kr)^Int(lift(mU(x)))))], false)
+      s, ms = sub(U, FinGenAbGroupElem[x for x in U if iszero(f(gen(C.Kr)^Int(lift(mU(x)))))], false)
       ss, mss = snf(s)
       U = ss
       #mg = mg*ms*mss
@@ -365,7 +363,7 @@ function find_gens_descent(mR::Map, A::ClassField_pp, cp::ZZRingElem)
         if mod(cp, p) == 0 || mod(index(ZK), p) == 0
           continue
         end
-        @vprint :ClassField 2 "Computing Frobenius over $p\n"
+        @vprintln :ClassField 2 "Computing Frobenius over $p"
         lP = prime_decomposition(ZK, p)
 
         f = R[1]
@@ -400,13 +398,13 @@ function find_gens_descent(mR::Map, A::ClassField_pp, cp::ZZRingElem)
     return lp, sR
   end
 
-  @vprint :ClassField 3 "Bad Case in Descent\n"
+  @vprintln :ClassField 3 "Bad Case in Descent"
   S = PrimesSet(300, -1)
   for p in S
     if cp % p == 0 || index(ZK) % p == 0
       continue
     end
-    @vprint :ClassField 2 "Computing Frobenius over $p\n"
+    @vprintln :ClassField 2 "Computing Frobenius over $p"
     lP = prime_decomposition(ZK, p)
 
     f=R[1]
@@ -456,11 +454,11 @@ end
 function _rcf_S_units(CF::ClassField_pp)
 
   f = defining_modulus(CF)[1]
-  @vprint :ClassField 2 "Kummer extension with modulus $f\n"
+  @vprintln :ClassField 2 "Kummer extension with modulus $f"
   k1 = base_field(CF)
 
   #@assert Hecke.is_prime_power(e)
-  @vprint :ClassField 2 "Adjoining the root of unity\n"
+  @vprintln :ClassField 2 "Adjoining the root of unity"
   C = cyclotomic_extension(k1, degree(CF))
 
   #We could use f, but we would have to factor it.
@@ -482,16 +480,16 @@ function _s_unit_for_kummer(C::CyclotomicExt, f::ZZRingElem)
     end
   end
   K = absolute_simple_field(C)
-  @vprint :ClassField 2 "Maximal order of cyclotomic extension\n"
+  @vprintln :ClassField 2 "Maximal order of cyclotomic extension"
   ZK = maximal_order(K)
-  @vprint :ClassField 2 "Class group of cyclotomic extension: $K\n"
+  @vprintln :ClassField 2 "Class group of cyclotomic extension: $K"
   c, mc = class_group(ZK)
   allow_cache!(mc)
-  @vprint :ClassField 2 "... $c\n"
+  @vprintln :ClassField 2 "... $c"
   c, mq = quo(c, e, false)
   mc = compose(pseudo_inv(mq), mc)
 
-  lP = Hecke.NfOrdIdl[]
+  lP = Hecke.AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}[]
 
   for p = keys(lf.fac)
      #I remove the primes that can't be in the conductor
@@ -503,7 +501,7 @@ function _s_unit_for_kummer(C::CyclotomicExt, f::ZZRingElem)
      end
   end
 
-  g = Vector{GrpAbFinGenElem}(undef, length(lP))
+  g = Vector{FinGenAbGroupElem}(undef, length(lP))
   for i = 1:length(lP)
     g[i] = preimage(mc, lP[i])
   end
@@ -512,16 +510,16 @@ function _s_unit_for_kummer(C::CyclotomicExt, f::ZZRingElem)
   mc = compose(pseudo_inv(mq), mc)
 
   #@vtime :ClassField 3
-  lP = vcat(lP, find_gens(pseudo_inv(mc), PrimesSet(100, -1))[1])::Vector{NfOrdIdl}
-  @vprint :ClassField 2 "using $lP of length $(length(lP)) for S-units\n"
+  lP = vcat(lP, find_gens(pseudo_inv(mc), PrimesSet(100, -1))[1])::Vector{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}}
+  @vprintln :ClassField 2 "using $lP of length $(length(lP)) for S-units"
   if isempty(lP)
     U, mU = unit_group_fac_elem(ZK)
-    KK = kummer_extension(e, FacElem{nf_elem, AnticNumberField}[mU(U[i]) for i = 1:ngens(U)])
+    KK = kummer_extension(e, FacElem{AbsSimpleNumFieldElem, AbsSimpleNumField}[mU(U[i]) for i = 1:ngens(U)])
   else
     #@vtime :ClassField 2
     S, mS = Hecke.sunit_group_fac_elem(lP)
     #@vtime :ClassField 2
-    KK = kummer_extension(e, FacElem{nf_elem, AnticNumberField}[mS(S[i]) for i=1:ngens(S)])
+    KK = kummer_extension(e, FacElem{AbsSimpleNumFieldElem, AbsSimpleNumField}[mS(S[i]) for i=1:ngens(S)])
   end
   C.kummer_exts[lfs] = (lP, KK)
   return lP, KK
@@ -568,7 +566,7 @@ end
 # prime ideals, the ideals are coprime to cp and ==1 mod n
 
 function build_map(CF::ClassField_pp, K::KummerExt, c::CyclotomicExt)
-  #mR should be GrpAbFinGen -> IdlSet
+  #mR should be FinGenAbGroup -> IdlSet
   #          probably be either "the rcg"
   #          or a compositum, where the last component is "the rcg"
   # we need this to get the defining modulus - for coprime testing
@@ -584,7 +582,7 @@ function build_map(CF::ClassField_pp, K::KummerExt, c::CyclotomicExt)
   #@vtime :ClassField 3
   lp, sG = find_gens(K, Sp, cp)
   G = K.AutG
-  sR = Vector{GrpAbFinGenElem}(undef, length(lp))
+  sR = Vector{FinGenAbGroupElem}(undef, length(lp))
   #@vtime :ClassField 3
   for i = 1:length(lp)
     p = intersect_nonindex(mp, lp[i], Zk)
@@ -609,11 +607,11 @@ function _rcf_find_kummer(CF::ClassField_pp{S, T}) where {S, T}
   #  return nothing
   #end
   f = defining_modulus(CF)[1]
-  @vprint :ClassField 2 "Kummer extension with modulus $f\n"
+  @vprintln :ClassField 2 "Kummer extension with modulus $f"
   k1 = base_field(CF)
 
   #@assert Hecke.is_prime_power(e)
-  @vprint :ClassField 2 "Adjoining the root of unity\n"
+  @vprintln :ClassField 2 "Adjoining the root of unity"
   C = cyclotomic_extension(k1, degree(CF))
 
   #We could use f, but we would have to factor it.
@@ -621,9 +619,9 @@ function _rcf_find_kummer(CF::ClassField_pp{S, T}) where {S, T}
   #the valuations of the ideal
   KK = CF.bigK
   lP = CF.sup
-  @vprint :ClassField 2 "building Artin map for the large Kummer extension\n"
+  @vprintln :ClassField 2 "building Artin map for the large Kummer extension"
   @vtime :ClassField 2 h = build_map(CF, KK, C)
-  @vprint :ClassField 2 "... done\n"
+  @vprintln :ClassField 2 "... done"
 
   #TODO:
   #If the s-units are not large enough, the map might be trivial
@@ -643,14 +641,13 @@ function _rcf_find_kummer(CF::ClassField_pp{S, T}) where {S, T}
   #                            = z^(sum a[i] n[i]) x
   # thus it works iff sum a[i] n[i] = 0
   # for all a in the kernel
-  R = residue_ring(FlintZZ, C.n, cached=false)
+  R = residue_ring(FlintZZ, C.n, cached=false)[1]
   M = change_base_ring(R, mk.map)
-  i, l = right_kernel(M)
-  @assert i > 0
+  l = kernel(M; side = :right)
   n = lift(l)
   e1 = degree(CF)
-  N = GrpAbFinGen(ZZRingElem[ZZRingElem(e1) for j=1:nrows(n)])
-  s, ms = sub(N, GrpAbFinGenElem[N(ZZRingElem[n[j, ind] for j=1:nrows(n)]) for ind=1:i], false)
+  N = FinGenAbGroup(ZZRingElem[ZZRingElem(e1) for j=1:nrows(n)])
+  s, ms = sub(N, FinGenAbGroupElem[N(ZZRingElem[n[j, ind] for j=1:nrows(n)]) for ind=1:ncols(n)], false)
   ms = Hecke.make_domain_snf(ms)
   H = domain(ms)
   @hassert :ClassField 1 is_cyclic(H)
@@ -660,9 +657,9 @@ function _rcf_find_kummer(CF::ClassField_pp{S, T}) where {S, T}
     c = div(ZZRingElem(e1), o)
   end
   g = ms(H[1])
-  @vprint :ClassField 2 "g = $g\n"
-  #@vprint :ClassField 2 "final $n of order $o and e=$e\n"
-  a = FacElem(Dict{nf_elem, ZZRingElem}(one(C.Ka) => ZZRingElem(1)))
+  @vprintln :ClassField 2 "g = $g"
+  #@vprintln :ClassField 2 "final $n of order $o and e=$e"
+  a = FacElem(Dict{AbsSimpleNumFieldElem, ZZRingElem}(one(C.Ka) => ZZRingElem(1)))
   o2 = div(o, 2)
   for i = 1:ngens(N)
     eeee = div(mod(g[i], ZZRingElem(e1)), c)
@@ -671,7 +668,7 @@ function _rcf_find_kummer(CF::ClassField_pp{S, T}) where {S, T}
     end
     mul!(a, a, KK.gen[i]^eeee)
   end
-  #@vprint :ClassField 2 "generator $a\n"
+  #@vprintln :ClassField 2 "generator $a"
   CF.a = a
   CF.sup_known = true
   CF.o = o
@@ -693,15 +690,15 @@ function _find_prim_elem(CF::ClassField_pp, AutA)
   AutA_gen = CF.AutG
   A = domain(AutA_gen[1])
   pe = gen(A)
-  Auto = Dict{GrpAbFinGenElem, NfRelElem{nf_elem}}(find_orbit(AutA_gen, AutA, pe))
+  Auto = Dict{FinGenAbGroupElem, RelSimpleNumFieldElem{AbsSimpleNumFieldElem}}(find_orbit(AutA_gen, AutA, pe))
   if degree(CF) != degree(A)
     #In this case, gen(A) might not be primitive...
     while length(Auto) != length(unique(values(Auto)))
       pe += gen(base_field(A))
-      Auto = Dict{GrpAbFinGenElem, NfRelElem{nf_elem}}(find_orbit(AutA_gen, AutA, pe))
+      Auto = Dict{FinGenAbGroupElem, RelSimpleNumFieldElem{AbsSimpleNumFieldElem}}(find_orbit(AutA_gen, AutA, pe))
     end
   end
-  @vprint :ClassField 2 "have action on the primitive element!!!\n"
+  @vprintln :ClassField 2 "have action on the primitive element!!!"
   return pe, Auto
 end
 
@@ -710,7 +707,7 @@ function find_orbit(auts, AutG, x)
   S = gens(AutG)
   t = ngens(AutG)
   order = 1
-  elements = Tuple{GrpAbFinGenElem, NfRelElem{nf_elem}}[(id(AutG), x)]
+  elements = Tuple{FinGenAbGroupElem, RelSimpleNumFieldElem{AbsSimpleNumFieldElem}}[(id(AutG), x)]
   g = S[1]
 
   while !iszero(g)
@@ -761,7 +758,7 @@ function _aut_A_over_k(C::CyclotomicExt, CF::ClassField_pp)
     2 for n=2^k, k>2
 =#
   e = degree(CF)
-  g, mg = unit_group(residue_ring(FlintZZ, e, cached=false))
+  g, mg = unit_group(residue_ring(FlintZZ, e, cached=false)[1])
   @assert is_snf(g)
   @assert (e%8 == 0 && ngens(g)==2) || ngens(g) <= 1
 
@@ -773,37 +770,37 @@ function _aut_A_over_k(C::CyclotomicExt, CF::ClassField_pp)
     @assert order(g) % degree(Kr) == 0
     f = Kr.pol
     # Can do better. If the group is cyclic (e.g. if p!=2), we already know the subgroup!
-    s, ms = sub(g, GrpAbFinGenElem[x for x in g if iszero(f(gen(Kr)^Int(lift(mg(x)))))], false)
+    s, ms = sub(g, FinGenAbGroupElem[x for x in g if iszero(f(gen(Kr)^Int(lift(mg(x)))))], false)
     ss, mss = snf(s)
     g = ss
     #mg = mg*ms*mss
     mg = mss * ms * mg
   end
 
-  @vprint :ClassField 2 "building automorphism group over ground field...\n"
+  @vprintln :ClassField 2 "building automorphism group over ground field..."
   ng = ngens(g)+1
-  AutA_gen = Vector{Hecke.NfRelToNfRelMor_nf_elem_nf_elem}(undef, ng)
+  AutA_gen = Vector{morphism_type(RelSimpleNumField{AbsSimpleNumFieldElem}, RelSimpleNumField{AbsSimpleNumFieldElem})}(undef, ng)
   AutA_rel = zero_matrix(FlintZZ, ng, ng)
   zeta = C.mp[1]\(gen(Kr))
   n = degree(A)
   @assert e % n == 0
 
-  @vprint :ClassField 2 "... the trivial one (Kummer)\n"
+  @vprintln :ClassField 2 "... the trivial one (Kummer)"
   tau = hom(A, A, zeta^div(e, n)*gen(A), check = false)
   AutA_gen[1] = tau
 
   AutA_rel[1,1] = n  # the order of tau
 
 
-  @vprint :ClassField 2 "... need to extend $(ngens(g)) from the cyclo ext\n"
+  @vprintln :ClassField 2 "... need to extend $(ngens(g)) from the cyclo ext"
   for i = 1:ngens(g)
     si = hom(Kr, Kr, gen(Kr)^Int(lift(mg(g[i]))), check = false)
-    @vprint :ClassField 2 "... extending zeta -> zeta^$(mg(g[i]))\n"
+    @vprintln :ClassField 2 "... extending zeta -> zeta^$(mg(g[i]))"
     to_be_ext = hom(K, K, C.mp[1]\(si(image(C.mp[1], gen(K)))), check = false)
     sigma = _extend_auto(A, to_be_ext, Int(lift(mg(g[i]))))
     AutA_gen[i+1] = sigma
 
-    @vprint :ClassField 2 "... finding relation ...\n"
+    @vprintln :ClassField 2 "... finding relation ..."
     m = gen(A)
     for j = 1:Int(order(g[i]))
       m = sigma(m)
@@ -820,7 +817,7 @@ function _aut_A_over_k(C::CyclotomicExt, CF::ClassField_pp)
       j += 1
       @assert j <= e
     end
-    @vprint :ClassField 2 "... as tau^$(j) == sigma_$i^$(order(g[i]))\n"
+    @vprintln :ClassField 2 "... as tau^$(j) == sigma_$i^$(order(g[i]))"
     AutA_rel[i+1, 1] = -j
     AutA_rel[i+1, i+1] = order(g[i])
   end
@@ -835,7 +832,7 @@ function auts_in_snf!(CF::ClassField_pp)
   G = abelian_group(CF.AutR)
   S, mS = snf(G)
   auts = CF.AutG
-  gens = Vector{NfRelToNfRelMor_nf_elem_nf_elem}(undef, ngens(S))
+  gens = Vector{morphism_type(RelSimpleNumField{AbsSimpleNumFieldElem}, RelSimpleNumField{AbsSimpleNumFieldElem})}(undef, ngens(S))
   for i = 1:ngens(S)
     el = mS(S[i])
     aut = id_hom(domain(CF.AutG[1]))
@@ -849,7 +846,7 @@ function auts_in_snf!(CF::ClassField_pp)
   return nothing
 end
 
-function _extend_auto(K::Hecke.NfRel{nf_elem}, h::Hecke.NfToNfMor, r::Int = -1)
+function _extend_auto(K::Hecke.RelSimpleNumField{AbsSimpleNumFieldElem}, h::NumFieldHom{AbsSimpleNumField, AbsSimpleNumField}, r::Int = -1)
   @hassert :ClassField 1 is_kummer_extension(K)
   #@assert is_kummer_extension(K)
   k = base_field(K)
@@ -874,7 +871,7 @@ function _extend_auto(K::Hecke.NfRel{nf_elem}, h::Hecke.NfToNfMor, r::Int = -1)
   end
 
   a = -coeff(K.pol, 0)
-  dict = Dict{nf_elem, ZZRingElem}()
+  dict = Dict{AbsSimpleNumFieldElem, ZZRingElem}()
   dict[h(a)] = 1
   if r <= div(degree(K), 2)
     add_to_key!(dict, a, -r)
@@ -901,7 +898,7 @@ function _rcf_descent(CF::ClassField_pp)
     return nothing
   end
 
-  @vprint :ClassField 2 "Descending ...\n"
+  @vprintln :ClassField 2 "Descending ..."
 
   e = degree(CF)
   k = base_field(CF)
@@ -921,7 +918,7 @@ function _rcf_descent(CF::ClassField_pp)
   ZK = maximal_order(CK)
 
   n = degree(A)
-  #@vprint :ClassField 2 "Automorphism group (over ground field) $AutA\n"
+  #@vprintln :ClassField 2 "Automorphism group (over ground field) $AutA"
   _aut_A_over_k(CE, CF)
 
   AutA_gen = CF.AutG
@@ -929,23 +926,23 @@ function _rcf_descent(CF::ClassField_pp)
   # now we need a primitive element for A/k
   # mostly, gen(A) will do
 
-  @vprint :ClassField 2 "\nnow the fix group...\n"
+  @vprintln :ClassField 2 "\nnow the fix group..."
   if is_cyclic(AutA)  # the subgroup is trivial to find!
     @assert is_snf(AutA)
     #Notice that this implies that the target field and the cyclotomic extension are disjoint.
-    @vprint :ClassField 2 ".. trivial as automorphism group is cyclic\n"
+    @vprintln :ClassField 2 ".. trivial as automorphism group is cyclic"
     s, ms = sub(AutA, e, false)
     ss, mss = snf(s)
     ms = mss*ms
-    gss = NfRelToNfRelMor_nf_elem_nf_elem[AutA_gen[1]^e]
-    @vprint :ClassField 2 "computing orbit of primitive element\n"
+    gss = morphism_type(RelSimpleNumField{AbsSimpleNumFieldElem}, RelSimpleNumField{AbsSimpleNumFieldElem})[AutA_gen[1]^e]
+    @vprintln :ClassField 2 "computing orbit of primitive element"
     pe = gen(A)
-    os = NfRelElem{nf_elem}[x[2] for x in find_orbit(gss, ss, pe)]
+    os = RelSimpleNumFieldElem{AbsSimpleNumFieldElem}[x[2] for x in find_orbit(gss, ss, pe)]
   else
-    @vprint :ClassField 2 "Computing automorphisms of the extension and orbit of primitive element\n"
+    @vprintln :ClassField 2 "Computing automorphisms of the extension and orbit of primitive element"
     pe, Auto = _find_prim_elem(CF, AutA)
 
-    @vprint :ClassField 2 ".. interesting...\n"
+    @vprintln :ClassField 2 ".. interesting..."
     # want: hom: AutA = Gal(A/k) -> Gal(K/k) = domain(mq)
     # K is the target field.
     # idea: take primes p in k and compare
@@ -954,14 +951,14 @@ function _rcf_descent(CF::ClassField_pp)
 
     local canFrob
     let CE = CE, ZK = ZK, n = n, pe = pe, Auto = Auto
-      function canFrob(p::NfOrdIdl)
+      function canFrob(p::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem})
         lP = prime_decomposition(CE.mp[2], p)
         P = lP[1][1]
         F, mF = ResidueFieldSmall(ZK, P)
         Ft = polynomial_ring(F, cached = false)[1]
         mFp = extend_easy(mF, CE.Ka)
         ap = image(mFp, CF.a)
-        @vprint :ClassField 1 "projection successful\n"
+        @vprintln :ClassField 1 "projection successful"
         polcoeffs = Vector{elem_type(F)}(undef, n+1)
         polcoeffs[1] = -ap
         for i = 2:n
@@ -969,7 +966,7 @@ function _rcf_descent(CF::ClassField_pp)
         end
         polcoeffs[n+1] = one(F)
         pol = Ft(polcoeffs)
-        Ap = residue_ring(Ft, pol, cached = false)
+        Ap = residue_ring(Ft, pol, cached = false)[1]
         xpecoeffs = Vector{elem_type(F)}(undef, n)
         for i = 0:n-1
           xpecoeffs[i+1] = image(mFp, coeff(pe, i))
@@ -977,7 +974,7 @@ function _rcf_descent(CF::ClassField_pp)
         xpe = Ft(xpecoeffs)
         imF = Ap(xpe)^norm(p)
 
-        res = GrpAbFinGenElem[]
+        res = FinGenAbGroupElem[]
         for (ky, v) in Auto
           cfs = Vector{fqPolyRepFieldElem}(undef, n)
           for i = 0:n-1
@@ -988,7 +985,7 @@ function _rcf_descent(CF::ClassField_pp)
           if kp == imF
             push!(res, ky)
             if length(res) >1
-              @vprint :ClassField 1 "res has length > 1\n"
+              @vprintln :ClassField 1 "res has length > 1"
               throw(BadPrime(p))
             end
           end
@@ -997,19 +994,19 @@ function _rcf_descent(CF::ClassField_pp)
         error("Frob not found")
       end
     end
-    @vprint :ClassField 2 "finding Artin map...\n"
+    @vprintln :ClassField 2 "finding Artin map..."
     #TODO can only use non-indx primes, easy primes...
     cp = lcm([minimum(defining_modulus(CF)[1]), index(Zk), index(ZK)])
-    #@vtime :ClassField 2 lp, f1 = find_gens(MapFromFunc(canFrob, IdealSet(Zk), AutA),
+    #@vtime :ClassField 2 lp, f1 = find_gens(MapFromFunc(IdealSet(Zk), AutA, canFrob),
     #                  PrimesSet(200, -1), cp)
-    lp, f1 = find_gens_descent(MapFromFunc(canFrob, IdealSet(Zk), AutA), CF, cp)
-    imgs = GrpAbFinGenElem[image(CF.quotientmap, preimage(CF.rayclassgroupmap, p1)) for p1 = lp]
+    lp, f1 = find_gens_descent(MapFromFunc(IdealSet(Zk), AutA, canFrob), CF, cp)
+    imgs = FinGenAbGroupElem[image(CF.quotientmap, preimage(CF.rayclassgroupmap, p1)) for p1 = lp]
     h = hom(f1, imgs)
     @hassert :ClassField 1 is_surjective(h)
     s, ms = kernel(h, false)
-    @vprint :ClassField 2 "... done, have subgroup!\n"
-    @vprint :ClassField 2 "computing orbit of primitive element\n"
-    os = NfRelElem{nf_elem}[Auto[ms(j)] for j in s]
+    @vprintln :ClassField 2 "... done, have subgroup!"
+    @vprintln :ClassField 2 "computing orbit of primitive element"
+    os = RelSimpleNumFieldElem{AbsSimpleNumFieldElem}[Auto[ms(j)] for j in s]
   end
 
   q, mq = quo(AutA, ms.map, false)
@@ -1022,7 +1019,7 @@ function _rcf_descent(CF::ClassField_pp)
       gsq *= AutA_gen[i]^Int(el_in_q[i])
     end
   end
-  genssq = NfRelToNfRelMor_nf_elem_nf_elem[gsq]
+  genssq = morphism_type(RelSimpleNumField{AbsSimpleNumFieldElem}, RelSimpleNumField{AbsSimpleNumFieldElem})[gsq]
 
 
   @assert Int(order(q)) == degree(CF)
@@ -1032,8 +1029,8 @@ function _rcf_descent(CF::ClassField_pp)
   inc_map = CE.mp[1]
   let inc_map = inc_map, AutA = AutA, e = e
 
-    function charpoly(a::NfRelElem{nf_elem})
-      tr_in_K = Vector{nf_elem}(undef, e)
+    function charpoly(a::RelSimpleNumFieldElem{AbsSimpleNumFieldElem})
+      tr_in_K = Vector{AbsSimpleNumFieldElem}(undef, e)
       tr_err = divexact(order(AutA), e)
       el = one(parent(a))
       @vtime :ClassField 2 for i = 2:e+1
@@ -1047,7 +1044,7 @@ function _rcf_descent(CF::ClassField_pp)
 
 
 
-  @vprint :ClassField 2 "trying relative trace\n"
+  @vprintln :ClassField 2 "trying relative trace"
   @assert length(os) > 0
   t = os[1]
   for i = 2:length(os)
@@ -1055,14 +1052,14 @@ function _rcf_descent(CF::ClassField_pp)
   end
   CF.pe = t
   #now the minpoly of t - via Galois as this is easiest to implement...
-  @vprint :ClassField 2 "char poly...\n"
+  @vprintln :ClassField 2 "char poly..."
   @vtime :ClassField 2 f2 = charpoly(t)
-  @vprint :ClassField 2 "... done\n"
+  @vprintln :ClassField 2 "... done"
 
   if !is_squarefree(f2)
-    os1 = NfRelElem{nf_elem}[elem for elem in os]
+    os1 = RelSimpleNumFieldElem{AbsSimpleNumFieldElem}[elem for elem in os]
     while !is_squarefree(f2)
-      @vprint :ClassField 2 "trying relative trace of powers\n"
+      @vprintln :ClassField 2 "trying relative trace of powers"
       for i = 1:length(os)
         os1[i] *= os[i]
       end
@@ -1072,9 +1069,9 @@ function _rcf_descent(CF::ClassField_pp)
       end
       CF.pe = t
       #now the minpoly of t - via Galois as this is easiest to implement...
-      @vprint :ClassField 2 "min poly...\n"
+      @vprintln :ClassField 2 "min poly..."
       f2 = charpoly(t)
-      @vprint :ClassField 2 "... done\n"
+      @vprintln :ClassField 2 "... done"
     end
   end
   CF.A = number_field(f2, check = false, cached = false)[1]
@@ -1107,21 +1104,21 @@ end
 ###############################################################################
 
 @doc raw"""
-    ring_class_group(O::NfAbsOrd)
+    ring_class_group(O::AbsNumFieldOrder)
 
 The ring class group (Picard group) of $O$.
 """
-ring_class_group(O::NfAbsOrd) = picard_group(O)
+ring_class_group(O::AbsNumFieldOrder) = picard_group(O)
 
 
 @doc raw"""
-    ring_class_field(O::NfAbsOrd) -> ClassField
+    ring_class_field(O::AbsNumFieldOrder) -> ClassField
 
 The ring class field of $O$, i.e. the maximal abelian extension ramified
 only at primes dividing the conductor with the automorphism group
 isomorphic to the Picard group.
 """
-function ring_class_field(O::NfAbsOrd)
+function ring_class_field(O::AbsNumFieldOrder)
   M = maximal_order(O)
   f = extend(conductor(O), M)
   R, mR = ray_class_group(f)

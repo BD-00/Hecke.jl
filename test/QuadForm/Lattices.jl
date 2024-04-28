@@ -110,7 +110,7 @@
   M = @inferred Hecke.maximal_integral_lattice(V)
   @test Hecke.genus(M, p) == genus(HermLat, L, p, [(-2, 2, 1, 0), (0, 1, 1, 0)])
 
-  K, a = CyclotomicRealSubfield(8, "a")
+  K, a = cyclotomic_real_subfield(8, "a")
   Kt, t = K["t"]
   E, b = number_field(t^2 - a * t + 1, "b")
   p = prime_decomposition(maximal_order(K), 2)[1][1]
@@ -148,7 +148,7 @@
   L = Hecke._to_number_field_lattice(E8)
   @test L == dual(L)
 
-  K, a = CyclotomicRealSubfield(8, "a")
+  K, a = cyclotomic_real_subfield(8, "a")
   Kt, t = K["t"]
   E, b = number_field(t^2 - a * t + 1, "b")
   V = hermitian_space(E, gram_matrix(root_lattice(:E, 8)))
@@ -162,6 +162,15 @@
   R = @inferred fixed_ring(L)
   @test R == ZZ
   @test R != base_ring(base_ring(L))
+
+  # Use ZZRingElem in the automorphism group computation (issue 1054)
+  Qx, x = FlintQQ["x"]
+  K, a = number_field(x^2 + 1, "a")
+  OK = maximal_order(K)
+  G = pseudo_matrix(matrix(K, 6, 6 ,[876708188094148315826780735392810, 798141405233250328867679564294410, -352823337641433300965521329447720, 326768950610851461363580717982402, -690595881941554449465975342845028, 433433545243019702766746394677218, 798141405233250328867679564294410, 867615301468758683549323652197099, -301315621373858240463110267500961, 316796431934778296047626373086339, -725765288914917260527454069649226, 505082964151083450666500945258490, -352823337641433300965521329447720, -301315621373858240463110267500961, 809946152369211852531731702980788, -343784636213856787915462553587466, 84764902049682607076640678540130, -613908853150167850995565570653796, 326768950610851461363580717982402, 316796431934778296047626373086339, -343784636213856787915462553587466, 219957919673551825679009958633894, -226934633316066727073394927118195, 298257387132139131540277459301842, -690595881941554449465975342845028, -725765288914917260527454069649226, 84764902049682607076640678540130, -226934633316066727073394927118195, 671443408734467545153681225010914, -277626128761200144008657217470664, 433433545243019702766746394677218, 505082964151083450666500945258490, -613908853150167850995565570653796, 298257387132139131540277459301842, -277626128761200144008657217470664, 640432299215298238271419741190578]), [ one(K)*OK, one(K)*OK, one(K)*OK, one(K)*OK, one(K)*OK, one(K)*OK ])
+  L = lattice(hermitian_space(K, identity_matrix(K, 6)), G)
+  @test automorphism_group_order(L) == 4
+  @test is_isometric_with_isometry(L, L)[1]
 end
 
 @testset "Misc" begin
@@ -199,7 +208,7 @@ end
   @test ambient_space(Lres) === Vres
   @test all(v -> VrestoV(VrestoV\v) == v, generators(L))
 
-  
+
   Qx, x = polynomial_ring(FlintQQ, "x")
   f = x - 1
   K, a = number_field(f, "a", cached = false)
@@ -207,8 +216,8 @@ end
   g = t^2 + 2
   E, b = number_field(g, "b", cached = false)
   D = matrix(E, 3, 3, [1, 0, 0, 0, 1, 0, 0, 0, 1])
-  gens = Vector{Hecke.NfRelElem{nf_elem}}[map(E, [-2*b - 2, b + 6, 0]), map(E, [0, 1, 1]), map(E, [b - 6, -6*b + 6, 0])]
-  gens2 = Vector{Hecke.NfRelElem{nf_elem}}[map(E, [-2*b - 2, b + 6, 0]), map(E, [0, 1, 1])]
+  gens = Vector{Hecke.RelSimpleNumFieldElem{AbsSimpleNumFieldElem}}[map(E, [-2*b - 2, b + 6, 0]), map(E, [0, 1, 1]), map(E, [b - 6, -6*b + 6, 0])]
+  gens2 = Vector{Hecke.RelSimpleNumFieldElem{AbsSimpleNumFieldElem}}[map(E, [-2*b - 2, b + 6, 0]), map(E, [0, 1, 1])]
   L = hermitian_lattice(E, gens, gram = D)
   M = hermitian_lattice(E, gens2, gram = D)
 
@@ -219,13 +228,13 @@ end
   g = t^2 + 1
   E, b = number_field(g, "b", cached = false)
   D = matrix(E, 3, 3, [1, 0, 0, 0, 1, 0, 0, 0, 1])
-  gens = Vector{Hecke.NfRelElem{nf_elem}}[map(E, [-1, -4*b + 6, 0]), map(E, [16*b - 2, -134*b - 71, -2*b - 1]), map(E, [3*b - 92, -1041//2*b + 1387//2, -15//2*b + 21//2])]
+  gens = Vector{Hecke.RelSimpleNumFieldElem{AbsSimpleNumFieldElem}}[map(E, [-1, -4*b + 6, 0]), map(E, [16*b - 2, -134*b - 71, -2*b - 1]), map(E, [3*b - 92, -1041//2*b + 1387//2, -15//2*b + 21//2])]
   O = hermitian_lattice(E, gens, gram = D)
 
   Lres, f = Hecke.restrict_scalars_with_map(L, FlintQQ)
   Mres = Hecke.restrict_scalars(M, f)
   @test Lres == Hecke.restrict_scalars(L, f)
-  @test issublattice(Lres, Mres)
+  @test is_sublattice(Lres, Mres)
   @test_throws ArgumentError Hecke.restrict_scalars(O, f)
 end
 
@@ -237,7 +246,7 @@ end
   g = t^2 + 1
   E, b = number_field(g, "b", cached = false)
   D = matrix(E, 3, 3, [1, 0, 0, 0, 1, 0, 0, 0, 1])
-  gens = Vector{Hecke.NfRelElem{nf_elem}}[map(E, [b + 2, 1, 0])]
+  gens = Vector{Hecke.RelSimpleNumFieldElem{AbsSimpleNumFieldElem}}[map(E, [b + 2, 1, 0])]
   L = hermitian_lattice(E, gens, gram = D)
   pm = pseudo_hnf(pseudo_matrix(L))
   LL = lattice(ambient_space(L), pm)
@@ -252,9 +261,9 @@ end
   g = t^2 + 1
   E, b = number_field(g, "b", cached = false)
   D = matrix(E, 3, 3, [1, 0, 0, 0, 1, 0, 0, 0, 1])
-  gens = Vector{Hecke.NfRelElem{nf_elem}}[map(E, [-6, -10*b + 10, 0]), map(E, [-6*b + 7, 37//2*b + 21//2, -3//2*b + 5//2]), map(E, [-46*b + 71, 363//2*b + 145//2, -21//2*b + 49//2])]
-  gens2 = Vector{Hecke.NfRelElem{nf_elem}}[map(E, [-6, -10*b + 10, 0]), map(E, [-6*b + 7, 37//2*b + 21//2, -3//2*b + 5//2]), map(E, [1 + a + b, 1, 0])]
-  gens3 = Vector{Hecke.NfRelElem{nf_elem}}[map(E, [-6*b + 7, 37//2*b + 21//2, -3//2*b + 5//2]), map(E, [2 + 2*a + 2*b, 2, 0])]
+  gens = Vector{Hecke.RelSimpleNumFieldElem{AbsSimpleNumFieldElem}}[map(E, [-6, -10*b + 10, 0]), map(E, [-6*b + 7, 37//2*b + 21//2, -3//2*b + 5//2]), map(E, [-46*b + 71, 363//2*b + 145//2, -21//2*b + 49//2])]
+  gens2 = Vector{Hecke.RelSimpleNumFieldElem{AbsSimpleNumFieldElem}}[map(E, [-6, -10*b + 10, 0]), map(E, [-6*b + 7, 37//2*b + 21//2, -3//2*b + 5//2]), map(E, [1 + a + b, 1, 0])]
+  gens3 = Vector{Hecke.RelSimpleNumFieldElem{AbsSimpleNumFieldElem}}[map(E, [-6*b + 7, 37//2*b + 21//2, -3//2*b + 5//2]), map(E, [2 + 2*a + 2*b, 2, 0])]
   L1 = hermitian_lattice(E, gens, gram = D)
   L2 = hermitian_lattice(E, gens2, gram = D)
   L3 = hermitian_lattice(E, gens3, gram = D)
@@ -283,9 +292,9 @@ end
   g = t^2 + 1
   E, b = number_field(g, "b", cached = false)
   D = matrix(E, 3, 3, [1, 0, 0, 0, 1, 0, 0, 0, 1])
-  gens = Vector{Hecke.NfRelElem{nf_elem}}[map(E, [-6, -10*b + 10, 0]), map(E, [-6*b + 7, 37//2*b + 21//2, -3//2*b + 5//2]), map(E, [-46*b + 71, 363//2*b + 145//2, -21//2*b + 49//2])]
-  gens2 = Vector{Hecke.NfRelElem{nf_elem}}[map(E, [-6, -10*b + 10, 0]), map(E, [-6*b + 7, 37//2*b + 21//2, -3//2*b + 5//2]), map(E, [1 + a + b, 1, 0])]
-  gens3 = Vector{Hecke.NfRelElem{nf_elem}}[map(E, [-6*b + 7, 37//2*b + 21//2, -3//2*b + 5//2]), map(E, [2 + 2*a + 2*b, 2, 0])]
+  gens = Vector{Hecke.RelSimpleNumFieldElem{AbsSimpleNumFieldElem}}[map(E, [-6, -10*b + 10, 0]), map(E, [-6*b + 7, 37//2*b + 21//2, -3//2*b + 5//2]), map(E, [-46*b + 71, 363//2*b + 145//2, -21//2*b + 49//2])]
+  gens2 = Vector{Hecke.RelSimpleNumFieldElem{AbsSimpleNumFieldElem}}[map(E, [-6, -10*b + 10, 0]), map(E, [-6*b + 7, 37//2*b + 21//2, -3//2*b + 5//2]), map(E, [1 + a + b, 1, 0])]
+  gens3 = Vector{Hecke.RelSimpleNumFieldElem{AbsSimpleNumFieldElem}}[map(E, [-6*b + 7, 37//2*b + 21//2, -3//2*b + 5//2]), map(E, [2 + 2*a + 2*b, 2, 0])]
   L1 = hermitian_lattice(E, gens, gram = D)
   L2 = hermitian_lattice(E, gens2, gram = D)
   L3 = hermitian_lattice(E, gens3, gram = D)
@@ -323,9 +332,9 @@ end
   for h in [f, g]
     n = multiplicative_order(h)
     M = kernel_lattice(E8, cyclotomic_polynomial(n)(h))
-    hM = solve_left(basis_matrix(M), basis_matrix(M)*h)
+    hM = Hecke.solve(basis_matrix(M), basis_matrix(M)*h; side = :left)
     @test is_cyclotomic_polynomial(minpoly(hM))
-    M = Zlattice(gram = gram_matrix(M))
+    M = integer_lattice(gram = gram_matrix(M))
     H, res = hermitian_structure_with_transfer_data(M, hM)
     @test rank(H) == divexact(rank(M), euler_phi(n))
     @test domain(res) === ambient_space(M)
@@ -359,3 +368,16 @@ end
   @test_throws ArgumentError trace_lattice_with_isometry(E8, order = 3)
 end
 
+@testset "Fix #1210: trace equivalence for infinite isometries" begin
+  L = integer_lattice(; gram=QQ[1 2; 2 1])
+  f = QQ[4 -1; 1 0]
+  H, res = @inferred hermitian_structure_with_transfer_data(L, f)
+  @test trace_lattice_with_isometry(H, res) == (L, f)
+end
+
+@testset "Hashes" begin
+  E, b = cyclotomic_field_as_cm_extension(14)
+  V = hermitian_space(E, 2)
+  L = lattice(rescale(V, b+inv(b)))
+  @test length(unique!([L, intersect(L, L)])) == 1
+end

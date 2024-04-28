@@ -4,8 +4,6 @@
 #
 ################################################################################
 
-export is_GLZ_conjugate
-
 # Given a square matrix A, determine the algebra C_A = {X | XA = AX }
 # and its semisimple reduction
 #
@@ -19,11 +17,11 @@ mutable struct CommutatorAlgebra
   invariant_factors::Vector{Vector{QQPolyRingElem}}
   invariant_factors_factored::Vector{Vector{QQPolyRingElem}}
   invariant_factors_grouped::Vector{Tuple{QQPolyRingElem,
-                                          AnticNumberField,
+                                          AbsSimpleNumField,
                                           Vector{Tuple{Int, Int, Int}}}}
   invariant_factors_grouped_grouped::Vector{Vector{Tuple{Int, Vector{Tuple{Int, Int}}}}}
   irreducible_factors::Vector{Tuple{QQPolyRingElem,
-                                    AnticNumberField,
+                                    AbsSimpleNumField,
                                     Vector{Tuple{Int, Int}}}}
 
   function CommutatorAlgebra(A)
@@ -69,7 +67,7 @@ function _compute_decomposition!(C::CommutatorAlgebra)
   invariant_factors_factored = Vector{Vector{QQPolyRingElem}}()
 
   invariant_factors_grouped = Vector{Tuple{QQPolyRingElem,
-                                           AnticNumberField,
+                                           AbsSimpleNumField,
                                            Vector{Tuple{Int, Int, Int}}}}()
 
   invariant_factors_grouped_grouped = Vector{Tuple{Int,
@@ -102,7 +100,7 @@ function _compute_decomposition!(C::CommutatorAlgebra)
     M = invariant_factors_grouped[l][3]
     for (i, j, e) in M
       o = findfirst(x -> x[1] == e, D)
-      if o == nothing
+      if o === nothing
         push!(D, (e, Tuple{Int, Int}[(i, j)]))
       else
         push!(D[o][2], (i, j))
@@ -233,7 +231,7 @@ end
 
 function _decomposition_type(C::CommutatorAlgebra)
   l = length(C.invariant_factors_grouped)
-  fields = AnticNumberField[]
+  fields = AbsSimpleNumField[]
   degs = Int[]
   for i in 1:l
     for (e, inds) in C.invariant_factors_grouped_grouped[i]
@@ -266,7 +264,7 @@ function _induce_action(C::CommutatorAlgebra, M)
 end
 
 function _induce_action_mod(C::CommutatorAlgebra, N)
-  res = dense_matrix_type(nf_elem)[]
+  res = dense_matrix_type(AbsSimpleNumFieldElem)[]
   ac = _induce_action(C, N)
   for i in 1:length(C.invariant_factors_grouped)
     z = ac[i]
@@ -340,14 +338,18 @@ function _isGLZ_conjugate_integral(A::QQMatrix, B::QQMatrix)
     return false, zero_matrix(FlintZZ, 0, 0)
   end
 
+  @vprint :Conjugacy 1 "Computing commutator algebra\n"
   Z = CommutatorAlgebra(A)
+  @vprint :Conjugacy 1 "Computing decomposition\n"
   _compute_decomposition!(Z)
   Ks, ns = _decomposition_type(Z)
   AA = _matrix_algebra(Ks, ns)
+  @vprint :Conjugacy 1 "Computing basis of integral commutator algebra\n"
   O = _basis_of_integral_commutator_algebra(A, A)
+  @vprint :Conjugacy 1 "Computing basis of another integral commutator algebra\n"
   I = _basis_of_integral_commutator_algebra(A, B)
-  @vprint :Conjugacy 1 "Algebra has dimension $(length(O))\n"
-  @vprint :Conjugacy 1 "Semisimple quotient has dimension $(dim(AA))\n"
+  @vprintln :Conjugacy 1 "Algebra has dimension $(length(O))"
+  @vprintln :Conjugacy 1 "Semisimple quotient has dimension $(dim(AA))"
   ordergens = elem_type(AA)[]
   idealgens = elem_type(AA)[]
   dec = decompose(AA)
@@ -363,9 +365,9 @@ function _isGLZ_conjugate_integral(A::QQMatrix, B::QQMatrix)
     z = zero(AA)
     @assert length(dec) == length(b)
     for i in 1:length(dec)
-      BB, mB = dec[i]::Tuple{AlgAss{QQFieldElem},
-                             AbsAlgAssMor{AlgAss{QQFieldElem},AlgAss{QQFieldElem},QQMatrix}}
-      local C::AlgMat{nf_elem, Generic.MatSpaceElem{nf_elem}}
+      BB, mB = dec[i]::Tuple{StructureConstantAlgebra{QQFieldElem},
+                             AbsAlgAssMor{StructureConstantAlgebra{QQFieldElem},StructureConstantAlgebra{QQFieldElem},QQMatrix}}
+      local C::MatAlgebra{AbsSimpleNumFieldElem, Generic.MatSpaceElem{AbsSimpleNumFieldElem}}
       C, BtoC = BB.isomorphic_full_matrix_algebra
       z = z + mB(preimage(BtoC, C(b[i]))::elem_type(BB))
     end
@@ -377,9 +379,9 @@ function _isGLZ_conjugate_integral(A::QQMatrix, B::QQMatrix)
     z = zero(AA)
     @assert length(dec) == length(b)
     for i in 1:length(dec)
-      BB, mB = dec[i]::Tuple{AlgAss{QQFieldElem},
-                             AbsAlgAssMor{AlgAss{QQFieldElem},AlgAss{QQFieldElem},QQMatrix}}
-      local C::AlgMat{nf_elem, Generic.MatSpaceElem{nf_elem}}
+      BB, mB = dec[i]::Tuple{StructureConstantAlgebra{QQFieldElem},
+                             AbsAlgAssMor{StructureConstantAlgebra{QQFieldElem},StructureConstantAlgebra{QQFieldElem},QQMatrix}}
+      local C::MatAlgebra{AbsSimpleNumFieldElem, Generic.MatSpaceElem{AbsSimpleNumFieldElem}}
       C, BtoC = BB.isomorphic_full_matrix_algebra
       z = z + mB(preimage(BtoC, C(b[i]))::elem_type(BB))
     end
@@ -389,9 +391,9 @@ function _isGLZ_conjugate_integral(A::QQMatrix, B::QQMatrix)
   OO = Order(AA, ordergens)
   OI = ideal_from_lattice_gens(AA, idealgens)
   @hassert :Conjugacy 1 OO == right_order(OI)
-  @vprint :Conjugacy 1 "Testing if ideal is principal...\n"
-  fl, y = _isprincipal(OI, OO, :right)::Tuple{Bool,
-                                              AlgAssElem{QQFieldElem,AlgAss{QQFieldElem}}}
+  @vprintln :Conjugacy 1 "Testing if ideal is principal..."
+  fl, y = _is_principal_with_data_bhj(OI, OO, side = :right)::Tuple{Bool,
+                                              AssociativeAlgebraElem{QQFieldElem,StructureConstantAlgebra{QQFieldElem}}}
 
   if !fl
     return false, zero_matrix(FlintZZ, 0, 0)
@@ -465,7 +467,7 @@ function _basis_of_integral_commutator_algebra(A::QQMatrix, B::QQMatrix)
       end
     end
   end
-  r, K = right_kernel(z)
+  K = kernel(z; side = :right)
   KK = change_base_ring(FlintZZ, denominator(K) * K)
   KK = transpose(saturate(transpose(KK)))
   res = QQMatrix[]
@@ -499,7 +501,7 @@ function _basis_of_commutator_algebra(A::MatElem, B::MatElem)
       end
     end
   end
-  r, K = right_kernel(z)
+  K = kernel(z; side = :right)
   res = typeof(A)[]
   for k in 1:ncols(K)
     cartind = cartesian_product_iterator([1:x for x in (n, m)], inplace = true)
@@ -537,7 +539,7 @@ function _basis_of_commutator_algebra(As::Vector{T}, Bs::Vector{T}) where T <: M
     end
     zz = vcat(zz, z)
   end
-  r, K = right_kernel(zz)
+  K = kernel(zz; side = :right)
   res = eltype(As)[]
   for k in 1:ncols(K)
     cartind = cartesian_product_iterator([1:x for x in (n, m)],
@@ -547,7 +549,7 @@ function _basis_of_commutator_algebra(As::Vector{T}, Bs::Vector{T}) where T <: M
       M[v[2], v[1]] = K[l, k]
     end
     for i in 1:length(As)
-      M * As[i] == Bs[i] * M
+      @assert M * As[i] == Bs[i] * M
     end
     push!(res, M)
   end
@@ -580,7 +582,7 @@ function _basis_of_integral_commutator_algebra(As::Vector{QQMatrix},
     end
     zz = vcat(zz, z)
   end
-  r, K = right_kernel(zz)
+  K = kernel(zz; side = :right)
   KK = change_base_ring(FlintZZ, denominator(K) * K)
   KK = transpose(saturate(transpose(KK)))
   res = QQMatrix[]
@@ -591,7 +593,7 @@ function _basis_of_integral_commutator_algebra(As::Vector{QQMatrix},
         M[v[2], v[1]] = KK[l, k]
     end
     for i in 1:length(As)
-      M * As[i] == Bs[i] * M
+      @assert M * As[i] == Bs[i] * M
     end
     push!(res, M)
   end
@@ -669,7 +671,7 @@ end
 #      dec = decompose(AA)
 #      B, mB = dec[1]
 #      A.isomorphic_full_matrix_algebra = A, inv(mB)
-#      fl, y = _isprincipal(OI, OO, :right)::Tuple{Bool, AlgAssElem{QQFieldElem,typeof(AA)}}
+#      fl, y = _isprincipal(OI, OO, :right)::Tuple{Bool, AssociativeAlgebraElem{QQFieldElem,typeof(AA)}}
 #      yy = elem_in_algebra(y)
 #    elseif is_commutative(AA)
 #      @info "Algebra is commutative"

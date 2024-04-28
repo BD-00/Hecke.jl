@@ -1,5 +1,3 @@
-export rational_reconstruction, farey_lift, berlekamp_massey
-
 ## given some r/s = a mod b and deg(r) = n, deg(s) <= m find r,s
 ## a and b better be polynomials in the same poly ring.
 ## seems to work for Q (Qx) and Fp experimentally
@@ -10,12 +8,12 @@ export rational_reconstruction, farey_lift, berlekamp_massey
 
 
 @doc raw"""
-    rational_reconstruction(a::PolyElem{S}, b::PolyElem{S}, n::Int, m::Int)
+    rational_reconstruction(a::PolyRingElem{S}, b::PolyRingElem{S}, n::Int, m::Int)
 
  Returns `true` and $x, y$ s.th. $ay = x mod b$ and $degree(x) <= n$, $degree(y) <= m$
    or `false` (and garbage) if this is not possible.
 """
-function rational_reconstruction(a::PolyElem{S}, b::PolyElem{S}, n::Int, m::Int) where S
+function rational_reconstruction(a::PolyRingElem{S}, b::PolyRingElem{S}, n::Int, m::Int) where S
   R = a.parent
   if degree(a) <= n return true, a, R(1); end
 
@@ -40,12 +38,12 @@ function rational_reconstruction(a::PolyElem{S}, b::PolyElem{S}, n::Int, m::Int)
 end
 
 @doc raw"""
-    rational_reconstruction{S}(a::PolyElem{S}, b::PolyElem{S})
+    rational_reconstruction{S}(a::PolyRingElem{S}, b::PolyRingElem{S})
 
  Returns `true` and $x/y$ s.th. $ay = x mod b$ and $degree(x), degree(y) <= degree(b)/2$
    or `false` (and garbage) if this is not possible. Shortcut to the more general function.
 """
-function rational_reconstruction(a::PolyElem{T}, b::PolyElem{T}; ErrorTolerant::Bool = false) where T
+function rational_reconstruction(a::PolyRingElem{T}, b::PolyRingElem{T}; ErrorTolerant::Bool = false) where T
   return rational_reconstruction_subres(a, b, ErrorTolerant = ErrorTolerant)
 end
 function rational_reconstruction(a::QQPolyRingElem, b::QQPolyRingElem; ErrorTolerant::Bool = false)
@@ -95,8 +93,8 @@ function rational_reconstruction(a::ZZRingElem, b::ZZRingElem; ErrorTolerant::Bo
   end
 end
 
-function rational_reconstruction(a::Integer, b::Integer)
-  return rational_reconstruction(ZZRingElem(a), ZZRingElem(b))
+function rational_reconstruction(a::Integer, b::Integer; ErrorTolerant::Bool = false)
+  return rational_reconstruction(ZZRingElem(a), ZZRingElem(b), ErrorTolerant = ErrorTolerant)
 end
 
 @doc raw"""
@@ -112,15 +110,15 @@ function rational_reconstruction(a::ZZRingElem, b::ZZRingElem, N::ZZRingElem, D:
   return fl!=0, numerator(res), denominator(res)
 end
 
-#Note: the vector version might be useful - or the mult be previous den version
+#Note: the vector version might be useful - or the mult by previous den version
 #Note: missing reconstruction modulo a true ideal. W/o denominators
 
 @doc raw"""
-    rational_reconstruction(a::nf_elem, b::ZZRingElem)
+    rational_reconstruction(a::AbsSimpleNumFieldElem, b::ZZRingElem)
 
 Applies the `rational_reconstruction` function to each coefficient.
 """
-function rational_reconstruction(a::nf_elem, b::ZZRingElem)
+function rational_reconstruction(a::AbsSimpleNumFieldElem, b::ZZRingElem; ErrorTolerant::Bool = false)
   K= parent(a)
   Qx = parent(K.pol)
   res = Qx(0)
@@ -130,7 +128,7 @@ function rational_reconstruction(a::nf_elem, b::ZZRingElem)
       continue
     end
     @assert denominator(c) == 1
-    fl, x, y = rational_reconstruction(numerator(c), b)
+    fl, x, y = rational_reconstruction(numerator(c), b, ErrorTolerant = ErrorTolerant)
     if !fl
       return false, K(res)
     end
@@ -169,7 +167,7 @@ end
 # from Dereje
 ###############################################################################
 
-function rational_reconstruction_subres(g::PolyElem{T}, f::PolyElem{T}, bnd::Int = -1; ErrorTolerant::Bool = false) where T
+function rational_reconstruction_subres(g::PolyRingElem{T}, f::PolyRingElem{T}, bnd::Int = -1; ErrorTolerant::Bool = false) where T
     # the denominator is normalized
     R_2 = g.parent
     r_1 = R_2(1); t_1 = R_2(0)
@@ -299,7 +297,7 @@ function _modp_results(g::QQPolyRingElem,f::QQPolyRingElem, p::ZZRingElem, M::In
    l1 = fpPolyRingElem[]; l2 = fpPolyRingElem[];l3 = ZZRingElem[]
    L = listprimes([f,g], p, M)
    for j in 1:length(L)
-     Rp, t = polynomial_ring(GF(Int(L[j]), cached=false), cached=false)
+     Rp, t = polynomial_ring(Native.GF(Int(L[j]), cached=false), cached=false)
      gp = Rp(g)
      fp = Rp(f)
      fl, nu_p, de_p = rational_reconstruction_subres(gp, fp, -1, ErrorTolerant = ErrorTolerant)
@@ -321,7 +319,7 @@ function _inner_modp_results(g::QQPolyRingElem,f::QQPolyRingElem, p::ZZRingElem,
    while true
      np += 1
      if testPrime_jl(f,p) == true && testPrime_jl(g,p) == true
-         Rp, t = polynomial_ring(residue_ring(FlintZZ, p, cached=false), cached=false)
+         Rp, t = polynomial_ring(residue_ring(FlintZZ, p, cached=false)[1], cached=false)
          gp = Rp(g)
          fp = Rp(f)
          fl, nu_p, de_p = rational_reconstruction_subres(gp, fp, bnd, ErrorTolerant = ErrorTolerant)
@@ -426,13 +424,13 @@ function _modpResults(f, p::ZZRingElem, M::Int)
    Np = listprimes([f], p, M)
    Zx, Y = polynomial_ring(FlintZZ, "Y", cached=false)
    for j in 1:length(Np)
-     RNp = GF(Int(Np[j]), cached=false)
+     RNp = Native.GF(Int(Np[j]), cached=false)
      Rp, t = polynomial_ring(RNp, "t", cached=false)
      fp = Rp(f)
      if degree(fp) != degree(f)
        continue #bad prime...
      end
-     L1 = Nemo.fpFieldElem[]
+     L1 = fpFieldElem[]
      for i in 0:degree(fp)
         push!(L1, coeff(fp, i))
      end

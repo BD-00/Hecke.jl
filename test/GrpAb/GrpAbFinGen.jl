@@ -1,67 +1,67 @@
-@testset "GrpAbFinGen" begin
+@testset "FinGenAbGroup" begin
   @testset "Type stuff" begin
-    @test elem_type(GrpAbFinGen) == GrpAbFinGenElem
-    @test parent_type(GrpAbFinGenElem) == GrpAbFinGen
+    @test elem_type(FinGenAbGroup) == FinGenAbGroupElem
+    @test parent_type(FinGenAbGroupElem) == FinGenAbGroup
   end
 
   @testset "Constructor" begin
     M1 = matrix(FlintZZ, 2, 3, [1, 2, 3, 4, 5, 6])
     G = @inferred abelian_group(M1)
-    @test isa(G, GrpAbFinGen)
+    @test isa(G, FinGenAbGroup)
     @test is_abelian(G)
     @test G.rels == M1
 
-    G = @inferred abelian_group(GrpAbFinGen, M1)
-    @test isa(G, GrpAbFinGen)
+    G = @inferred abelian_group(FinGenAbGroup, M1)
+    @test isa(G, FinGenAbGroup)
     @test is_abelian(G)
     @test G.rels == M1
 
     M = FlintZZ[1 2 3; 4 5 6] # ZZMatrix
     G = @inferred abelian_group(M)
-    @test isa(G, GrpAbFinGen)
+    @test isa(G, FinGenAbGroup)
     @test is_abelian(G)
     @test G.rels == M1
 
     M = ZZRingElem[1 2 3; 4 5 6]
     G = @inferred abelian_group(M)
-    @test isa(G, GrpAbFinGen)
+    @test isa(G, FinGenAbGroup)
     @test is_abelian(G)
     @test G.rels == M1
 
     M = [1 2 3; 4 5 6]
     G = @inferred abelian_group(M)
-    @test isa(G, GrpAbFinGen)
+    @test isa(G, FinGenAbGroup)
     @test is_abelian(G)
     @test G.rels == M1
 
     M = [3, 0]
     G = @inferred abelian_group(M)
-    @test isa(G, GrpAbFinGen)
+    @test isa(G, FinGenAbGroup)
     @test is_abelian(G)
 
     M = ZZRingElem[3, 0]
     G = @inferred abelian_group(M)
-    @test isa(G, GrpAbFinGen)
+    @test isa(G, FinGenAbGroup)
     @test is_abelian(G)
 
     N = [3, 5]
     G = @inferred abelian_group(N)
-    @test isa(G, GrpAbFinGen)
+    @test isa(G, FinGenAbGroup)
     @test is_abelian(G)
     @test G.rels == matrix(FlintZZ, 2, 2, [3, 0, 0, 5])
 
     N = ZZRingElem[3, 5]
     G = @inferred abelian_group(N)
-    @test isa(G, GrpAbFinGen)
+    @test isa(G, FinGenAbGroup)
     @test is_abelian(G)
     @test G.rels == matrix(FlintZZ, 2, 2, [3, 0, 0, 5])
 
     G = @inferred free_abelian_group(2)
-    @test isa(G, GrpAbFinGen)
+    @test isa(G, FinGenAbGroup)
     @test is_abelian(G)
 
-    G = @inferred free_abelian_group(GrpAbFinGen, 2)
-    @test isa(G, GrpAbFinGen)
+    G = @inferred free_abelian_group(FinGenAbGroup, 2)
+    @test isa(G, FinGenAbGroup)
     @test is_abelian(G)
 
   end
@@ -130,16 +130,20 @@
 
   @testset "Rank" begin
     G = abelian_group([3, 15])
-    @test @inferred rank(G) == 0
+    @test @inferred torsion_free_rank(G) == 0
+    #@test @inferred rank(G) == 2
 
     G = abelian_group([3, 5])
-    @test @inferred rank(G) == 0
+    @test @inferred torsion_free_rank(G) == 0
+    #@test @inferred rank(G) == 1
 
     G = abelian_group([3, 15, 0])
-    @test @inferred rank(G) == 1
+    @test @inferred torsion_free_rank(G) == 1
+    #@test @inferred rank(G) == 3
 
     G = abelian_group([3, 5, 0])
-    @test @inferred rank(G) == 1
+    @test @inferred torsion_free_rank(G) == 1
+    #@test @inferred rank(G) == 2
   end
 
   @testset "Order" begin
@@ -160,13 +164,13 @@
 
   @testset "Trivial" begin
     G = abelian_group([1])
-    @test @inferred istrivial(G)
+    @test @inferred is_trivial(G)
     G = abelian_group([1, 1, 1])
-    @test @inferred istrivial(G)
+    @test @inferred is_trivial(G)
     G = abelian_group([3, 3])
-    @test @inferred !istrivial(G)
+    @test @inferred !is_trivial(G)
     G = abelian_group([3, 5])
-    @test @inferred !istrivial(G)
+    @test @inferred !is_trivial(G)
   end
 
   @testset "Isomorphism" begin
@@ -221,7 +225,7 @@
   end
 
   @testset "Subgroup" begin
-    @test_throws ErrorException sub(GrpAbFinGenElem[])
+    @test_throws ErrorException sub(FinGenAbGroupElem[])
 
     G = abelian_group(FlintZZ[3 0 0 ; 0 15 0])
     g1 = G[1]
@@ -276,7 +280,7 @@
   @testset "Quotient" begin
     G = abelian_group(FlintZZ[3 0 0 ; 0 15 0])
 
-    Q, mQ = @inferred quo(G, GrpAbFinGenElem[])
+    Q, mQ = @inferred quo(G, FinGenAbGroupElem[])
     @test is_isomorphic(Q, G)
 
     g2 = G[2]
@@ -301,17 +305,20 @@
     G = abelian_group([3, 5])
     @test @inferred is_cyclic(G)
 
+    G = abelian_group([1])
+    @test @inferred is_cyclic(G)
+
     G = abelian_group([3, 15])
     @test @inferred !is_cyclic(G)
   end
 
   @testset "p-Sylow subgroup" begin
     G = abelian_group([1, 3, 9, 5, 15, 20, 7])
-    P, mP = psylow_subgroup(G, 3)
+    P, mP = sylow_subgroup(G, 3)
     @test order(P) == 3^valuation(order(G), 3)
-    P, mP = psylow_subgroup(G, 5)
+    P, mP = sylow_subgroup(G, 5)
     @test order(P) == 5^valuation(order(G), 5)
-    P, mP = psylow_subgroup(G, 11)
+    P, mP = sylow_subgroup(G, 11)
     @test order(P) == 11^valuation(order(G), 11)
   end
 
@@ -334,7 +341,6 @@
     @test length(l) == 66
   end
 
-  #=
   @testset "HomAlg" begin
     G = abelian_group([3 1; 0 3])
     S, mS = snf(G)
@@ -345,6 +351,8 @@
       Th = hom(T, T, map(mH, [rand(H) for x = 1:2])) #induced map in tensor product
       Dh = hom(D, D, map(mH, rand(H, (2,2)))) #induced map on direct prod
     end
+    #=
+
     C, mC = free_resolution(G)
     push!(C, mC)
     push!(C, zero_map(G))
@@ -360,14 +368,13 @@
     @test !is_exact(E)
     E = tensor_product(C, T)
     @test !is_exact(E)
-
+  =#
     A = abelian_group([3 1; 0 3])
     B = abelian_group([9 2 1; 0 12 1; 0 0 25])
     C = abelian_group([3, 4, 0])
     @test is_isomorphic(hom(tensor_product(A, B, task = :none), C)[1],
                        hom(A, hom(B, C)[1])[1])
   end
-  =#
 
   @testset "Complement" begin
     d = rand(2:1000)
@@ -386,12 +393,12 @@
   @testset "Diagonalize" begin
 
     local isdiagonal_subgroup
-    function isdiagonal_subgroup(mHH::GrpAbFinGenMap)
+    function isdiagonal_subgroup(mHH::FinGenAbGroupHom)
       ord = ZZRingElem(1)
       HH = domain(mHH)
       GG = codomain(mHH)
       for i = 1:ngens(GG)
-        ss, mss = sub(GG, GrpAbFinGenElem[GG[i]])
+        ss, mss = sub(GG, FinGenAbGroupElem[GG[i]])
         int, mint = intersect(mss, mHH)
         ord *= order(int)
       end

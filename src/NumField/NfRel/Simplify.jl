@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-function simplify(K::NfRel; cached::Bool = true, prec::Int = 100)
+function simplify(K::RelSimpleNumField; cached::Bool = true, prec::Int = 100)
   OK = maximal_order(K)
   B = lll_basis(OK)
   B1 = _sieve_primitive_elements(B)
@@ -56,7 +56,7 @@ function _sieve_primitive_elements(B::Vector{T}) where T <: NumFieldElem
 end
 
 
-function _is_primitive_via_block(a::NfRelElem{nf_elem}, rt::Dict{FqPolyRepFieldElem, Vector{FqPolyRepFieldElem}}, Fx, tmp::FpPolyRingElem)
+function _is_primitive_via_block(a::RelSimpleNumFieldElem{AbsSimpleNumFieldElem}, rt::Dict{FqPolyRepFieldElem, Vector{FqPolyRepFieldElem}}, Fx, tmp::FpPolyRingElem)
   if iszero(a)
     return false
   end
@@ -66,7 +66,7 @@ function _is_primitive_via_block(a::NfRelElem{nf_elem}, rt::Dict{FqPolyRepFieldE
   for (r, vr) in rt
     coeffs = Vector{FqPolyRepFieldElem}(undef, degree(pol)+1)
     for i = 0:degree(pol)
-      nf_elem_to_gfp_fmpz_poly!(tmp, coeff(pol, i))
+      Nemo.nf_elem_to_gfp_fmpz_poly!(tmp, coeff(pol, i))
       coeffs[i+1] = evaluate(tmp, r)
     end
     g = Fx(coeffs)
@@ -81,7 +81,7 @@ function _is_primitive_via_block(a::NfRelElem{nf_elem}, rt::Dict{FqPolyRepFieldE
   return true
 end
 
-function _find_prime(L::NfRel{nf_elem})
+function _find_prime(L::RelSimpleNumField{AbsSimpleNumFieldElem})
   p = 2^10
   K = base_field(L)
   OK = maximal_order(K)
@@ -95,14 +95,14 @@ function _find_prime(L::NfRel{nf_elem})
   den = lcm(ZZRingElem[denominator(coeff(f, i)) for i = 0:degree(f)])
   while i < n_attempts+1
     p = next_prime(p)
-    if is_index_divisor(OK, p) || divisible(absolute_discriminant(OL), p) || divisible(den, p)
+    if is_index_divisor(OK, p) || is_divisible_by(absolute_discriminant(OL), p) || is_divisible_by(den, p)
       continue
     end
     lp = prime_decomposition(OK, p)
     P = lp[1][1]
     F, mF = residue_field(OK, P)
     mF1 = extend(mF, K)
-    fF = map_coefficients(mF1, f)
+    fF = map_coefficients(mF1, f, cached = false)
     if degree(fF) != degree(f) || !is_squarefree(fF)
       continue
     end
@@ -113,7 +113,7 @@ function _find_prime(L::NfRel{nf_elem})
       Q = lp[j][1]
       F2, mF2 = residue_field(OK, Q)
       mF3 = extend(mF2, K)
-      fF2 = map_coefficients(mF3, f)
+      fF2 = map_coefficients(mF3, f, cached = false)
       if degree(fF2) != degree(f) || !is_squarefree(fF2)
         acceptable = false
         break
@@ -138,7 +138,7 @@ function _find_prime(L::NfRel{nf_elem})
 end
 
 
-function _setup_block_system(Lrel::NfRel{nf_elem})
+function _setup_block_system(Lrel::RelSimpleNumField{AbsSimpleNumFieldElem})
   K = base_field(Lrel)
   OK = maximal_order(K)
   Zx = ZZ["x"][1]
@@ -148,11 +148,11 @@ function _setup_block_system(Lrel::NfRel{nf_elem})
   p = ZZRingElem(pint)
   abs_deg = d
   #First, we search for elements that are primitive using block systems
-  Fp = GF(p, cached = false)
+  Fp = Native.GF(p, cached = false)
   Fpx = polynomial_ring(Fp, cached = false)[1]
-  F = FlintFiniteField(p, abs_deg, "w", cached = false)[1]
+  F = Native.finite_field(p, abs_deg, "w", cached = false)[1]
   Fx = polynomial_ring(F, cached = false)[1]
-  rt_base_field = roots(Zx(K.pol), F)
+  rt_base_field = roots(F, Zx(K.pol))
   tmp = Fpx()
   g = Lrel.pol
   rt = Dict{FqPolyRepFieldElem, Vector{FqPolyRepFieldElem}}()
@@ -161,7 +161,7 @@ function _setup_block_system(Lrel::NfRel{nf_elem})
   for r in rt_base_field
     coeff_gF = FqPolyRepFieldElem[]
     for i = 0:degree(g)
-      nf_elem_to_gfp_fmpz_poly!(tmp, coeff(g, i))
+      Nemo.nf_elem_to_gfp_fmpz_poly!(tmp, coeff(g, i))
       push!(coeff_gF, evaluate(tmp, r))
     end
     gF = Fx(coeff_gF)
@@ -175,7 +175,7 @@ function _setup_block_system(Lrel::NfRel{nf_elem})
 end
 
 
-function _find_prime(L::NfRelNS{nf_elem})
+function _find_prime(L::RelNonSimpleNumField{AbsSimpleNumFieldElem})
   p = 2^10
   K = base_field(L)
   OK = maximal_order(K)
@@ -183,14 +183,14 @@ function _find_prime(L::NfRelNS{nf_elem})
   dL = numerator(discriminant(L, FlintQQ))
 
   n_attempts = min(degree(L), 10)
-  candidates = Vector{Tuple{NfOrdIdl, Int}}(undef, n_attempts)
+  candidates = Vector{Tuple{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}, Int}}(undef, n_attempts)
   i = 1
   pols = L.pol
-  threshold = absolute_degree(L)^2
+  threshold = max(absolute_degree(L)^2, 2)
   polsR = Vector{FqPolyRingElem}(undef, length(pols))
   while i < n_attempts+1
     p = next_prime(p)
-    if is_index_divisor(OK, p) || divisible(dL, p)
+    if is_index_divisor(OK, p) || is_divisible_by(dL, p)
       continue
     end
     lp = prime_decomposition(OK, p)
@@ -201,7 +201,7 @@ function _find_prime(L::NfRelNS{nf_elem})
     Fx, _ = polynomial_ring(F, "x", cached = false)
     is_proj = true
     for j = 1:length(pols)
-      fF = to_univariate(Fx, map_coefficients(mF1, pols[j]))
+      fF = to_univariate(Fx, map_coefficients(mF1, pols[j], cached = false))
       if degree(fF) != total_degree(pols[j]) || !is_squarefree(fF)
         is_proj = false
         break
@@ -226,7 +226,7 @@ function _find_prime(L::NfRelNS{nf_elem})
       mF1 = extend(mF, K)
       is_proj = true
       for j = 1:length(pols)
-        fF = to_univariate(Fx, map_coefficients(mF1, pols[j]))
+        fF = to_univariate(Fx, map_coefficients(mF1, pols[j], cached = false))
         if degree(fF) != total_degree(pols[j]) || !is_squarefree(fF)
           is_proj = false
           break
@@ -261,7 +261,7 @@ function _find_prime(L::NfRelNS{nf_elem})
 end
 
 
-function _setup_block_system(Lrel::NfRelNS{nf_elem})
+function _setup_block_system(Lrel::RelNonSimpleNumField{AbsSimpleNumFieldElem})
   K = base_field(Lrel)
   OK = maximal_order(K)
   Zx = ZZ["x"][1]
@@ -272,11 +272,11 @@ function _setup_block_system(Lrel::NfRelNS{nf_elem})
   p = minimum(P, copy = false)
   abs_deg = d*degree(P)
   #First, we search for elements that are primitive using block systems
-  Fp = GF(p, cached = false)
+  Fp = Native.GF(p, cached = false)
   Fpx = polynomial_ring(Fp, cached = false)[1]
-  F = FlintFiniteField(p, abs_deg, "w", cached = false)[1]
+  F = Native.finite_field(p, abs_deg, "w", cached = false)[1]
   Fx = polynomial_ring(F, cached = false)[1]
-  rt_base_field = roots(Zx(K.pol), F)
+  rt_base_field = roots(F, Zx(K.pol))
   rt = Dict{FqPolyRepFieldElem, Vector{Vector{FqPolyRepFieldElem}}}()
   Rxy = polynomial_ring(F, ngens(Lrel), cached = false)[1]
   tmp = Fpx()
@@ -287,7 +287,7 @@ function _setup_block_system(Lrel::NfRelNS{nf_elem})
       g = to_univariate(Kx, f)
       coeff_gF = FqPolyRepFieldElem[]
       for i = 0:degree(g)
-        nf_elem_to_gfp_fmpz_poly!(tmp, coeff(g, i))
+        Nemo.nf_elem_to_gfp_fmpz_poly!(tmp, coeff(g, i))
         push!(coeff_gF, evaluate(tmp, r))
       end
       gF = Fx(coeff_gF)
@@ -317,7 +317,7 @@ function _setup_block_system(Lrel::NfRelNS{nf_elem})
   return rt1, Rxy, tmp
 end
 
-function _sieve_primitive_elements(B::Vector{T}; parameter::Int = div(absolute_degree(parent(B[1])), 2)) where T <: Union{NfRelNSElem{nf_elem}, NfRelElem{nf_elem}}
+function _sieve_primitive_elements(B::Vector{T}; parameter::Int = div(absolute_degree(parent(B[1])), 2)) where T <: Union{RelNonSimpleNumFieldElem{AbsSimpleNumFieldElem}, RelSimpleNumFieldElem{AbsSimpleNumFieldElem}}
   Lrel = parent(B[1])
   #First, we choose the candidates
   ape = absolute_primitive_element(Lrel)
@@ -344,7 +344,7 @@ function _sieve_primitive_elements(B::Vector{T}; parameter::Int = div(absolute_d
   return Bnew[indices]
 end
 
-function _is_primitive_via_block(a::NfRelNSElem{nf_elem}, rt::Dict{FqPolyRepFieldElem, Vector{Vector{FqPolyRepFieldElem}}}, Rxy, tmp)
+function _is_primitive_via_block(a::RelNonSimpleNumFieldElem{AbsSimpleNumFieldElem}, rt::Dict{FqPolyRepFieldElem, Vector{Vector{FqPolyRepFieldElem}}}, Rxy, tmp)
   if length(vars(a.data)) < ngens(parent(a))
     return false
   end
@@ -354,7 +354,7 @@ function _is_primitive_via_block(a::NfRelNSElem{nf_elem}, rt::Dict{FqPolyRepFiel
   for (r, vr) in rt
     ctx = MPolyBuildCtx(Rxy)
     for (c, v) in zip(coefficients(pol), exponent_vectors(pol))
-      nf_elem_to_gfp_fmpz_poly!(tmp, c)
+      Nemo.nf_elem_to_gfp_fmpz_poly!(tmp, c)
       push_term!(ctx, evaluate(tmp, r), v)
     end
     g = finish(ctx)
@@ -369,7 +369,7 @@ function _is_primitive_via_block(a::NfRelNSElem{nf_elem}, rt::Dict{FqPolyRepFiel
   return true
 end
 
-function _find_short_primitive_element(L::NfRelNS)
+function _find_short_primitive_element(L::RelNonSimpleNumField)
   B = lll_basis(maximal_order(L))
   parameter = div(absolute_degree(L), 2)
   B1 = _sieve_primitive_elements(B, parameter = parameter)
@@ -389,17 +389,17 @@ function _find_short_primitive_element(L::NfRelNS)
   return a
 end
 
-function simplified_absolute_field(L::NfRelNS; cached = false)
+function simplified_absolute_field(L::RelNonSimpleNumField; cached = false)
   a = _find_short_primitive_element(L)
   f = absolute_minpoly(a)
   @assert degree(f) == absolute_degree(L)
-  local K::AnticNumberField
+  local K::AbsSimpleNumField
   K = number_field(f, check = false, cached = cached)[1]
   mp = hom(K, L, a)
   return K, mp
 end
 
-function simplified_absolute_field(L::NfRel; cached::Bool = false)
+function simplified_absolute_field(L::RelSimpleNumField; cached::Bool = false)
   OL = maximal_order(L)
   B = lll_basis(OL)
   B1 = _sieve_primitive_elements(B)

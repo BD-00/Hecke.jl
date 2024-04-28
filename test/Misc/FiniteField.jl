@@ -85,7 +85,7 @@ end
 @testset "fqPolyRepField" begin
 
   for p in [31, 11, 101]
-    F = FiniteField(p, 2)[1]
+    F = finite_field(p, 2)[1]
     G, mG = unit_group(F)
     #Test generator
     g = mG(G[1])
@@ -127,7 +127,9 @@ end
 @testset "FqPolyRepField" begin
 
   for p in [31, 11, 101]
-    F = FiniteField(ZZRingElem(p), 2, "a")[1]
+    _ = finite_field(ZZRingElem(p), 2, "a")[1]
+    _ = finite_field(ZZRingElem(p), 2, 'a')[1]
+    F = finite_field(ZZRingElem(p), 2, :a)[1]
     G, mG = unit_group(F)
     #Test generator
     g = mG(G[1])
@@ -169,7 +171,9 @@ end
 @testset "FqField" begin
 
   for p in [31, 11, 101]
-    F = Hecke.Nemo._GF(ZZRingElem(p), 2, "a")
+    _ = GF(ZZRingElem(p), 2, "a")
+    _ = GF(ZZRingElem(p), 2, 'a')
+    F = GF(ZZRingElem(p), 2, :a)
     G, mG = unit_group(F)
     #Test generator
     g = mG(G[1])
@@ -207,3 +211,23 @@ end
     end
   end
 end
+
+@testset "SplittingField - FinField" begin
+  k = GF(3)
+  kt, t = k["t"]
+  K = splitting_field(t^6-2)
+  @test absolute_degree(K) == 2
+  K, r = splitting_field(t^6-2, do_roots = true)
+  @test length(r) == 2
+  
+  K = splitting_field(t^6-t-1)
+  @test degree(K) == 6
+
+  Ks,s = K["s"]
+  E, r = splitting_field(s^5-5*s+2*s^2+1, do_roots = true)
+
+  @test absolute_degree(E) == 30
+  @test length(r) == 5
+end  
+
+

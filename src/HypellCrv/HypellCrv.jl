@@ -6,10 +6,6 @@
 #
 ################################################################################
 
-export HypellCrv, HypellCrvPt
-
-export HyperellipticCurve, genus, points_at_infinity, base_field, base_change, is_finite, is_infinite, is_on_curve, equation, homogeneous_equation, hyperelliptic_polynomials, points_with_x
-
 ################################################################################
 #
 #  Types
@@ -18,25 +14,25 @@ export HyperellipticCurve, genus, points_at_infinity, base_field, base_change, i
 
 mutable struct HypellCrv{T}
   base_field::Ring
-  f::PolyElem{T}
-  h::PolyElem{T}
+  f::PolyRingElem{T}
+  h::PolyRingElem{T}
   f_hom::MPolyRingElem{T}
   h_hom::MPolyRingElem{T}
   g::Int
   disc::T
 
-  function HypellCrv{T}(f::PolyElem, h::PolyElem, check::Bool = true) where {T}
+  function HypellCrv{T}(f::PolyRingElem, h::PolyRingElem, check::Bool = true) where {T}
     n = degree(f)
     m = degree(h)
     g = div(degree(f) - 1, 2)
-    if g < 0 
+    if g < 0
       error("Curve has to be of positive genus")
     end
     if m > g + 1
       error("h has to be of degree smaller than g + 2.")
     end
     R = base_ring(f)
-    
+
     if characteristic(R) == 2
       check = false
     end
@@ -45,16 +41,16 @@ mutable struct HypellCrv{T}
 
     if d != 0 && check
       C = new{T}()
-      
+
       C.f = f
       C.h = h
       C.g = g
       C.disc = d
       C.base_field = R
-      
+
       coeff_f = coefficients(f)
       coeff_h = coefficients(h)
-      
+
       Rxz, (x, z) = polynomial_ring(R, ["x", "z"])
       f_hom = sum([coeff_f[i]*x^i*z^(2*g + 2 - i) for i in (0:n)];init = zero(Rxz))
       h_hom = sum([coeff_h[i]*x^i*z^(g + 1 - i) for i in (0:m)];init = zero(Rxz))
@@ -84,40 +80,40 @@ mutable struct HypellCrvPt{T}
         error("Point is not on the curve")
       end
     end
-    
-    P.parent = C  
-    if coords[3] == 0 
+
+    P.parent = C
+    if coords[3] == 0
       P.coordx = coords[1]
       P.coordy = coords[2]
       P.coordz = coords[3]
       P.is_infinite = true
     else
       P.is_infinite = false
-      
+
       #Don't have numerators, denominators and gcd over finite fields
       if T <: FinFieldElem
-      
+
         scalar = inv(coords[3])
-          
+
         P.coordx = coords[1]*scalar
         P.coordy = coords[2]*scalar^(g+1)
         P.coordz = coords[3]*scalar
       else
-           
+
         #Eliminate denominators
         x = numerator(coords[1]) * denominator(coords[3])
         y = coords[2] * (denominator(coords[3]) * denominator(coords[1]))^(g + 1)
         z = numerator(coords[3]) * denominator(coords[1])
-        
+
         c = gcd(x, z)
-        
+
         #Eliminate gcd
-        if c!= 1 
+        if c!= 1
           x = divexact(x, c)
-          y = divexact(y, c^(g+1)) 
+          y = divexact(y, c^(g+1))
           z = divexact(z, c)
         end
-          
+
         P.coordx = K(x)
         P.coordy = K(y)
         P.coordz = K(z)
@@ -129,7 +125,7 @@ end
 
 function Base.getindex(P::HypellCrvPt, i::Int)
   @req 1 <= i <= 3 "Index must be 1, 2 or 3"
-  
+
   if i == 1
     return P.coordx
   elseif i == 2
@@ -146,27 +142,27 @@ end
 ################################################################################
 
 @doc raw"""
-    HyperellipticCurve(f::PolyElem, g::PolyElem; check::Bool = true) -> HypellCrv
+    HyperellipticCurve(f::PolyRingElem, g::PolyRingElem; check::Bool = true) -> HypellCrv
 
-Return the hyperelliptic curve $y^2 + h(x)y = f(x)$. The polynomial $f$ 
-must be monic of degree 2g + 1 > 3 or of degree 2g + 2 > 4 and the 
+Return the hyperelliptic curve $y^2 + h(x)y = f(x)$. The polynomial $f$
+must be monic of degree 2g + 1 > 3 or of degree 2g + 2 > 4 and the
 polynomial h must be of degree < g + 2. Here g will be the genus of the curve.
 """
-function HyperellipticCurve(f::PolyElem{T}, h::PolyElem{T}; check::Bool = true) where T <: FieldElem
-  @req ismonic(f) "Polynomial must be monic"
+function HyperellipticCurve(f::PolyRingElem{T}, h::PolyRingElem{T}; check::Bool = true) where T <: FieldElem
+  @req is_monic(f) "Polynomial must be monic"
   @req degree(f) >= 3 "Polynomial must be of degree 3"
 
   return HypellCrv{T}(f, h, check)
 end
 
 @doc raw"""
-    HyperellipticCurve(f::PolyElem; check::Bool = true) -> HypellCrv
+    HyperellipticCurve(f::PolyRingElem; check::Bool = true) -> HypellCrv
 
 Return the hyperelliptic curve $y^2 = f(x)$. The polynomial $f$ must be monic of
 degree larger than 3.
 """
-function HyperellipticCurve(f::PolyElem{T}; check::Bool = true) where T <: FieldElem
-  @req ismonic(f) "Polynomial must be monic"
+function HyperellipticCurve(f::PolyRingElem{T}; check::Bool = true) where T <: FieldElem
+  @req is_monic(f) "Polynomial must be monic"
   @req degree(f) >= 3 "Polynomial must be of degree 3"
   R = parent(f)
   return HypellCrv{T}(f, zero(R), check)
@@ -195,7 +191,7 @@ end
 ################################################################################
 
 @doc raw"""
-    base_change(K::Field, C::HypellCrv) -> EllCrv
+    base_change(K::Field, C::HypellCrv) -> EllipticCurve
 
 Return the base change of the hyperelliptic curve $C$ over K if coercion is
 possible.
@@ -323,10 +319,10 @@ end
 ################################################################################
 
 function (C::HypellCrv{T})(coords::Vector{S}; check::Bool = true) where {S, T}
-  if !(2 <= length(coords) <= 3) 
+  if !(2 <= length(coords) <= 3)
     error("Points need to be given in either affine coordinates (x, y) or projective coordinates (x, y, z)")
   end
-  
+
   if length(coords) == 2
     push!(coords, 1)
   end
@@ -363,24 +359,24 @@ Return the points at infinity.
 function points_at_infinity(C::HypellCrv{T}) where T
   K = base_field(C)
   equ = homogeneous_equation(C)
-  
+
   infi = HypellCrvPt{T}[]
 
   if equ(one(K),zero(K), zero(K)) == 0
     push!(infi, C([one(K),zero(K), zero(K)]))
   end
-  
+
   if equ(one(K),one(K), zero(K)) == 0
     push!(infi, C([one(K),one(K), zero(K)]))
     if characteristic(K)!= 2
       push!(infi, C([one(K),- one(K), zero(K)]))
     end
   end
-  
+
   return infi
 end
 
-function points_with_x(C::HypellCrv{T}, x) where T<: FinFieldElem
+function points_with_x_coordinate(C::HypellCrv{T}, x) where T<: FinFieldElem
   R = base_field(C)
   Ry, y = polynomial_ring(R,"y")
   equ = homogeneous_equation(C)
@@ -393,7 +389,7 @@ function points_with_x(C::HypellCrv{T}, x) where T<: FinFieldElem
   return pts
 end
 
-function points_with_x(C::HypellCrv{T}, x) where T
+function points_with_x_coordinate(C::HypellCrv{T}, x) where T
   R = base_field(C)
   Ry, y = polynomial_ring(R,"y")
   equ = homogeneous_equation(C)
@@ -444,7 +440,7 @@ function is_on_curve(C::HypellCrv{T}, coords::Vector{T}) where T
   x = coords[1]
   y = coords[2]
   z = coords[3]
-  
+
   equ = homogeneous_equation(C)
   equ(x, y, z)
   if equ(x, y, z) == 0
@@ -459,10 +455,6 @@ end
 #  ElemType
 #
 ################################################################################
-
-function elem_type(C::HypellCrv{T}) where T
-  return HypellCrvPt{T}
-end
 
 function elem_type(::Type{HypellCrv{T}}) where T
   return HypellCrvPt{T}
@@ -490,7 +482,7 @@ function show(io::IO, P::HypellCrvPt)
 end
 
 @doc raw"""
-    ==(P::EllCrvPt, Q::EllCrvPt) -> Bool
+    ==(P::EllipticCurvePoint, Q::EllipticCurvePoint) -> Bool
 
 Return true if $P$ and $Q$ are equal and live over the same elliptic curve
 $E$.

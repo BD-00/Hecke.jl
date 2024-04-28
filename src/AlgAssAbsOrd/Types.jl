@@ -5,7 +5,7 @@
 ################################################################################
 
 # Orders in algebras over the rationals
-@attributes mutable struct AlgAssAbsOrd{S, T} <: Ring
+@attributes mutable struct AlgAssAbsOrd{S, T} <: NCRing
   algebra::S                       # Algebra containing the order
   dim::Int
   basis#::Vector{AlgAssAbsOrdElem{S, T}}
@@ -16,7 +16,7 @@
   index::ZZRingElem                      # The det of basis_mat_inv
                                    # (this is the index of the equation order
                                    #  in the given order)
-  det_basis_matrix::QQFieldElem           
+  det_basis_matrix::QQFieldElem
   disc::ZZRingElem                       # Discriminant
 
   is_maximal::Int                   # 0 Not known
@@ -77,9 +77,9 @@
   end
 end
 
-const AlgAssAbsOrdID = Dict{Tuple{AbsAlgAss, FakeFmpqMat}, AlgAssAbsOrd}()
+const AlgAssAbsOrdID = AbstractAlgebra.CacheDictType{Tuple{AbstractAssociativeAlgebra, FakeFmpqMat}, AlgAssAbsOrd}()
 
-@attributes mutable struct AlgAssAbsOrdElem{S, T} <: RingElem
+@attributes mutable struct AlgAssAbsOrdElem{S, T} <: NCRingElem
   elem_in_algebra::T
   coordinates::Vector{ZZRingElem}
   has_coord::Bool # needed for mul!
@@ -105,7 +105,7 @@ const AlgAssAbsOrdID = Dict{Tuple{AbsAlgAss, FakeFmpqMat}, AlgAssAbsOrd}()
 
   function AlgAssAbsOrdElem{S, T}(O::AlgAssAbsOrd{S, T}, arr::Vector{ZZRingElem}) where {S, T}
     z = new{S, T}()
-    z.elem_in_algebra = dot(O.basis_alg, arr)
+    z.elem_in_algebra = degree(O) == 0 ? zero(algebra(O)) : dot(O.basis_alg, arr)
     z.coordinates = arr
     z.parent = O
     z.has_coord = true
@@ -172,7 +172,7 @@ end
                                        # to different orders
   normred::Dict{AlgAssAbsOrd{S, T}, QQFieldElem}
 
-  function AlgAssAbsOrdIdl{S, T}(A::S) where { S <: AbsAlgAss, T <: AbsAlgAssElem }
+  function AlgAssAbsOrdIdl{S, T}(A::S) where { S <: AbstractAssociativeAlgebra, T <: AbstractAssociativeAlgebraElem }
     r = new{S, T}()
     r.algebra = A
     r.isleft = 0
@@ -186,36 +186,40 @@ end
     return r
   end
 
-  function AlgAssAbsOrdIdl{S, T}(A::S, M::FakeFmpqMat) where { S <: AbsAlgAss, T <: AbsAlgAssElem }
+  function AlgAssAbsOrdIdl{S, T}(A::S, M::FakeFmpqMat) where { S <: AbstractAssociativeAlgebra, T <: AbstractAssociativeAlgebraElem }
     r = AlgAssAbsOrdIdl{S, T}(A)
     r.basis_matrix = M
     n = nrows(M)
-    if is_lower_triangular(M)
-      i = 0
-      while i < n && is_zero_row(M, i + 1)
-        i += 1
-      end
-      r.full_rank = (i == 0) ? 1 : -1
-      r.rank = n - i
-      if r.full_rank == 1
-        r.eldiv_mul = reduce(lcm, diagonal(numerator(M, copy = false)), init = one(ZZ))
+    if is_square(M)
+      if is_lower_triangular(M)
+        i = 0
+        while i < n && is_zero_row(M, i + 1)
+          i += 1
+        end
+        r.full_rank = (i == 0) ? 1 : -1
+        r.rank = n - i
+        if r.full_rank == 1
+          r.eldiv_mul = reduce(*, diagonal(numerator(M, copy = false)), init = one(ZZ))
+        else
+          r.eldiv_mul = zero(ZZ)
+        end
+      elseif is_upper_triangular(M)
+        i = n + 1
+        while i > 0 && is_zero_row(M, i - 1)
+          i -= 1
+        end
+        r.rank = i - 1
+        r.full_rank = (i == n + 1) ? 1 : -1
+        if r.full_rank == 1
+          r.eldiv_mul = reduce(*, diagonal(numerator(M, copy = false)), init = one(ZZ))
+        else
+          r.eldiv_mul = zero(ZZ)
+        end
       else
-        r.eldiv_mul = zero(ZZ)
-      end
-    elseif is_upper_triangular(M)
-      i = n + 1
-      while i > 0 && is_zero_row(M, i - 1)
-        i -= 1
-      end
-      r.rank = i - 1
-      r.full_rank = (i == n + 1) ? 1 : -1
-      if r.full_rank == 1
-        r.eldiv_mul = reduce(lcm, diagonal(numerator(M, copy = false)), init = one(ZZ))
-      else
-        r.eldiv_mul = zero(ZZ)
+        error("basis matrix not triangular matrix")
       end
     else
-      error("basis matrix not triangular matrix")
+      r.full_rank = 0
     end
 
     return r

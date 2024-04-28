@@ -1,4 +1,4 @@
-@testset "NfRelNS" begin
+@testset "RelNonSimpleNumField" begin
   Qx, x = FlintQQ["x"]
   K, _ = number_field(x^2 - 2)
   Ky, y = K["y"]
@@ -16,5 +16,11 @@
     @test string(a) isa String
   end
 
-  
+  @testset "coercion" begin
+    @test QQ(2*a^0) == 2*one(QQ)
+    @test_throws ArgumentError QQ(a)
+    @test_throws ErrorException QQ(gen(K) * a^0)
+    @test is_rational(2*a^0)
+    @test !is_rational(gen(K) * a^0)
+  end
 end

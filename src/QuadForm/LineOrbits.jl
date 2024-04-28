@@ -7,7 +7,7 @@
 # We iterate through K by adding 1 in the prime field case and by multiplying
 # with a primitive element in the general case.
 
-function LineEnumCtx(K::T, n) where {T}
+function LineEnumCtx(K::T, n::Int) where {T}
   a = primitive_element(K)
   v = Vector{elem_type(K)}(undef, n)
   for i in 1:n
@@ -16,7 +16,7 @@ function LineEnumCtx(K::T, n) where {T}
   depth = n + 1
   dim = n
   q = order(K)
-  length = divexact(q^n - 1, q - 1)
+  length = divexact(BigInt(q)^n - 1, q - 1)
   return LineEnumCtx{T, elem_type(T)}(K, a, dim, depth, v, length)
 end
 
@@ -29,7 +29,7 @@ function LineEnumCtx(K::T, n::Int) where {T <: Union{fpField, FpField}}
   depth = n + 1
   dim = n
   q = order(K)
-  length = divexact(q^n - 1, q - 1)
+  length = divexact(BigInt(q)^n - 1, q - 1)
   return LineEnumCtx{T, elem_type(T)}(K, a, dim, depth, v, length)
 end
 
@@ -37,20 +37,46 @@ function enumerate_lines(K, n)
   return LineEnumCtx(K, n)
 end
 
+function Base.show(io::IO, ::MIME"text/plain", P::LineEnumCtx)
+  io = pretty(io)
+  println(io, "Iterator for vector lines in a $(dim(P))-dimensional vector space")
+  print(io, Indent(), "over ", Lowercase(), P.K)
+  print(io, Dedent())
+end
+
 function Base.show(io::IO, P::LineEnumCtx)
-  print(io, "Iterator for affine lines in K^n with n = ", dim(P), "\n")
-  print(io, "over ", P.K)
+  if get(io, :supercompact, false)
+    print(io, "Iterator for vector lines")
+  else
+    io = pretty(io)
+    print(io, "Iterator for Gr(1, $(dim(P))) over ")
+    print(IOContext(io, :supercompact => true), Lowercase(), P.K)
+  end
 end
 
 Base.length(P::LineEnumCtx) = P.length
 
 Base.eltype(::Type{LineEnumCtx{T, S}}) where {T, S} = Vector{S}
 
+base_field(P::LineEnumCtx) = P.K
+
 depth(P::LineEnumCtx) = P.depth
 
 dim(P::LineEnumCtx) = P.dim
 
 primitive_element(P::LineEnumCtx) = P.a
+
+function Base.rand(P::LineEnumCtx)
+  K = base_field(P)
+  n = dim(P)
+  v = rand(K, n)
+  while iszero(v)
+    v = rand(K, n)
+  end
+  j = findfirst(!iszero, v)
+  map!(x -> x*inv(v[j]), v, v)
+  return v
+end
 
 ################################################################################
 #
@@ -63,7 +89,7 @@ function next(P::LineEnumCtx)
   if depth(P) > 0
     i = dim(P)
     while true
-      @show i, P.v, depth(P)
+      #@show i, P.v, depth(P)
       if i == depth(P)
         P.v[i] = zero!(P.v[i])
         i = i - 1
@@ -94,7 +120,7 @@ function next(P::LineEnumCtx{T, S}) where {T <: Union{fpField, FpField}, S}
   if depth(P) > 0
     i = dim(P)
     while true
-      @show i, P.v, depth(P)
+      #@show i, P.v, depth(P)
       if i == depth(P)
         P.v[i] = zero!(P.v[i])
         i = i - 1
@@ -217,7 +243,7 @@ function line_orbits(G::Vector{T}) where {T <: MatElem{FpFieldElem}}
   p = modulus(F)
   k = nrows(G[1])
   if fits(UInt, p)
-    Fsmall = GF(UInt(p), cached = false)
+    Fsmall = Native.GF(UInt(p), cached = false)
     GG = Vector{dense_matrix_type(Fsmall)}(undef, length(G))
     let Fsmall = Fsmall
       for i in 1:length(G)
@@ -247,7 +273,7 @@ function line_orbits(G::Vector{fqPolyRepMatrix})
   if d == 1
     p = characteristic(F)
     @assert fits(UInt, p)
-    GFp = GF(UInt(p), cached = false)
+    GFp = Native.GF(UInt(p), cached = false)
     GG = Vector{fpMatrix}(undef, length(G))
     let GFp = GFp
       for i in 1:length(G)
@@ -278,13 +304,13 @@ function line_orbits(G::Vector{FqPolyRepMatrix})
   k = nrows(G[1])
   if fits(UInt, p)
     f = defining_polynomial(F)
-    GFp = GF(UInt(p), cached = false)
+    GFp = Native.GF(UInt(p), cached = false)
     GFpx, x = polynomial_ring(GFp, "x", cached = false)
     local fp
     let GFp = GFp
       fp = map_coefficients(a -> GFp(a.data), f, parent = GFpx)
     end
-    FF, aa = FlintFiniteField(fp, "aa", cached = false)
+    FF, aa = Native.finite_field(fp, "aa", cached = false)
     GG = Vector{dense_matrix_type(FF)}(undef, length(G))
     for i in 1:length(G)
       GG[i] = map_entries(b -> sum(coeff(b, i) * aa^i for i in 0:(d-1)), G[i])::dense_matrix_type(FF)
@@ -314,7 +340,7 @@ function _line_orbits(G::Vector)
   n = nrows(G[1])
   P = enumerate_lines(K, n)
   l = length(P)
-  @vprint :GenRep 1 "Computing orbits of lines of total length $l over $K\n"
+  @vprintln :GenRep 1 "Computing orbits of lines of total length $l over $K"
   lines = Vector{eltype(P)}(undef, l)
   i = 1
   for v in P

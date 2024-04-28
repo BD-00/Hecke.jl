@@ -12,10 +12,10 @@
 
   F = GF(3)
 
-  Hecke.change_base_ring(::Hecke.NfRel, ::Hecke.fpMatrix) = error("asd")
+  Hecke.change_base_ring(::Hecke.RelSimpleNumField, ::Hecke.fpMatrix) = error("asd")
   @test_throws ErrorException hermitian_space(E, F[1 2; 2 1])
 
-  Hecke.change_base_ring(::Hecke.NfRel, x::Hecke.fpMatrix) = x
+  Hecke.change_base_ring(::Hecke.RelSimpleNumField, x::Hecke.fpMatrix) = x
   @test_throws ErrorException hermitian_space(E, F[1 2; 2 1])
 
   V = @inferred hermitian_space(E, E[1 1; 1 1;])
@@ -37,7 +37,7 @@
   V = @inferred hermitian_space(E, FlintQQ[1 2; 2 1])
   @test V === hermitian_space(E, FlintQQ[1 2; 2 1])
   @test V !== hermitian_space(E, FlintQQ[1 2; 2 1], cached = false)
-  @test ishermitian(V)
+  @test is_hermitian(V)
   @test !is_definite(V)
   @test involution(V) == s
   @test det(V) == -discriminant(V)
@@ -129,4 +129,13 @@
   @test !is_isometric(V1, H)
   @test is_isometric(V1, V2)
 
+end
+
+@testset "diagonal with transform" begin
+  E, b = cyclotomic_field_as_cm_extension(3)
+  K = base_field(E)
+  s = involution(E)
+  Vh = hermitian_space(E, E[1 b 1; s(b) 4 s(b); 1 b 1])
+  diag, U = @inferred diagonal_with_transform(Vh)
+  @test diagonal(map_entries(K, U*gram_matrix(Vh)*map_entries(s, transpose(U)))) == diag
 end

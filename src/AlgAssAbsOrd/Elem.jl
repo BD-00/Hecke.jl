@@ -1,8 +1,4 @@
-export elem_in_algebra
-
 parent_type(::Type{AlgAssAbsOrdElem{S, T}}) where {S, T} = AlgAssAbsOrd{S, T}
-
-parent_type(::AlgAssAbsOrdElem{S, T}) where {S, T} = AlgAssAbsOrd{S, T}
 
 @inline parent(x::AlgAssAbsOrdElem) = x.parent
 
@@ -45,7 +41,7 @@ end
 end
 
 (O::AlgAssAbsOrd{S, T})(arr::Vector{ZZRingElem}) where {S, T} = begin
-  M = basis_matrix(O, copy = false)
+  M = basis_matrix(FakeFmpqMat, O, copy = false)
   N = matrix(FlintZZ, 1, degree(O), arr)
   NM = N*M
   x = elem_from_mat_row(algebra(O), NM.num, 1, NM.den)
@@ -100,8 +96,8 @@ zero(O::AlgAssAbsOrd) = O(algebra(O)())
 ################################################################################
 
 @doc raw"""
-    elem_in_algebra(x::AlgAssAbsOrdElem; copy::Bool = true) -> AbsAlgAssElem
-    elem_in_algebra(x::AlgAssRelOrdElem; copy::Bool = true) -> AbsAlgAssElem
+    elem_in_algebra(x::AlgAssAbsOrdElem; copy::Bool = true) -> AbstractAssociativeAlgebraElem
+    elem_in_algebra(x::AlgAssRelOrdElem; copy::Bool = true) -> AbstractAssociativeAlgebraElem
 
 Returns $x$ as an element of the algebra containing it.
 """
@@ -229,26 +225,26 @@ function divexact(a::T, b::T, action::Symbol, check::Bool = true) where { T <: U
 end
 
 @doc raw"""
-    divexact_right(a::AlgAssAbsOrdElem, b::AlgAssAbsOrdElem, check::Bool = true)
-    divexact_right(a::AlgAssRelOrdElem, b::AlgAssRelOrdElem, check::Bool = true)
+    divexact_right(a::AlgAssAbsOrdElem, b::AlgAssAbsOrdElem; check::Bool = true)
+    divexact_right(a::AlgAssRelOrdElem, b::AlgAssRelOrdElem; check::Bool = true)
       -> AlgAssRelOrdElem
 
 Returns an element $c \in O$ such that $a = c \cdot b$ where $O$ is the order
 containing $a$.
 If `check` is `false`, it is not checked whether $c$ is an element of $O$.
 """
-divexact_right(a::T, b::T, check::Bool = true) where { T <: Union{ AlgAssAbsOrdElem, AlgAssRelOrdElem } } = divexact(a, b, :right, check)
+divexact_right(a::T, b::T; check::Bool = true) where { T <: Union{ AlgAssAbsOrdElem, AlgAssRelOrdElem } } = divexact(a, b, :right, check)
 
 @doc raw"""
-    divexact_left(a::AlgAssAbsOrdElem, b::AlgAssAbsOrdElem, check::Bool = true)
-    divexact_left(a::AlgAssRelOrdElem, b::AlgAssRelOrdElem, check::Bool = true)
+    divexact_left(a::AlgAssAbsOrdElem, b::AlgAssAbsOrdElem; check::Bool = true)
+    divexact_left(a::AlgAssRelOrdElem, b::AlgAssRelOrdElem; check::Bool = true)
       -> AlgAssRelOrdElem
 
 Returns an element $c \in O$ such that $a = b \cdot c$ where $O$ is the order
 containing $a$.
 If `check` is `false`, it is not checked whether $c$ is an element of $O$.
 """
-divexact_left(a::T, b::T, check::Bool = true) where { T <: Union{ AlgAssAbsOrdElem, AlgAssRelOrdElem } } = divexact(a, b, :left, check)
+divexact_left(a::T, b::T; check::Bool = true) where { T <: Union{ AlgAssAbsOrdElem, AlgAssRelOrdElem } } = divexact(a, b, :left, check)
 
 ################################################################################
 #
@@ -375,8 +371,8 @@ The multiplication is from the left if `action == :left` and from the right if
 function representation_matrix(x::AlgAssAbsOrdElem, action::Symbol = :left)
 
   O = parent(x)
-  M = basis_matrix(O, copy = false)
-  M1 = basis_mat_inv(O, copy = false)
+  M = basis_matrix(FakeFmpqMat, O, copy = false)
+  M1 = basis_mat_inv(FakeFmpqMat, O, copy = false)
 
   B = FakeFmpqMat(representation_matrix(elem_in_algebra(x, copy = false), action))
   B = mul!(B, M, B)
@@ -388,8 +384,8 @@ end
 
 function representation_matrix_mod(x::AlgAssAbsOrdElem, d::ZZRingElem, action::Symbol = :left)
   O = parent(x)
-  M = basis_matrix(O, copy = false)
-  M1 = basis_mat_inv(O, copy = false)
+  M = basis_matrix(FakeFmpqMat, O, copy = false)
+  M1 = basis_mat_inv(FakeFmpqMat, O, copy = false)
 
   A = FakeFmpqMat(representation_matrix(elem_in_algebra(x, copy = false), action))
   d2 = M.den * M1.den*A.den
@@ -467,7 +463,7 @@ function powermod(a::AlgAssAbsOrdElem, i::Union{ZZRingElem, Int}, m::AlgAssAbsOr
   return b
 end
 
-# This is mostly is_divisible in NfOrd/residue_ring.jl
+# This is mostly is_divisible in AbsSimpleNumFieldOrder/residue_ring.jl
 function is_divisible_mod_ideal(x::AlgAssAbsOrdElem, y::AlgAssAbsOrdElem, a::AlgAssAbsOrdIdl)
 
   iszero(y) && error("Dividing by zero")

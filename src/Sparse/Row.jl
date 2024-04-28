@@ -1,4 +1,4 @@
-export sparse_row, dot, scale_row!, add_scaled_row, permute_row
+import Base.Vector
 
 ################################################################################
 #
@@ -8,7 +8,7 @@ export sparse_row, dot, scale_row!, add_scaled_row, permute_row
 
 function SRowSpace(R::Ring; cached = true)
   T = elem_type(R)
-  return SRowSpace{T}(R)
+  return SRowSpace{T}(R, cached)
 end
 
 base_ring(A::SRow{ZZRingElem}) = FlintZZ
@@ -87,7 +87,7 @@ end
 Constructs the sparse row $(a_i)_i$ over $R$ with $a_{i_j} = x_j$, where
 $J = (i_j)_j$ and $V = (x_j)_j$.
 """
-function sparse_row(R::Ring, pos::Vector{Int}, val::Vector{T}; sort::Bool = true) where T
+function sparse_row(R::Ring, pos::Vector{Int}, val::AbstractVector{T}; sort::Bool = true) where T
   if sort
     p = sortperm(pos)
     pos = pos[p]
@@ -131,7 +131,7 @@ end
 ################################################################################
 
 function show(io::IO, A::SRow{T}) where T
-  print(io, "Sparse row with positions $(A.pos) and values $(A.values)\n")
+  print(io, "Sparse row with positions $(A.pos) and values $(A.values)")
 end
 
 ################################################################################
@@ -488,7 +488,29 @@ function *(b::T, A::SRow{T}) where T
   if iszero(b)
     return B
   end
-  for (p,v) = A
+  for (p,v) in A
+    nv = b*v
+    if !iszero(nv)  # there are zero divisors - potentially
+      push!(B.pos, p)
+      push!(B.values, nv)
+    end
+  end
+  return B
+end
+
+function *(b, A::SRow)
+  if length(A.values) == 0
+    return sparse_row(base_ring(A))
+  end
+  return base_ring(A)(b)*A
+end
+
+function *(A::SRow{T}, b::T) where T
+  B = sparse_row(parent(b))
+  if iszero(b)
+    return B
+  end
+  for (p,v) in A
     nv = v*b
     if !iszero(nv)  # there are zero divisors - potentially
       push!(B.pos, p)
@@ -498,11 +520,11 @@ function *(b::T, A::SRow{T}) where T
   return B
 end
 
-function *(b::Integer, A::SRow{T}) where T
+function *(A::SRow, b)
   if length(A.values) == 0
     return sparse_row(base_ring(A))
   end
-  return base_ring(A)(b)*A
+  return A*base_ring(A)(b)
 end
 
 function div(A::SRow{T}, b::T) where T
@@ -527,13 +549,13 @@ function div(A::SRow{T}, b::Integer) where T
   return div(A, base_ring(A)(b))
 end
 
-function divexact(A::SRow{T}, b::T) where T
+function divexact(A::SRow{T}, b::T; check::Bool=true) where T
   B = sparse_row(base_ring(A))
   if iszero(b)
     return error("Division by zero")
   end
   for (p,v) = A
-    nv = divexact(v, b)
+    nv = divexact(v, b; check=check)
     @assert !iszero(nv)
     push!(B.pos, p)
     push!(B.values, nv)
@@ -541,11 +563,11 @@ function divexact(A::SRow{T}, b::T) where T
   return B
 end
 
-function divexact(A::SRow{T}, b::Integer) where T
+function divexact(A::SRow{T}, b::Integer; check::Bool=true) where T
   if length(A.values) == 0
     return deepcopy(A)
   end
-  return divexact(A, base_ring(A)(b))
+  return divexact(A, base_ring(A)(b); check=check)
 end
 
 ################################################################################
@@ -689,4 +711,50 @@ Returns the smallest entry of $A$.
 """
 function minimum(A::SRow)
   return minimum(A.values)
+end
+
+################################################################################
+#
+#  Conversion from/to julia and AbstractAlgebra types
+#
+################################################################################
+
+@doc raw"""
+    Vector(a::SMat{T}, n::Int) -> Vector{T}
+
+The first `n` entries of `a`, as a julia vector.
+"""
+function Vector(r::SRow, n::Int)
+  A = elem_type(base_ring(r))[zero(base_ring(r)) for _ in 1:n]
+  for i in intersect(r.pos, 1:n)
+    A[i] = r[i]
+  end
+  return A
+end
+
+@doc raw"""
+    sparse_row(A::MatElem)
+
+Convert `A` to a sparse row.
+`nrows(A) == 1` must hold.
+"""
+function sparse_row(A::MatElem)
+  @assert nrows(A) == 1
+  if ncols(A) == 0
+    return sparse_row(base_ring(A))
+  end
+  return Hecke.sparse_matrix(A)[1]
+end
+
+@doc raw"""
+    dense_row(r::SRow, n::Int)
+
+Convert `r[1:n]` to a dense row, that is an AbstractAlgebra matrix.
+"""
+function dense_row(r::SRow, n::Int)
+  A = zero_matrix(base_ring(r), 1, n)
+  for i in intersect(r.pos, 1:n)
+    A[1,i] = r[i]
+  end
+  return A
 end

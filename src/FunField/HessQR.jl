@@ -143,9 +143,7 @@ function Hecke.denominator(a::Generic.RationalFunctionFieldElem, S::HessQR)
   return integral_split(a, S)[2]
 end
 
-Nemo.elem_type(::HessQR) = HessQRElem
 Nemo.elem_type(::Type{HessQR}) = HessQRElem
-Nemo.parent_type(::HessQRElem) = HessQR
 Nemo.parent_type(::Type{HessQRElem}) = HessQR
 Nemo.is_domain_type(::Type{HessQRElem}) = true
 
@@ -275,7 +273,7 @@ function rem(a::HessQRElem, b::HessQRElem)
   end
   R = parent(a).R
   F, mF = quo(ZZ, d)
-  aa = map_coefficients(mF, a.c*a.f)
+  aa = map_coefficients(mF, a.c*a.f, cached = false)
   if iszero(aa)
     z = mF(one(domain(mF)))
   else
@@ -335,23 +333,25 @@ function Nemo.residue_field(a::HessQR, b::HessQRElem)
   @assert parent(b) == a
   @assert is_prime(b.c)
   F = GF(b.c)
-  Ft, t = RationalFunctionField(F, String(var(a.R)), cached = false)
+  Ft, t = rational_function_field(F, String(var(a.R)), cached = false)
   R = parent(numerator(t))
-  return Ft, MapFromFunc(x->F(x.c)*Ft(map_coefficients(F, x.f, parent = R))//Ft(map_coefficients(F, x.g, parent = R)),
-                         y->HessQRElem(a, ZZRingElem(1), map_coefficients(lift, numerator(y)), map_coefficients(lift, denominator(y))), a, Ft)
+  S = a.R
+  return Ft, MapFromFunc(a, Ft,
+                         x->F(x.c)*Ft(map_coefficients(F, x.f, parent = R))//Ft(map_coefficients(F, x.g, parent = R)),
+                         y->HessQRElem(a, ZZRingElem(1), map_coefficients(z -> lift(ZZ, z), numerator(y), parent = S), map_coefficients(z -> lift(ZZ, z), denominator(y), parent = S)))
 end
 
 function Nemo.residue_ring(a::HessQR, b::HessQRElem)
-  F = residue_ring(FlintZZ, b.c)
+  F = residue_ring(FlintZZ, b.c)[1]
   Fx, x = polynomial_ring(F, cached = false)
   Q = fraction_field(Fx, cached = false)
   return Q, MapFromFunc(
+     a, Q,
      x->map_coefficients(F, x.c*x.f, parent = Fx)//map_coefficients(F, x.g, parent = Fx),
-     y->HessQRElem(a, ZZRingElem(1), lift(parent(b.f), numerator(y, false)), lift(parent(b.f), denominator(y, false))),
-     a, Q)
+     y->HessQRElem(a, ZZRingElem(1), lift(parent(b.f), numerator(y, false)), lift(parent(b.f), denominator(y, false))))
 end
 
-function +(a::FracElem{T}, b::FracElem{T}) where T <: PolyElem{<:ResElem{S}} where S <: Hecke.IntegerUnion
+function +(a::FracElem{T}, b::FracElem{T}) where T <: PolyRingElem{<:ResElem{S}} where S <: Hecke.IntegerUnion
   na = numerator(a, false)
   da = denominator(a, false)
 
@@ -364,7 +364,7 @@ function +(a::FracElem{T}, b::FracElem{T}) where T <: PolyElem{<:ResElem{S}} whe
   return parent(a)(da, db)
 end
 
-function -(a::FracElem{T}, b::FracElem{T}) where T <: PolyElem{<:ResElem{S}} where S <: Hecke.IntegerUnion
+function -(a::FracElem{T}, b::FracElem{T}) where T <: PolyRingElem{<:ResElem{S}} where S <: Hecke.IntegerUnion
   na = numerator(a, false)
   da = denominator(a, false)
 
@@ -377,7 +377,7 @@ function -(a::FracElem{T}, b::FracElem{T}) where T <: PolyElem{<:ResElem{S}} whe
   return parent(a)(da, db)
 end
 
-function *(a::FracElem{T}, b::FracElem{T}) where T <: PolyElem{<:ResElem{S}} where S <: Hecke.IntegerUnion
+function *(a::FracElem{T}, b::FracElem{T}) where T <: PolyRingElem{<:ResElem{S}} where S <: Hecke.IntegerUnion
   na = numerator(a, false)
   da = denominator(a, false)
 
@@ -398,7 +398,7 @@ function Hecke.factor(a::HessQRElem)
   return Fac(R(a.f), Dict((R(p),k) for (p,k) = f.fac))
 end
 
-function Hecke.factor(a::Generic.RationalFunctionFieldElem, R::HessQR)
+function Hecke.factor(R::HessQR, a::Generic.RationalFunctionFieldElem)
   d1 = reduce(lcm, map(denominator, coefficients(numerator(a))), init = ZZRingElem(1))
   f1 = factor(R(d1*numerator(a)))
   d2 = reduce(lcm, map(denominator, coefficients(denominator(a))), init = ZZRingElem(1))

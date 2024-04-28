@@ -14,126 +14,127 @@ The genus symbol itself is a collection of its local genus symbols.
 See [CS99](@cite) Chapter 15 for the definitions.
 Note that genera for non-integral lattices are supported.
 
-The class `ZGenus` supports genera of $\mathbb{Z}$-lattices.
+The class `ZZGenus` supports genera of $\mathbb{Z}$-lattices.
 
-```@docs
-ZGenus
+```@docs; canonical=false
+ZZGenus
 ```
 
 ## Creation of Genera
 
 ### From an integral Lattice
 
-```@docs
-genus(::ZLat)
+```@docs; canonical=false
+genus(::ZZLat)
 ```
 
 ### From a gram matrix
 
-```@docs
+```@docs; canonical=false
 genus(A::MatElem)
 ```
 
 ### Enumeration of genus symbols
 
-```@docs
-Zgenera(sig_pair::Tuple{Int,Int}, determinant::Union{Int,ZZRingElem})
+```@docs; canonical=false
+integer_genera(sig_pair::Tuple{Int,Int}, determinant::Union{Int,ZZRingElem})
 ```
 ### From other genus symbols
-```@docs
-direct_sum(G1::ZGenus, G2::ZGenus)
+```@docs; canonical=false
+direct_sum(G1::ZZGenus, G2::ZZGenus)
 ```
 
 ## Attributes of the genus
 
-```@docs
-dim(G::ZGenus)
-rank(G::ZGenus)
-signature(G::ZGenus)
-det(G::ZGenus)
-iseven(G::ZGenus)
-is_definite(G::ZGenus)
-level(G::ZGenus)
-scale(G::ZGenus)
-norm(G::ZGenus)
-primes(G::ZGenus)
-is_integral(G::ZGenus)
+```@docs; canonical=false
+dim(G::ZZGenus)
+rank(G::ZZGenus)
+signature(G::ZZGenus)
+det(G::ZZGenus)
+iseven(G::ZZGenus)
+is_definite(G::ZZGenus)
+level(G::ZZGenus)
+scale(G::ZZGenus)
+norm(G::ZZGenus)
+primes(G::ZZGenus)
+is_integral(G::ZZGenus)
 ```
 ### Discriminant group
-[`discriminant_group(::ZGenus)`](@ref)
+[`discriminant_group(::ZZGenus)`](@ref)
 
 ### Primary genera
-```docs
-is_primary_with_prime(G::ZGenus)
-is_primary(G::ZGenus, p::Union{Integer, ZZRingElem})
-is_elementary_with_prime(G::ZGenus)
-is_elementary(G::ZGenus, p::Union{Integer, ZZRingElem})
+
+```@docs; canonical=false
+is_primary_with_prime(G::ZZGenus)
+is_primary(G::ZZGenus, p::Union{Integer, ZZRingElem})
+is_elementary_with_prime(G::ZZGenus)
+is_elementary(G::ZZGenus, p::Union{Integer, ZZRingElem})
 ```
 
 ### local Symbol
-```@docs
-local_symbol(G::ZGenus, p)
+```@docs; canonical=false
+local_symbol(G::ZZGenus, p)
 ```
 
 ## Representative(s)
 
-```@docs
-quadratic_space(G::ZGenus)
-rational_representative(G::ZGenus)
-representative(G::ZGenus)
-representatives(G::ZGenus)
-mass(G::ZGenus)
-rescale(::ZGenus, ::RationalUnion)
+```@docs; canonical=false
+quadratic_space(G::ZZGenus)
+rational_representative(G::ZZGenus)
+representative(G::ZZGenus)
+representatives(G::ZZGenus)
+mass(G::ZZGenus)
+rescale(::ZZGenus, ::RationalUnion)
 ```
 
 ## Embeddings and Representations
-```@docs
-represents(G1::ZGenus, G2::ZGenus)
+```@docs; canonical=false
+represents(G1::ZZGenus, G2::ZZGenus)
 ```
 
 ## Local genus Symbols
 
-```@docs
-ZpGenus
+```@docs; canonical=false
+ZZLocalGenus
 ```
 
 ### Creation
 
-```@docs
-genus(L::ZLat, p)
-genus(A::ZZMatrix, p)
+```@docs; canonical=false
+genus(::ZZLat, ::IntegerUnion)
+genus(::QQMatrix, ::IntegerUnion)
 ```
 
 ### Attributes
-```@docs
-prime(S::ZpGenus)
-iseven(S::ZpGenus)
-symbol(S::ZpGenus, scale::Int)
-hasse_invariant(S::ZpGenus)
-det(S::ZpGenus)
-dim(S::ZpGenus)
-rank(S::ZpGenus)
-excess(S::ZpGenus)
-signature(S::ZpGenus)
-oddity(S::ZpGenus)
-scale(S::ZpGenus)
-norm(S::ZpGenus)
-level(S::ZpGenus)
+```@docs; canonical=false
+prime(S::ZZLocalGenus)
+iseven(S::ZZLocalGenus)
+symbol(S::ZZLocalGenus, scale::Int)
+hasse_invariant(S::ZZLocalGenus)
+det(S::ZZLocalGenus)
+dim(S::ZZLocalGenus)
+rank(S::ZZLocalGenus)
+excess(S::ZZLocalGenus)
+signature(S::ZZLocalGenus)
+oddity(S::ZZLocalGenus)
+scale(S::ZZLocalGenus)
+norm(S::ZZLocalGenus)
+level(S::ZZLocalGenus)
 ```
 ### Representative
-```@docs
-representative(S::ZpGenus)
-gram_matrix(S::ZpGenus)
-rescale(S::ZpGenus, a::RationalUnion)
+```@docs; canonical=false
+representative(S::ZZLocalGenus)
+gram_matrix(S::ZZLocalGenus)
+rescale(S::ZZLocalGenus, a::RationalUnion)
 ```
 
 ### Direct sums
-```@docs
-direct_sum(S1::ZpGenus, S2::ZpGenus)
+```@docs; canonical=false
+direct_sum(S1::ZZLocalGenus, S2::ZZLocalGenus)
 ```
 
 ### Embeddings/Representations
-```@docs
-represents(G1::ZpGenus, G2::ZpGenus)
+```@docs; canonical=false
+represents(G1::ZZLocalGenus, G2::ZZLocalGenus)
 ```
 

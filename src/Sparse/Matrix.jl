@@ -1,5 +1,3 @@
-export SMatSpace, sparse_matrix, nnz, sparsity, density
-
 ################################################################################
 #
 #  Parent constructor
@@ -24,22 +22,48 @@ parent(A::SMat) = SMatSpace(base_ring(A), A.r, A.c)
 base_ring(A::SMat{T}) where {T} = A.base_ring::parent_type(T)
 
 @doc raw"""
-    nrows(A::SMat) -> Int
+    number_of_rows(A::SMat) -> Int
 
 Return the number of rows of $A$.
 """
-function nrows(A::SMat)
+function number_of_rows(A::SMat)
   @assert A.r == length(A.rows)
   return A.r
 end
 
 @doc raw"""
-    ncols(A::SMat) -> Int
+    number_of_columns(A::SMat) -> Int
 
 Return the number of columns of $A$.
 """
-function ncols(A::SMat)
+function number_of_columns(A::SMat)
   return A.c
+end
+
+#used in HNF.jl:
+# sparse_row operations usually involve a temporary intermediate row
+# for large matrices, this kills the GC performance, so we allow
+# to store up to 10 sparse auxiliaries in the matrix..
+# usage:
+# sr = get_tmp(A)
+# add_scaled_row(..., sr)
+# release_tmp(A, sr)
+function get_tmp(A::SMat)
+  if isdefined(A, :tmp) && length(A.tmp) > 0
+    return pop!(A.tmp)
+  end
+  return sparse_row(base_ring(A))
+end
+
+function release_tmp(A::SMat{T}, s::SRow{T}) where T
+  return
+  if isdefined(A, :tmp)
+    if length(A.tmp) < 10
+      push!(A.tmp, s)
+    end
+  else
+    A.tmp = [s]
+  end
 end
 
 @doc raw"""
@@ -441,11 +465,11 @@ end
 
 # (dense Vector{T}) * SMat{T} as (dense Vector{T})
 @doc raw"""
-    mul(A::SMat{T}, b::AbstractVector{T}) -> Vector{T}
+    *(A::SMat{T}, b::AbstractVector{T}) -> Vector{T}
 
 Return the product $A \cdot b$ as a dense vector.
 """
-function mul(A::SMat{T}, b::AbstractVector{T}) where T
+function *(A::SMat{T}, b::AbstractVector{T}) where T
   @assert length(b) == ncols(A)
   c = Vector{T}(undef, nrows(A))
   mul!(c, A, b)
@@ -469,11 +493,11 @@ end
 
 # - SMat{T} * Matrix{T} as Matrix{T}
 @doc raw"""
-    mul(A::SMat{T}, b::AbstractMatrix{T}) -> Matrix{T}
+    *(A::SMat{T}, b::AbstractMatrix{T}) -> Matrix{T}
 
 Return the product $A \cdot b$ as a dense array.
 """
-function mul(A::SMat{T}, b::AbstractMatrix{T}) where T
+function *(A::SMat{T}, b::AbstractMatrix{T}) where T
   sz = size(b)
   @assert sz[1] == ncols(A)
   c = Array{T}(undef, sz[1], sz[2])
@@ -495,26 +519,24 @@ function mul!(c::MatElem{T}, A::SMat{T}, b::MatElem{T}) where T
 end
 
 # - SMat{T} * MatElem{T} as MatElem{T}
-
 @doc raw"""
-    mul(A::SMat{T}, b::MatElem{T}) -> MatElem
+    *(A::SMat{T}, b::MatElem{T}) -> MatElem
 
 Return the product $A \cdot b$ as a dense matrix.
 """
-function mul(A::SMat{T}, b::MatElem{T}) where T
+function *(A::SMat{T}, b::MatElem{T}) where T
   @assert nrows(b) == ncols(A)
   c = similar(b, nrows(A), ncols(b))
   return mul!(c, A, b)
 end
 
 # - SRow{T} * SMat{T} as SRow{T}
-
 @doc raw"""
-    mul(A::SRow, B::SMat) -> SRow
+    *(A::SRow, B::SMat) -> SRow
 
 Return the product $A\cdot B$ as a sparse row.
 """
-function mul(A::SRow{T}, B::SMat{T}) where T
+function *(A::SRow{T}, B::SMat{T}) where T
   C = sparse_row(base_ring(B))
   for (p, v) in A
     if iszero(v)
@@ -568,9 +590,13 @@ end
 
 ################################################################################
 #
-#  Addition
+#  Arithmetics
 #
 ################################################################################
+
+function -(A::SMat)
+  return map_entries(-, A)
+end
 
 function +(A::SMat{T}, B::SMat{T}) where T
   nrows(A) != nrows(B) && error("Matrices must have same number of rows")
@@ -616,35 +642,119 @@ end
 #
 ################################################################################
 
-function *(b::T, A::SMat{T}) where {T <: RingElem}
-  B = sparse_matrix(base_ring(A))
+function *(b::T, A::SMat{T}) where {T}
   if iszero(b)
-    return B
+    return sparse_matrix(base_ring(A), nrows(A), ncols(A))
   end
-  for a = A
-    push!(B, b*a)
-  end
-  return B
-end
-
-function *(b::Integer, A::SMat{T}) where T
-  return base_ring(A)(b)*A
-end
-
-function *(b::ZZRingElem, A::SMat{T}) where T
-  return base_ring(A)(b)*A
-end
-
-function *(b::ZZRingElem, A::SMat{ZZRingElem})
-  if iszero(b)
-    return zero_matrix(SMat, FlintZZ, nrows(A), ncols(A))
-  end
-  B = sparse_matrix(base_ring(A))
-  B.c = ncols(A)
+  B = sparse_matrix(base_ring(A), 0, ncols(A))
   for a in A
     push!(B, b * a)
   end
   return B
+end
+
+function *(b, A::SMat)
+  return base_ring(A)(b) * A
+end
+
+function *(A::SMat{T}, b::T) where {T}
+  if iszero(b)
+    return sparse_matrix(base_ring(A), nrows(A), ncols(A))
+  end
+  B = sparse_matrix(base_ring(A), 0, ncols(A))
+  for a in A
+    push!(B, a * b)
+  end
+  return B
+end
+
+function *(A::SMat, b)
+  return A * base_ring(A)(b)
+end
+
+################################################################################
+#
+#  Dot product
+#
+################################################################################
+
+@doc raw"""
+    dot(x::SRow{T}, A::SMat{T}, y::SRow{T}) where T -> T
+
+Return the generalized dot product `dot(x, A*y)`.
+"""
+function dot(x::SRow{T}, A::SMat{T}, y::SRow{T}) where T
+  v = zero(T)
+  px = 1
+  for i in 1:length(A.rows)
+    while px <= length(x.pos) && x.pos[px] < i
+      px += 1
+    end
+    if px > length(x.pos)
+      break
+    elseif x.pos[px] > i
+      continue
+    end
+
+    s = zero(T)
+    py = 1
+    for j in 1:length(A[i].pos)
+      while py <= length(y.pos) && y.pos[py] < A[i].pos[j]
+        py += 1
+      end
+      if py > length(y.pos)
+        break
+      elseif y.pos[py] > A[i].pos[j]
+        continue
+      end
+
+      s += A[i].values[j] * y.values[py]
+    end
+
+    v += x.values[px] * s
+  end
+
+  return v
+end
+
+@doc raw"""
+    dot(x::AbstractVector{T}, A::SMat{T}, y::AbstractVector{T}) where T -> T
+
+Return the generalized dot product `dot(x, A*y)`.
+"""
+function dot(x::AbstractVector{T}, A::SMat{T}, y::AbstractVector{T}) where T
+  @req length(x) == nrows(A) && ncols(A) <= length(y) "incompatible matrix dimensions"
+
+  v = zero(T)
+  for i in 1:length(A.rows)
+    s = T(0)
+    for j in 1:length(A[i].pos)
+      s += A[i].values[j] * y[A[i].pos[j]]
+    end
+    v += x[i] * s
+  end
+
+  return v
+end
+
+@doc raw"""
+    dot(x::MatrixElem{T}, A::SMat{T}, y::MatrixElem{T}) where T -> T
+
+Return the generalized dot product `dot(x, A*y)`.
+"""
+function dot(x::MatrixElem{T}, A::SMat{T}, y::MatrixElem{T}) where T
+  @req length(x) == nrows(A) && ncols(A) <= length(y) "incompatible matrix dimensions"
+
+  v = zero(T)
+  for i in 1:length(A.rows)
+    s = zero(T)
+    for j in 1:length(A[i].pos)
+      s += A[i].values[j] * y[A[i].pos[j]]
+    end
+    v += x[i] * s
+  end
+
+  return v
 end
 
 ################################################################################
@@ -654,12 +764,12 @@ end
 ################################################################################
 
 @doc raw"""
-    sub(A::SMat, r::UnitRange, c::UnitRange) -> SMat
+    sub(A::SMat, r::AbstractUnitRange, c::AbstractUnitRange) -> SMat
 
 Return the submatrix of $A$, where the rows correspond to $r$ and the columns
 correspond to $c$.
 """
-function sub(A::SMat{T}, r::UnitRange, c::UnitRange) where T
+function sub(A::SMat{T}, r::AbstractUnitRange, c::AbstractUnitRange) where T
   B = sparse_matrix(base_ring(A))
   B.nnz = 0
   B.c = length(c)
@@ -669,7 +779,7 @@ function sub(A::SMat{T}, r::UnitRange, c::UnitRange) where T
     for j=1:length(ra.values)
       if ra.pos[j] in c
         push!(rw.values, ra.values[j])
-        push!(rw.pos, ra.pos[j]-c.start+1)
+        push!(rw.pos, ra.pos[j]-first(c)+1)
       end
     end
     push!(B, rw)
@@ -1267,11 +1377,11 @@ end
 ################################################################################
 
 @doc raw"""
-    isupper_triangular(A::SMat)
+    is_upper_triangular(A::SMat)
 
 Returns true if and only if $A$ is upper (right) triangular.
 """
-function isupper_triangular(A::SMat)
+function is_upper_triangular(A::SMat)
   for i=2:A.r
     if iszero(A[i - 1])
       if iszero(A[i])
@@ -1331,10 +1441,6 @@ function identity_matrix(::Type{SMat}, R::Ring, n::Int)
   return A
 end
 
-function identity_matrix(::Type{MatElem}, R::Ring, n::Int)
-  return identity_matrix(R, n)
-end
-
 @doc raw"""
     zero_matrix(::Type{SMat}, R::Ring, n::Int)
 
@@ -1360,9 +1466,54 @@ function zero_matrix(::Type{SMat}, R::Ring, n::Int, m::Int)
   return S
 end
 
+similar(A::SMat) = sparse_matrix(base_ring(A), nrows(A), ncols(A))
+
+similar(A::SMat, m::Int, n::Int) = sparse_matrix(base_ring(A), m, n)
+
 ################################################################################
 #
-#  Julias concatenatin syntax
+#  Block diagonal matrices
+#
+################################################################################
+
+function diagonal_matrix(V::Vector{<:SMat{T}}) where {T}
+  return block_diagonal_matrix(V)
+end
+
+function diagonal_matrix(x::SMat{T}, xs::SMat{T}...) where {T}
+  return block_diagonal_matrix([x, xs...])
+end
+
+@doc raw"""
+    block_diagonal_matrix(xs::Vector{SMat})
+
+Return the block diagonal matrix with the matrices in `xs` on the diagonal.
+Requires all blocks to have the same base ring.
+"""
+function block_diagonal_matrix(xs::Vector{<:SMat{T}}) where {T}
+  @req length(xs) > 0 "At least one matrix is required"
+  R = base_ring(xs[1])
+  @req all(x -> base_ring(x) == R, xs) "All matrices must have the same base ring"
+  rows = sum(nrows(N) for N in xs)
+  cols = sum(ncols(N) for N in xs)
+  M = similar(xs[1], rows, cols)
+  i_offset = 0
+  j_offset = 0
+  for x in xs
+    for (i, x_row) in enumerate(x)
+      M_row = sparse_row(R, x_row.pos .+ j_offset, x_row.values)
+      setindex!(M, M_row, i_offset + i)
+    end
+    i_offset += nrows(x)
+    j_offset += ncols(x)
+  end
+
+  return M
+end
+
+################################################################################
+#
+#  Julias concatenation syntax
 #
 ################################################################################
 
@@ -1521,18 +1672,33 @@ function SparseArrays.sparse(A::SMat{T}) where T
 end
 
 @doc raw"""
+    Matrix(A::SMat{T}) -> Matrix{T}
+
+The same matrix, but as a julia matrix.
+"""
+function Matrix(A::SMat)
+  M = elem_type(base_ring(A))[zero(base_ring(A)) for _ in 1:nrows(A), _ in 1:ncols(A)]
+  for i in 1:nrows(A)
+    for (k, c) in A[i]
+      M[i, k] = c
+    end
+  end
+  return M
+end
+
+@doc raw"""
     Array(A::SMat{T}) -> Matrix{T}
 
 The same matrix, but as a two-dimensional julia array.
 """
-function Array(A::SMat{T}) where T
-  R = zero_matrix(base_ring(A), A.r, A.c)
-  for i=1:nrows(A)
-    for j=1:length(A.rows[i].pos)
-      R[i, A.rows[i].pos[j]] = A.rows[i].values[j]
+function Array(A::SMat)
+  M = elem_type(base_ring(A))[zero(base_ring(A)) for _ in 1:nrows(A), _ in 1:ncols(A)]
+  for i in 1:nrows(A)
+    for (k, c) in A[i]
+      M[i, k] = c
     end
   end
-  return R
+  return M
 end
 
 #TODO: write a kronnecker-row-product, this is THE
@@ -1546,16 +1712,20 @@ function kronecker_product(A::SMat{T}, B::SMat{T}) where {T}
     for rB = B.rows
       p = Int[]
       v = T[]
-      o = (rA.pos[1]-1)*ncols(B)
-      for (pp, vv) = rA
-        for (qq, ww) = rB
-          push!(p, qq+o)
-          push!(v, vv*ww)
+      if !iszero(rA)
+        for (pp, vv) = rA
+          o = (pp-1)*ncols(B)
+          for (qq, ww) = rB
+            push!(p, o+qq)
+            push!(v, vv*ww)
+          end
         end
-        o += ncols(B)
       end
       push!(C, sparse_row(base_ring(A), p, v))
     end
   end
+  @assert nrows(C) == nrows(A)*nrows(B)
+  @assert ncols(C) <= ncols(A)*ncols(B)
+  C.c = ncols(A)*ncols(B)
   return C
 end

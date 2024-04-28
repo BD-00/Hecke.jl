@@ -1,6 +1,6 @@
 ################################################################################
 #
-#       NfOrd/Units.jl : Units in generic number field orders
+#       AbsSimpleNumFieldOrder/Units.jl : Units in generic number field orders
 #
 # This file is part of Hecke.
 #
@@ -31,8 +31,6 @@
 #  Copyright (C) 2015, 2016 Tommy Hofmann
 #
 ################################################################################
-
-export is_unit, is_torsion_unit, is_independent, unit_group
 
 add_verbosity_scope(:UnitGroup)
 add_assertion_scope(:UnitGroup)

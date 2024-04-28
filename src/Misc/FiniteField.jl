@@ -1,141 +1,3 @@
-# additional constructors
-
-function FlintFiniteField(p::Integer; cached::Bool = true)
-  @assert is_prime(p)
-  k = GF(p, cached=cached)
-  return k, k(1)
-end
-
-function FlintFiniteField(p::ZZRingElem; cached::Bool = true)
-  @assert is_prime(p)
-  k = GF(p, cached=cached)
-  return k, k(1)
-end
-
-GF(p::Integer, k::Int, s::Union{AbstractString,Symbol}=:o; cached::Bool = true) = FlintFiniteField(p, k, s, cached = cached)[1]
-GF(p::ZZRingElem, k::Int, s::Union{AbstractString,Symbol}=:o; cached::Bool = true) = FlintFiniteField(p, k, s, cached = cached)[1]
-
-##
-## rand for Flint-Finite fields
-##
-## fqPolyRepFieldElem has no base ring
-function rand(R::fqPolyRepField)
-  #gen is not a generator for the group!
-  r = R(0)
-  for i=0:degree(R)
-    r *= gen(R)
-    r += rand(1:characteristic(R))
-  end
-
-  return r
-end
-
-function rand(R::FqPolyRepField)
-  #gen is not a generator for the group!
-  r = R(0)
-  for i=0:degree(R)
-    r *= gen(R)
-    r += rand(1:characteristic(R))
-  end
-
-  return r
-end
-
-################################################################################
-#
-#  Iterators for finite fields
-#
-################################################################################
-
-# fqPolyRepField
-
-function Base.iterate(F::fqPolyRepField)
-  return zero(F), zeros(UInt, degree(F))
-end
-
-function Base.iterate(F::fqPolyRepField, st::Vector{UInt})
-  done = true
-  for j in 1:length(st)
-    if st[j] != F.n - 1
-      done = false
-    end
-  end
-
-  if done
-    return nothing
-  end
-
-  st[1] = st[1] + 1
-  for j in 1:(length(st) - 1)
-    if st[j] == F.n
-      st[j] = 0
-      st[j + 1] = st[j + 1] + 1
-    end
-  end
-
-  d = F()
-  ccall((:fq_nmod_init2, libflint), Nothing,
-        (Ref{fqPolyRepFieldElem}, Ref{fqPolyRepField}), d, F)
-  for j in 1:length(st)
-         ccall((:nmod_poly_set_coeff_ui, libflint), Nothing,
-              (Ref{fqPolyRepFieldElem}, Int, UInt), d, j - 1, st[j])
-  end
-
-  return d, st
-end
-
-Base.length(F::fqPolyRepField) = BigInt(F.n)^degree(F)
-
-Base.IteratorSize(::Type{fqPolyRepField}) = Base.HasLength()
-
-Base.eltype(::fqPolyRepField) = fqPolyRepFieldElem
-
-# FqPolyRepField
-
-function Base.iterate(F::FqPolyRepField)
-  return zero(F), zeros(FlintZZ, degree(F))
-end
-
-function Base.iterate(F::FqPolyRepField, st::Vector{ZZRingElem})
-  done = true
-  for j in 1:length(st)
-    if st[j] != characteristic(F) - 1
-      done = false
-    end
-  end
-
-  if done
-    return nothing
-  end
-
-  st[1] = st[1] + 1
-  for j in 1:(length(st) - 1)
-    if st[j] == characteristic(F)
-      st[j] = 0
-      st[j + 1] = st[j + 1] + 1
-    end
-  end
-
-  d = F()
-  ccall((:fq_init2, libflint), Nothing,
-        (Ref{FqPolyRepFieldElem}, Ref{FqPolyRepField}), d, F)
-  g = Hecke.Globals.Zx()
-  for j in 1:length(st)
-    #ccall((:fmpz_poly_set_coeff_fmpz, libflint), (Ref{ZZPolyRingElem}, Int, Ref{ZZRingElem}), g, j - 1, st[j])
-    ccall((:fmpz_poly_set_coeff_fmpz, libflint), Nothing,
-               (Ref{FqPolyRepFieldElem}, Int, Ref{ZZRingElem}), d, j - 1, st[j])
-  end
-
-  return d, st
-end
-
-Base.eltype(::FqPolyRepField) = FqPolyRepFieldElem
-
-Base.length(F::FqPolyRepField) = BigInt(characteristic(F)^degree(F))
-
-Base.IteratorSize(::Type{FqPolyRepField}) = Base.HasLength()
-
-sub!(z::T, x::T, y::T) where {T} = x - y
 
 function _reduce(a::fqPolyRepFieldElem)
   A = parent(a)
@@ -155,19 +17,6 @@ function _reduce(a::FqPolyRepFieldElem)
   #end
 end
 
-function (R::FqPolyRepField)(x::ZZModPolyRingElem)
-  z = R()
-  ccall((:fq_set_fmpz_mod_poly, libflint), Nothing, (Ref{Nemo.FqPolyRepFieldElem}, Ref{Nemo.ZZModPolyRingElem}, Ref{Nemo.FqPolyRepField}), z, x, R)
-  #ccall((:fq_reduce, libflint), Nothing, (Ref{Nemo.FqPolyRepFieldElem}, Ref{Nemo.FqPolyRepField}), z, R)
-  return z
-end
-
-function (R::FqPolyRepField)(x::FpPolyRingElem)
-  z = R()
-  ccall((:fq_set_fmpz_mod_poly, libflint), Nothing, (Ref{Nemo.FqPolyRepFieldElem}, Ref{Nemo.FpPolyRingElem}, Ref{Nemo.FqPolyRepField}), z, x, R)
-  ccall((:fq_reduce, libflint), Nothing, (Ref{Nemo.FqPolyRepFieldElem}, Ref{Nemo.FqPolyRepField}), z, R)
-  return z
-end
 
 #TODO: move elsewhere - and use. There are more calls to nmod_set/reduce
 function (A::fqPolyRepField)(x::zzModPolyRingElem)
@@ -188,35 +37,35 @@ function (A::fqPolyRepField)(x::fpPolyRingElem)
   return u
 end
 
-function _nf_to_fq!(a::fqPolyRepFieldElem, b::nf_elem, K::fqPolyRepField, a_tmp::zzModPolyRingElem)
-  nf_elem_to_nmod_poly!(a_tmp, b)
+function _nf_to_fq!(a::fqPolyRepFieldElem, b::AbsSimpleNumFieldElem, K::fqPolyRepField, a_tmp::zzModPolyRingElem)
+  Nemo.nf_elem_to_nmod_poly!(a_tmp, b)
   ccall((:fq_nmod_set, libflint), Nothing,
                      (Ref{fqPolyRepFieldElem}, Ref{zzModPolyRingElem}, Ref{fqPolyRepField}),
                                      a, a_tmp, K)
   _reduce(a)
 end
 
-function _nf_to_fq!(a::fqPolyRepFieldElem, b::nf_elem, K::fqPolyRepField, a_tmp::fpPolyRingElem)
-  nf_elem_to_gfp_poly!(a_tmp, b)
+function _nf_to_fq!(a::fqPolyRepFieldElem, b::AbsSimpleNumFieldElem, K::fqPolyRepField, a_tmp::fpPolyRingElem)
+  Nemo.nf_elem_to_gfp_poly!(a_tmp, b)
   ccall((:fq_nmod_set, libflint), Nothing,
                      (Ref{fqPolyRepFieldElem}, Ref{fpPolyRingElem}, Ref{fqPolyRepField}),
                                      a, a_tmp, K)
   _reduce(a)
 end
 
-function _nf_to_fq!(a::FqPolyRepFieldElem, b::nf_elem, K::FqPolyRepField, a_tmp::FpPolyRingElem)
-  nf_elem_to_gfp_fmpz_poly!(a_tmp, b)
+function _nf_to_fq!(a::FqPolyRepFieldElem, b::AbsSimpleNumFieldElem, K::FqPolyRepField, a_tmp::FpPolyRingElem)
+  Nemo.nf_elem_to_gfp_fmpz_poly!(a_tmp, b)
   ccall((:fq_set, libflint), Nothing,
                      (Ref{FqPolyRepFieldElem}, Ref{FpPolyRingElem}, Ref{FqPolyRepField}),
                                      a, a_tmp, K)
   _reduce(a)
 end
 
-function _nf_to_fq!(a::FqFieldElem, b::nf_elem, K::FqField)#, a_tmp::FpPolyRingElem)
-  # nf_elem -> QQPolyRingElem
+function _nf_to_fq!(a::FqFieldElem, b::AbsSimpleNumFieldElem, K::FqField)#, a_tmp::FpPolyRingElem)
+  # AbsSimpleNumFieldElem -> QQPolyRingElem
   z = QQPolyRingElem()
   ccall((:nf_elem_get_fmpq_poly, libantic), Nothing,
-        (Ref{QQPolyRingElem}, Ref{nf_elem}, Ref{AnticNumberField}), z, b, parent(b))
+        (Ref{QQPolyRingElem}, Ref{AbsSimpleNumFieldElem}, Ref{AbsSimpleNumField}), z, b, parent(b))
   z.parent = Globals.Qx
   # QQPolyRingElem -> ZZPolyRingElem, ZZRingElem
   zz = ZZPolyRingElem()
@@ -237,19 +86,6 @@ function _nf_to_fq!(a::FqFieldElem, b::nf_elem, K::FqField)#, a_tmp::FpPolyRingE
   return a
 end
 
-function (A::fqPolyRepField)(x::fpFieldElem)
-  @assert characteristic(A) == characteristic(parent(x))
-  return A(lift(x))
-end
-
-function (A::FqPolyRepField)(x::Generic.ResidueFieldElem{ZZRingElem})
-  @assert characteristic(A) == characteristic(parent(x))
-  return A(lift(x))
-end
-
-Nemo.promote_rule(::Type{fqPolyRepFieldElem}, ::Type{fpFieldElem}) = fqPolyRepFieldElem
-
-Nemo.promote_rule(::Type{FqPolyRepFieldElem}, ::Type{FpFieldElem}) = FqPolyRepFieldElem
 
 ################################################################################
 #
@@ -283,58 +119,6 @@ function has_primitive_root_1(K::Nemo.fqPolyRepField, m::Int)
 end
 
 
-## Minpoly/ Charpoly
-
-function minpoly(a::fqPolyRepFieldElem)
-  return minpoly(polynomial_ring(GF(Int(characteristic(parent(a))), cached = false), cached = false)[1], a)
-end
-
-function minpoly(Rx::fpPolyRing, a::fqPolyRepFieldElem)
-  c = [a]
-  fa = frobenius(a)
-  while !(fa in c)
-    push!(c, fa)
-    fa = frobenius(fa)
-  end
-  St = polynomial_ring(parent(a), cached = false)[1]
-  f = prod([gen(St) - x for x = c], init = one(St))
-  g = Rx()
-  for i = 0:degree(f)
-    setcoeff!(g, i, coeff(coeff(f, i), 0))
-  end
-  return g
-end
-
-function charpoly(a::fqPolyRepFieldElem)
-  return charpoly(polynomial_ring(GF(Int(characteristic(parent(a))), cached = false), cached = false)[1], a)
-end
-
-function charpoly(Rx::fpPolyRing, a::fqPolyRepFieldElem)
-  g = minpoly(Rx, a)
-  return g^div(degree(parent(a)), degree(g))
-end
-
-
-function minpoly(a::FqPolyRepFieldElem)
-  return minpoly(polynomial_ring(GF(characteristic(parent(a)), cached = false), cached = false)[1], a)
-end
-
-function minpoly(Rx::FpPolyRing, a::FqPolyRepFieldElem)
-  c = [a]
-  fa = frobenius(a)
-  while !(fa in c)
-    push!(c, fa)
-    fa = frobenius(fa)
-  end
-  St = polynomial_ring(parent(a), cached = false)[1]
-  f = prod([gen(St) - x for x = c])
-  g = Rx()
-  for i = 0:degree(f)
-    setcoeff!(g, i, coeff(coeff(f, i), 0))
-  end
-  return g
-end
-
 ################################################################################
 #
 #  Generators multiplicative group
@@ -345,7 +129,7 @@ function primitive_element(F::T; n_quo::Int = -1) where T <: Union{FqPolyRepFiel
   n = order(F)-1
   k = ZZRingElem(1)
   if n_quo != -1
-    if !divisible(n, n_quo)
+    if !is_divisible_by(n, n_quo)
       return F(1)
     end
     n, k = ppio(n, ZZRingElem(n_quo))
@@ -414,46 +198,6 @@ function unit_group(F::T; n_quo::Int = -1) where T <: FinField
   return G, mG
 end
 
-################################################################################
-#
-#  Missing ad hoc operations
-#
-################################################################################
-
-function (R::FqPolyRepField)(x::Nemo.FpFieldElem)
-  return R(lift(x))
-end
-
-function *(a::Nemo.FqPolyRepFieldElem, b::Nemo.FpFieldElem)
-  return a * parent(a)(b)
-end
-
-function *(a::Nemo.FpFieldElem, b::Nemo.FqPolyRepFieldElem)
-  return parent(b)(a) * b
-end
-function Hecke.preimage(phi::Nemo.FinFieldMorphism, x::FinFieldElem)
-  return preimage_map(phi)(x)
-end
-
-function (R::Nemo.zzModRing)(a::Nemo.fpFieldElem)
-  @assert modulus(R) == characteristic(parent(a))
-  return R(data(a))
-end
-
-function (k::Nemo.fqPolyRepField)(a::QQFieldElem)
-  return k(numerator(a))//k(denominator(a))
-end
-
-function (k::Nemo.FpField)(a::QQFieldElem)
-  return k(numerator(a))//k(denominator(a))
-end
-
-function (k::Nemo.FqPolyRepField)(a::QQFieldElem)
-  return k(numerator(a))//k(denominator(a))
-end
-
-
-(F::Nemo.fqPolyRepField)(a::Nemo.zzModRingElem) = F(a.data)
 
 #to avoid using embed - which is (more me) still broken..
 # it accumulates fields until the machine dies
@@ -465,43 +209,55 @@ function find_morphism(k::fqPolyRepField, K::fqPolyRepField)
    if degree(k) > 1
     phi = Nemo.find_morphism(k, K) #avoids embed - which stores the info
   else
-    phi = MapFromFunc(x->K((coeff(x, 0))), y->k((coeff(y, 0))), k, K)
+    phi = MapFromFunc(k, K, x->K((coeff(x, 0))), y->k((coeff(y, 0))))
   end
   return phi
 end
 
-#TODO/ think: 
-# - should those be zzModMatrix of fpMatrix
-# - base_ring/ coeff_field needs to be unique?
-function representation_matrix(a::fpFieldElem)
-  return matrix(parent(a), 1, 1, [a])
+function find_morphism(k::FqField, K::FqField)
+  if degree(k) > 1
+    phi = Nemo.find_morphism(k, K) #avoids embed - which stores the info
+  else
+    phi = MapFromFunc(k, K, x -> K(lift(ZZ, x)), y -> k(lift(ZZ, y)))
+  end
+  return phi
 end
 
-function representation_matrix(a::fqPolyRepFieldElem)
-  F = parent(a)
-  k = quo(ZZ, Int(characteristic(F)))[1]
-  k = GF(Int(characteristic(F)))
-  m = zero_matrix(k, degree(F), degree(F))
-  ccall((:fq_nmod_embed_mul_matrix, libflint), Nothing, (Ref{fpMatrix}, Ref{fqPolyRepFieldElem}, Ref{fqPolyRepField}), m, a, F)
-  ccall((:nmod_mat_transpose, libflint), Nothing, (Ref{fpMatrix}, Ref{fpMatrix}), m, m)
-  return m
+function find_morphism(k::FqField, K::fqPolyRepField)
+  # This is no fun
+  if absolute_degree(k) == 1
+    #@assert degree(K) == 1
+    pre = function(x)
+      @assert all(is_zero(coeff(x, i)) for i in 1:(degree(K) - 1))
+      return k(coeff(x, 0))
+    end
+    return MapFromFunc(k, K, x -> K(lift(ZZ, x)), pre)
+  end
+
+  # build K as FqField, then find isomorphism, then go back
+
+  f = modulus(K)
+  a = gen(K)
+  F = prime_field(k)
+  Ft, t = polynomial_ring(F, "t", cached = false)
+  fF = map_coefficients(x -> F(lift(x)), f, parent = Ft)
+  KK, polytoKK = Nemo._residue_field(fF)
+
+  KtoKK = x -> polytoKK(map_coefficients(x -> F(lift(x)), parent(f)(x), parent = Ft))
+
+  KKtoK = x -> K(map_coefficients(x -> coefficient_ring(parent(f))(lift(ZZ, x)), polytoKK\x, parent = parent(f)))
+
+  phi_k_to_KK = Nemo.embed_any(k, KK)
+
+  phi = MapFromFunc(k, K, x -> KKtoK(phi_k_to_KK(x)), x -> phi_k_to_KK\(KtoKK(x)))
 end
 
-function frobenius_matrix(F::fqPolyRepField, n::Int=1)
-  a = frobenius(gen(F), n)
-  k = quo(ZZ, Int(characteristic(F)))[1]
-  k = GF(Int(characteristic(F)))
-  m = zero_matrix(k, degree(F), degree(F))
-  ccall((:fq_nmod_embed_composition_matrix_sub, libflint), Nothing, (Ref{fpMatrix}, Ref{fqPolyRepFieldElem}, Ref{fqPolyRepField}, Int), m, a, F, degree(F))
-  ccall((:nmod_mat_transpose, libflint), Nothing, (Ref{fpMatrix}, Ref{fpMatrix}), m, m)
-  return m
-end
 
 mutable struct VeryBad
-  entries::Ptr{Nothing}
+  entries::Ptr{UInt}
   r::Int
   c::Int
-  rows::Ptr{Nothing}
+  rows::Ptr{Ptr{UInt}}
   n::UInt
   ninv::UInt
   norm::UInt
@@ -512,23 +268,23 @@ mutable struct VeryBad
     r.ninv = ninv
     r.norm = norm
     r.r = 1
-    r.rr = [reinterpret(Ptr{Nothing}, 0)]
-    r.rows = Base.unsafe_convert(Ptr{Nothing}, r.rr)
+    r.rr = [reinterpret(Ptr{UInt}, 0)]
+    r.rows = pointer(r.rr)
     return r
   end
 
-  rr::Vector{Ptr{Nothing}}
+  rr::Vector{Ptr{UInt}}
 end
 
 function VeryBad!(V::VeryBad, a::fqPolyRepFieldElem)
   V.c = a.length
-  V.entries = a.coeffs
+  V.entries = reinterpret(Ptr{UInt}, a.coeffs)
   V.rr[1] = a.coeffs
 #  V.rows = Base.unsafe_convert(Ptr{Nothing}, [a.coeffs])
 end
 
 function clear!(V::VeryBad)
-  V.entries = reinterpret(Ptr{Nothing}, 0)
+  V.entries = reinterpret(Ptr{Ptr{UInt}}, 0)
 #  V.rows = reinterpret(Ptr{Nothing}, 0)
 end
 
@@ -562,28 +318,20 @@ function apply!(b::fqPolyRepFieldElem, a::fqPolyRepFieldElem, F::FrobeniusCtx)
   return b
 end
 
-function frobenius!(a::fqPolyRepFieldElem, b::fqPolyRepFieldElem, i::Int = 1)
-    ccall((:fq_nmod_frobenius, libflint), Nothing,
-         (Ref{fqPolyRepFieldElem}, Ref{fqPolyRepFieldElem}, Int, Ref{fqPolyRepField}),
-                                               a, b, i, a.parent)
-end
-
-################################################################################
-#
-#  Defining polynomial for finite fields
-#
-################################################################################
-
-defining_polynomial(F::FqPolyRepField) = minpoly(gen(F))
-
-function defining_polynomial(Q::fqPolyRepField, P::Ring = GF(Int(characteristic(Q)), cached = false))
-  Pt, t = polynomial_ring(P, cached = false)
-  f = Pt()
-  for i=0:Q.len-1
-    j = unsafe_load(reinterpret(Ptr{Int}, Q.j), i+1)
-    a = ZZRingElem()
-    ccall((:fmpz_set, libflint), Nothing, (Ref{ZZRingElem}, Int64), a, Q.a+i*sizeof(Ptr))
-    setcoeff!(f, j, P(a))
+function splitting_field(f::PolyRingElem{<:FinFieldElem}; do_roots::Bool = false)
+  lf = factor(f)
+  k = base_ring(f)
+  d = reduce(lcm, [degree(x) for x = keys(lf.fac)], init = 1)
+  if isa(k,  Nemo.fpField) || isa(k, Nemo.fqPolyRepField)
+    K = GF(Int(characteristic(k)), absolute_degree(k)*d)
+  else
+    K = GF(characteristic(k), absolute_degree(k)*d)
   end
-  return f
+  if !isa(k, Nemo.fpField) && !isa(k, Nemo.FpField)
+    embed(k, K)
+  end
+  if do_roots
+    return K, roots(K, f)
+  end
+  return K
 end

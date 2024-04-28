@@ -1,11 +1,3 @@
-
-export conjugates_init, is_constant, is_squarefree, conjugates, angle, cos,
-       sin, abs, abs2, sqrt
-
-function is_constant(f::PolyElem)
-  return f.length<2
-end
-
 function conjugates_init(f_in::Union{ZZPolyRingElem, QQPolyRingElem})
   local f::ZZPolyRingElem
   if typeof(f_in) == QQPolyRingElem
@@ -66,19 +58,6 @@ function evaluate(f::QQPolyRingElem, r::BigComplex)
   return s
 end
 
-function evaluate(f::QQPolyRingElem, r::T) where T <: RingElem
-  R = parent(r)
-  if iszero(f)
-    return zero(R)
-  end
-  l = length(f) - 1
-  s = R(coeff(f, l))
-  for i in l-1:-1:0
-    s = s*r + R(coeff(f, i))
-  end
-  return s
-end
-
 function evaluate(f::ZZPolyRingElem, r::BigComplex)
   #Horner - not elegant, but workable
   l = f.length-1
@@ -93,7 +72,7 @@ function hensel_lift(f::ZZPolyRingElem, r::BigComplex)
   return r - evaluate(f, r)/evaluate(derivative(f), r)
 end
 
-function conjugates(K::AnticNumberField, p::Int)
+function conjugates(K::AbsSimpleNumField, p::Int)
   return conjugates(roots_ctx(K), p)
 end
 
@@ -123,7 +102,7 @@ function Base.setprecision(a::Vector{BigComplex}, p::Int)
   return b
 end
 
-function minkowski(a::nf_elem, p::Int)
+function minkowski(a::AbsSimpleNumFieldElem, p::Int)
   c = roots_ctx(parent(a))
   x = conjugates_arb(a, p)
   old = precision(BigFloat)
@@ -143,24 +122,13 @@ function minkowski(a::nf_elem, p::Int)
   return m
 end
 
-function length(a::nf_elem, p::Int = 50)
+function length(a::AbsSimpleNumFieldElem, p::Int = 50)
   m = minkowski(a, p)
   return sum([x*x for x in m])
 end
 
-function setprecision!(x::BigFloat, p::Int)
-  ccall((:mpfr_prec_round, :libmpfr), Nothing, (Ref{BigFloat}, Clong, Int32), x, p, Base.MPFR.ROUNDING_MODE[])
-end
 
-function Base.setprecision(x::BigFloat, p::Int)
-  setprecision(BigFloat, p) do
-    y = BigFloat()
-    ccall((:mpfr_set, :libmpfr), Nothing, (Ref{BigFloat}, Ref{BigFloat}, Int32), y, x, Base.MPFR.ROUNDING_MODE[])
-    return y
-  end
-end
-
-function minkowski_matrix(K::AnticNumberField, p::Int = 50)
+function minkowski_matrix(K::AbsSimpleNumField, p::Int = 50)
   c = roots_ctx(K)
 
   if isdefined(c, :minkowski_matrix)
@@ -187,28 +155,4 @@ function minkowski_matrix(K::AnticNumberField, p::Int = 50)
   c.minkowski_mat_p = p
   setprecision(old)
   return m
-end
-
-
-function *(a::ZZMatrix, b::Matrix{BigFloat})
-  s = Base.size(b)
-  ncols(a) == s[1] || error("dimensions do not match")
-
-  c = Array{BigFloat}(undef, nrows(a), s[2])
-  return mult!(c, a, b)
-end
-
-for (s,f) in ((:trunc, Base.trunc), (:round, Base.round), (:ceil, Base.ceil), (:floor, Base.floor))
-  @eval begin
-    function ($s)(a::Matrix{BigFloat})
-      s = Base.size(a)
-      m = zero_matrix(FlintZZ, s[1], s[2])
-      for i = 1:s[1]
-        for j = 1:s[2]
-          m[i,j] = FlintZZ(BigInt(($f)(a[i,j])))
-        end
-      end
-      return m
-    end
-  end
 end

@@ -40,13 +40,13 @@
   fl, _ = Hecke.is_GLZ_conjugate(QQ[1 2; 3 4], QQ[1 2 3; 4 5 6; 7 8 9])
   @test !fl
 
-  R = residue_ring(FlintZZ, ZZRingElem(7))
+  R = residue_ring(FlintZZ, ZZRingElem(7))[1]
   x, y = R(6), R(6)
   q, r = divrem(x, y)
   @test y * q + r == x
   @test iszero(r)
 
-  fl, = Hecke.isGLZ_conjugate(ZZ[0 1; 0 0], ZZ[0 2; 0 0])
+  fl, = Hecke.is_GLZ_conjugate(ZZ[0 1; 0 0], ZZ[0 2; 0 0])
   @test !fl
 
   I = matrix(ZZ, 8, 8, [-21 12 17 -3 -3 15 10 -8;
@@ -126,7 +126,7 @@ end
   # integral
 
   # the minimal polynomial of f if \Phi_5, mb is the "absolute representation matrix"
-  # of a primitive 5-root of the unity. Then, changing the basis of the ZLat on which
+  # of a primitive 5-root of the unity. Then, changing the basis of the ZZLat on which
   # f acts, we can recover basis for which the induced action of f on the correspodning
   # hermitian lattice is given by multiplication by a 5-th root of the unity.
   # There are 4 of them and f is of order (size) 8, which is 4 times 2, so we should

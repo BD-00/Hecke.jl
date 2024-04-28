@@ -7,7 +7,7 @@
 # This implements the algorithm of Fincke-Pohst for enumeration with using
 # a Gram matrix. So given positive definite G and b, find all v such that
 # v * G * v^t <= b
-# 
+#
 # The main function is
 # _short_vectors_gram_nolll_integral(::Type{T}, G, _lb, _ub, transform::X, d::Y) where {T, X, Y}
 
@@ -134,26 +134,26 @@ function __enumerate_gram(::Type{T}, G::ZZMatrix, l::Union{Nothing, Int}, c::Int
   Q = _pseudo_cholesky(G, Matrix{QQFieldElem})
   n = nrows(G)
   d = lcm([denominator(Q[i]) for i in 1:length(G)])
-  @vprint :Lattice 1 "Denominator of pseudo-Cholesky of bit size $(nbits(d))\n"
+  @vprintln :Lattice 1 "Denominator of pseudo-Cholesky of bit size $(nbits(d))"
   k = nbits(d) + nbits(n) + 2
   isbig = Int == Int64
   if 2 * k < (isbig ? 32 : 64)
-    @vprint :Lattice 1 "Enumerating using Int\n"
+    @vprintln :Lattice 1 "Enumerating using Int"
     Qint = Matrix{UnsafeRational{Int}}([Int(numerator(q))//Int(denominator(q)) for q in Q])
     res = __enumerate_cholesky(T, Qint, l, c)
     @hassert :Lattice 1 length(__enumerate_gram(G, l, c, Rational{Int})) == length(res)
   elseif 2 * k < 64
-    @vprint :Lattice 1 "Enumerating using Int64\n"
+    @vprintln :Lattice 1 "Enumerating using Int64"
     Qint64 = Matrix{UnsafeRational{Int64}}([Int64(numerator(q))//Int64(denominator(q)) for q in Q])
     res = __enumerate_cholesky(T, Qint64, l, c, identity, identity, ZZRingElem)
     @hassert :Lattice 1 length(__enumerate_gram(T, G, l, c, Rational{Int64}, identity, identity, ZZRingElem)) == length(res)
   elseif 2 * k < 128
     Qint128 = Matrix{UnsafeRational{Int128}}([Int128(numerator(q))//Int128(denominator(q)) for q in Q])
-    @vprint :Lattice 1 "Enumerating using Int128\n"
+    @vprintln :Lattice 1 "Enumerating using Int128"
     res = __enumerate_cholesky(T, Qint128, l, c, identity, identity, ZZRingElem)
     @hassert :Lattice 1 length(__enumerate_gram(T, G, l, c, Rational{Int128}, identity, identity, ZZRingElem)) == length(res)
   else
-    @vprint :Lattice 1 "Enumerating using QQFieldElem\n"
+    @vprintln :Lattice 1 "Enumerating using QQFieldElem"
     res = __enumerate_cholesky(T, Q, l, c, identity, identity, ZZRingElem)
   end
   @hassert :Lattice 1 length(__enumerate_gram(T, G, l, c, QQFieldElem, identity, identity, ZZRingElem)) == length(res)
@@ -758,11 +758,6 @@ function _deepcopy_cheap(x::QQFieldElem)
   return z
 end
 
-function is_negative(x::QQFieldElem)
-  c = ccall((:fmpq_sgn, libflint), Cint, (Ref{QQFieldElem}, ), x)
-  return c < 0
-end
-
 function is_lessorequal(x::QQFieldElem, y::UInt)
   c = ccall((:fmpq_cmp_ui, libflint), Cint, (Ref{QQFieldElem}, UInt), x, y)
   return c <= 0
@@ -834,7 +829,7 @@ end
 Base.IteratorSize(::Type{<:LatEnumCtx}) = Base.SizeUnknown()
 
 function __clean_and_assemble(v::V, transform::U, dotransform::Bool, elem_type::Type{S} = ZZRingElem) where {V, U, S}
-  # this may or may not produce a copy 
+  # this may or may not produce a copy
   if dotransform
     m = _transform(v, transform)
   else
@@ -903,9 +898,9 @@ function _short_vectors_gram(::Type{S}, _G, lb, ub, elem_type::Type{U} = ZZRingE
     Glll = G
     T = G
   elseif hard
-    Glll, T = lll_gram_with_transform(G, lll_ctx(0.99999999999999, 0.500000000001, :gram))
+    Glll, T = lll_gram_with_transform(G, LLLContext(0.99999999999999, 0.500000000001, :gram))
   else
-    Glll, T = lll_gram_with_transform(G, lll_ctx(0.9999, 0.5001, :gram))
+    Glll, T = lll_gram_with_transform(G, LLLContext(0.9999, 0.5001, :gram))
   end
 
   # We pass d and T to the next level, but it is actually only used for the
@@ -986,7 +981,7 @@ end
 
 function _short_vectors_gram_integral(::Type{S}, _G, ub, elem_type::Type{U} = ZZRingElem; hard = false) where {S, U}
   if hard
-    Glll, T = lll_gram_with_transform(_G, lll_ctx(0.99999999999999, 0.500000000001, :gram))
+    Glll, T = lll_gram_with_transform(_G, LLLContext(0.99999999999999, 0.500000000001, :gram))
   else
     Glll, T = lll_gram_with_transform(_G)
   end
@@ -1054,29 +1049,8 @@ end
   return z
 end
 
-@inline function divexact!(z::QQFieldElem, a::QQFieldElem, b::QQFieldElem)
-  ccall((:fmpq_div, libflint), Cvoid, (Ref{QQFieldElem}, Ref{QQFieldElem}, Ref{QQFieldElem}), z, a, b)
-  return z
-end
-
 @inline function add_two!(z::ZZRingElem, x::ZZRingElem)
   ccall((:fmpz_add_ui, libflint), Cvoid, (Ref{ZZRingElem}, Ref{ZZRingElem}, Int), z, x, 2)
-  return z
-end
-
-@inline function sub!(z::QQFieldElem, a::QQFieldElem, b::QQFieldElem)
-  ccall((:fmpq_sub, libflint), Cvoid, (Ref{QQFieldElem}, Ref{QQFieldElem}, Ref{QQFieldElem}), z, a, b)
-  return z
-end
-
-@inline function sub!(z::QQFieldElem, a::QQFieldElem, b::ZZRingElem)
-   ccall((:fmpq_sub_fmpz, libflint), Nothing,
-         (Ref{QQFieldElem}, Ref{QQFieldElem}, Ref{ZZRingElem}), z, a, b)
-   return z
-end
-
-@inline function neg!(z::QQFieldElem, a::QQFieldElem)
-  ccall((:fmpq_neg, libflint), Cvoid, (Ref{QQFieldElem}, Ref{QQFieldElem}), z, a)
   return z
 end
 
@@ -1085,24 +1059,12 @@ end
   return z
 end
 
-divexact!(z::Rational{Int}, x::Rational{Int}, y::Rational{Int}) = divexact(x, y)
-
 floor!(z::Int, x::Rational{Int}, y::Int, w::Int) = Int(floor(x))
 
 isqrt!(z::Int, x::Int) = isqrt(x)
 
 add_two!(z::Int, x::Int) = x + 2
 
-sub!(z::Rational{Int}, x::Rational{Int}, y::Int) = x - y
-
-neg!(z::Rational{Int}, x::Rational{Int}) = -x
-
 ceil!(z::Int, x::Rational{Int}, y::Int, w::Int) = Int(ceil(x))
 
-add!(z::Rational{Int}, x::Rational{Int}, y::Int) = x + y
-
-mul!(z::Rational{Int}, x::Rational{Int}, y::Int) = x * y
-
 numerator!(z::Int, x::Rational{Int}) = numerator(x)
-
-is_negative(x::Rational) = x.num < 0

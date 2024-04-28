@@ -1,9 +1,5 @@
 # Everything related to transformation on sparse matrices
 
-export sparse_trafo_scale, sparse_trafo_swap, sparse_trafo_add_scaled,
-       sparse_trafo_para_add_scaled, sparse_trafo_partial_dense,
-       sparse_trafo_move_row
-
 ################################################################################
 #
 #  Constructors
@@ -51,7 +47,7 @@ function sparse_trafo_para_add_scaled(i::Int, j::Int, a::T, b::T, c::T, d::T) wh
   return z
 end
 
-function sparse_trafo_partial_dense(i::Int, rows::UnitRange{Int}, cols::UnitRange{Int}, U::S) where {T, S <: MatElem{T}}
+function sparse_trafo_partial_dense(i::Int, rows::AbstractUnitRange{Int}, cols::AbstractUnitRange{Int}, U::S) where {T, S <: MatElem{T}}
   z = SparseTrafoElem{T, S}()
   z.type = 5
   z.i = i
@@ -565,15 +561,15 @@ end
 #
 ################################################################################
 
-#function apply_left!(x::Vector{NfOrdFracIdl}, y::TrafoSwap)
+#function apply_left!(x::Vector{AbsSimpleNumFieldOrderFractionalIdeal}, y::TrafoSwap)
 #  x[y.i], x[y.j] = x[y.j], x[y.i]
 #end
 #
-#function apply_left!(x::Vector{NfOrdFracIdl}, y::TrafoAddScaled)
+#function apply_left!(x::Vector{AbsSimpleNumFieldOrderFractionalIdeal}, y::TrafoAddScaled)
 #  x[y.j] = x[y.j] * x[y.i]^Int(y.s)
 #end
 #
-#function apply_left!(x::Vector{NfOrdFracIdl}, y::TrafoPartialDense)
+#function apply_left!(x::Vector{AbsSimpleNumFieldOrderFractionalIdeal}, y::TrafoPartialDense)
 #  z = view(deepcopy(x), y.cols)
 #  xx = view(x, y.cols)
 #  for i in 1:nrows(y.U)  ## use power product instead

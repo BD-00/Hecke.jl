@@ -1,10 +1,10 @@
 @doc raw"""
-    rand!(a::nf_elem, U::AbstractArray) -> nf_elem
+    rand!(a::AbsSimpleNumFieldElem, U::AbstractArray) -> AbsSimpleNumFieldElem
 
 Inplace, set the coefficients of $a$ to random elements in $U$.
 $a$ is returned.
 """
-function rand!(a::nf_elem, U::AbstractArray)
+function rand!(a::AbsSimpleNumFieldElem, U::AbstractArray)
   for i=1:degree(parent(a))
     _num_setcoeff!(a, i-1, rand(U))
   end
@@ -12,23 +12,23 @@ function rand!(a::nf_elem, U::AbstractArray)
 end
 
 @doc raw"""
-    rand(K::AnticNumberField, U::AbstractArray) -> nf_elem
+    rand(K::AbsSimpleNumField, U::AbstractArray) -> AbsSimpleNumFieldElem
 
 Find an element in $K$ where the coefficients are selected at random in $U$.
 """
-function rand(K::AnticNumberField, U::AbstractArray)
+function rand(K::AbsSimpleNumField, U::AbstractArray)
   a = K()
   return rand!(a, U)
 end
 
 @doc raw"""
-    rand!(A::Generic.Mat{nf_elem}, U::AbstractArray) -> Generic.Mat{nf_elem}
+    rand!(A::Generic.Mat{AbsSimpleNumFieldElem}, U::AbstractArray) -> Generic.Mat{AbsSimpleNumFieldElem}
 
 Inplace, replace each element in $A$ by an element where the coefficients are
 selected at random in $U$.
 Returns $A$.
 """
-function rand!(A::Generic.Mat{nf_elem}, U::AbstractArray)
+function rand!(A::Generic.Mat{AbsSimpleNumFieldElem}, U::AbstractArray)
   for i=1:nrows(A)
     for j=1:ncols(A)
       rand!(A[i,j], U)
@@ -38,11 +38,11 @@ function rand!(A::Generic.Mat{nf_elem}, U::AbstractArray)
 end
 
 @doc raw"""
-    rand(A::Generic.MatSpace{nf_elem}, U::AbstractArray) -> Generic.Mat{nf_elem}
+    rand(A::Generic.MatSpace{AbsSimpleNumFieldElem}, U::AbstractArray) -> Generic.Mat{AbsSimpleNumFieldElem}
 
 Create a random matrix in $A$ where the coefficients are selected from $U$.
 """
-function rand(A::Generic.MatSpace{nf_elem}, U::AbstractArray)
+function rand(A::Generic.MatSpace{AbsSimpleNumFieldElem}, U::AbstractArray)
   return rand!(A(), U)
 end
 
@@ -62,44 +62,20 @@ function modular_lift(ap::Vector{fqPolyRepMatrix}, me::modular_env)
   return A
 end
 
-@doc raw"""
-    mod!(A::Generic.Mat{nf_elem}, m::ZZRingElem)
 
-Inplace: reduce all entries of $A$ modulo $m$, into the positive residue system.
-"""
-function mod!(A::Generic.Mat{nf_elem}, m::ZZRingElem)
-  for i=1:nrows(A)
-    for j=1:ncols(A)
-      mod!(A[i, j], m)
-    end
-  end
-end
 
-@doc raw"""
-    mod_sym!(A::Generic.Mat{nf_elem}, m::ZZRingElem)
-
-Inplace: reduce all entries of $A$ modulo $m$, into the symmetric residue system.
-"""
-function mod_sym!(A::Generic.Mat{nf_elem}, m::ZZRingElem)
-  for i = 1:nrows(A)
-    for j = 1:ncols(A)
-      mod_sym!(A[i, j], m)
-    end
-  end
-end
-
-function small_coeff(a::nf_elem, B::ZZRingElem, i::Int)
+function small_coeff(a::AbsSimpleNumFieldElem, B::ZZRingElem, i::Int)
   z = ZZRingElem()
   Nemo.num_coeff!(z, a, i)
   return cmpabs(z, B) <= 0
 end
 
 @doc raw"""
-    rational_reconstruction(A::Generic.Mat{nf_elem}, M::ZZRingElem) -> Bool, Generic.Mat{nf_elem}
+    rational_reconstruction(A::Generic.Mat{AbsSimpleNumFieldElem}, M::ZZRingElem) -> Bool, Generic.Mat{AbsSimpleNumFieldElem}
 
 Apply \code{rational_reconstruction} to each entry of $M$.
 """
-function rational_reconstruction2(A::Generic.Mat{nf_elem}, M::ZZRingElem)
+function rational_reconstruction2(A::Generic.Mat{AbsSimpleNumFieldElem}, M::ZZRingElem)
   B = similar(A)
   sM = root(M, 2)
   d = one(A[1,1])
@@ -133,7 +109,7 @@ function rational_reconstruction2(A::Generic.Mat{nf_elem}, M::ZZRingElem)
   return true, B//d
 end
 
-function rational_reconstruction(A::Generic.Mat{nf_elem}, M::ZZRingElem)
+function rational_reconstruction(A::Generic.Mat{AbsSimpleNumFieldElem}, M::ZZRingElem)
   B = similar(A)
   for i=1:nrows(A)
     for j=1:ncols(A)
@@ -146,7 +122,7 @@ function rational_reconstruction(A::Generic.Mat{nf_elem}, M::ZZRingElem)
   return true, B
 end
 
-function algebraic_reconstruction(a::nf_elem, M::ZZRingElem)
+function algebraic_reconstruction(a::AbsSimpleNumFieldElem, M::ZZRingElem)
   K = parent(a)
   n = degree(K)
   Znn = matrix_space(FlintZZ, n, n)
@@ -159,7 +135,7 @@ function algebraic_reconstruction(a::nf_elem, M::ZZRingElem)
   return true, n//d
 end
 
-function algebraic_reconstruction(a::nf_elem, M::NfAbsOrdIdl)
+function algebraic_reconstruction(a::AbsSimpleNumFieldElem, M::AbsNumFieldOrderIdeal)
   K = parent(a)
   n = degree(K)
   Znn = matrix_space(FlintZZ, n, n)
@@ -172,11 +148,11 @@ function algebraic_reconstruction(a::nf_elem, M::NfAbsOrdIdl)
 end
 
 @doc raw"""
-    algebraic_split(a::nf_elem) -> nf_elem, nf_elem
+    algebraic_split(a::AbsSimpleNumFieldElem) -> AbsSimpleNumFieldElem, AbsSimpleNumFieldElem
 
 Writes the input as a quotient of two "small" algebraic integers.
 """
-function algebraic_split(a::nf_elem)
+function algebraic_split(a::AbsSimpleNumFieldElem)
   n = degree(parent(a))
   d = denominator(a)
   M, dd = representation_matrix_q(a)
@@ -195,8 +171,8 @@ function algebraic_split(a::nf_elem)
   return be, ga
 end
 
-#function denominator_ideal(M::Generic.MatSpaceElem{nf_elem}, den::nf_elem)
-function denominator_ideal(M::Vector{nf_elem}, den::nf_elem)
+#function denominator_ideal(M::Generic.MatSpaceElem{AbsSimpleNumFieldElem}, den::AbsSimpleNumFieldElem)
+function denominator_ideal(M::Vector{AbsSimpleNumFieldElem}, den::AbsSimpleNumFieldElem)
   k = parent(M[1,1])
   zk = maximal_order(k)
   _, d = integral_split(M[1]//den * zk)
@@ -221,18 +197,6 @@ function denominator_ideal(M::Vector{nf_elem}, den::nf_elem)
   return d
 end
 
-@doc raw"""
-    divexact!(A::Generic.Mat{nf_elem}, p::ZZRingElem)
-
-Inplace: divide each entry of $A$ by $p$.
-"""
-function divexact!(A::Generic.Mat{nf_elem}, p::ZZRingElem)
-  for i=1:nrows(A)
-    for j=1:ncols(A)
-      A[i,j] = A[i,j]//p
-    end
-  end
-end
 
 #TODO/ To experiment:
 # - vector reconstruction ala Storjohan
@@ -242,7 +206,7 @@ end
 # - extend to non-unique solutions
 # - make Aip*D mult faster, A*y as well?
 #
-function solve_dixon(A::Generic.Mat{nf_elem}, B::Generic.Mat{nf_elem})
+function _solve_dixon(A::Generic.Mat{AbsSimpleNumFieldElem}, B::Generic.Mat{AbsSimpleNumFieldElem})
   p = next_prime(p_start)
   K = base_ring(A)
 

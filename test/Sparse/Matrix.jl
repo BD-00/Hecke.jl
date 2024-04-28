@@ -1,4 +1,4 @@
-using SparseArrays
+using Hecke.SparseArrays
 
 @testset "Matrix" begin
   R = FlintZZ
@@ -114,7 +114,7 @@ using SparseArrays
 
   # Change of ring
 
-  R = residue_ring(FlintZZ, 5)
+  R = residue_ring(FlintZZ, 5)[1]
   D = sparse_matrix(FlintZZ, [1 5 3; 5 5 5; -4 1 1])
   D_R = @inferred change_base_ring(R, D)
   @test D_R == sparse_matrix(R, map(R, [1 0 3; 0 0 0; 1 1 1]))
@@ -136,24 +136,24 @@ using SparseArrays
 
   D = sparse_matrix(FlintZZ, [1 5 3; 0 0 0; 0 1 0])
   v = ZZRingElem[1, 2, 3]
-  w = @inferred mul(D, v)
+  w = @inferred D * v
   @test w == ZZRingElem[20, 0, 2]
-  w = @inferred mul(D, view(v, 1:3))
+  w = @inferred D * view(v, 1:3)
   @test w == ZZRingElem[20, 0, 2]
 
   v = ZZRingElem[1 2 3; 0 0 4; 0 0 0]
-  w = @inferred mul(D, v)
+  w = @inferred D * v
   @test w == ZZRingElem[1 2 23; 0 0 0; 0 0 4]
   v = ZZRingElem[1 1 1; 1 2 3; 0 0 4; 0 0 0]
-  w = @inferred mul(D, view(v, 2:4, :))
+  w = @inferred D * view(v, 2:4, :)
   @test w == ZZRingElem[1 2 23; 0 0 0; 0 0 4]
 
   v = matrix(FlintZZ, ZZRingElem[1 2 3; 0 0 4; 0 0 0])
-  w = @inferred mul(D, v)
+  w = @inferred D * v
   @test w == matrix(FlintZZ, ZZRingElem[1 2 23; 0 0 0; 0 0 4])
 
   v = sparse_row(FlintZZ, [2], ZZRingElem[1])
-  w = @inferred mul(v, D)
+  w = @inferred v * D
   @test w == sparse_row(FlintZZ)
 
   # Addition
@@ -171,25 +171,74 @@ using SparseArrays
   DminusE = @inferred D - E
   @test DminusE == sparse_matrix(FlintZZ, [0 0 3; -1 1 -1; 0 1 0])
 
+  minusD = @inferred -D
+  @test minusD == sparse_matrix(FlintZZ, [-1 -5 -3; 0 -1 0; 0 -1 0])
+
   # Scalar multiplication
 
   D = sparse_matrix(FlintZZ, [1 5 3; 0 0 0; 0 1 0])
   E = @inferred 0 * D
   @test E == zero_matrix(SMat, FlintZZ, 3)
   @test E == sparse_matrix(FlintZZ, 3, 3)
+  E = @inferred D * 0
+  @test E == zero_matrix(SMat, FlintZZ, 3)
+  @test E == sparse_matrix(FlintZZ, 3, 3)
   E = @inferred BigInt(2) * D
+  @test E == sparse_matrix(FlintZZ, [2 10 6; 0 0 0; 0 2 0])
+  E = @inferred D * BigInt(2)
   @test E == sparse_matrix(FlintZZ, [2 10 6; 0 0 0; 0 2 0])
   E = @inferred ZZRingElem(2) * D
   @test E == sparse_matrix(FlintZZ, [2 10 6; 0 0 0; 0 2 0])
+  E = @inferred D * ZZRingElem(2)
+  @test E == sparse_matrix(FlintZZ, [2 10 6; 0 0 0; 0 2 0])
 
-  R = residue_ring(FlintZZ, 6)
+  R = residue_ring(FlintZZ, 6)[1]
   D = sparse_matrix(R, [1 2 2; 0 0 1; 2 2 2])
   E = @inferred ZZRingElem(3) * D
   @test E == sparse_matrix(R, [3 0 0; 0 0 3; 0 0 0])
+  E = @inferred D * ZZRingElem(3)
+  @test E == sparse_matrix(R, [3 0 0; 0 0 3; 0 0 0])
   E = @inferred Int(3) * D
+  @test E == sparse_matrix(R, [3 0 0; 0 0 3; 0 0 0])
+  E = @inferred D * Int(3)
   @test E == sparse_matrix(R, [3 0 0; 0 0 3; 0 0 0])
   E = @inferred R(3) * D
   @test E == sparse_matrix(R, [3 0 0; 0 0 3; 0 0 0])
+  E = @inferred D * R(3)
+  @test E == sparse_matrix(R, [3 0 0; 0 0 3; 0 0 0])
+
+  # Dot product
+
+  D = sparse_matrix(ZZ, [4 -2; -2 2])
+  E = sparse_matrix(ZZ, [3 0 0; 0 3 0])
+
+  @test dot(sparse_row(ZZ, [1], [1]), D, sparse_row(ZZ, [1], [1])) == 4
+  @test dot(sparse_row(ZZ, [1, 2], [1, 1]), D, sparse_row(ZZ, [1, 2], [1, 2])) == 2
+  @test dot(sparse_row(ZZ, [1], [1]), D, sparse_row(ZZ, [2], [1])) == -2
+
+  @test dot(sparse_row(ZZ, [1, 4], [1, 2]), D, sparse_row(ZZ, [2], [1])) == -2
+  @test dot(sparse_row(ZZ, [1, 4], [1, 2]), E, sparse_row(ZZ, [2], [1])) == 0
+  @test dot(sparse_row(ZZ, [1, 2], [1, 2]), E, sparse_row(ZZ, [2], [1])) == 6
+
+  @test dot(ZZRingElem[1, 0], D, ZZRingElem[1, 0]) == 4
+  @test dot(ZZRingElem[1, 1], D, ZZRingElem[1, 2]) == 2
+  @test dot(ZZRingElem[1, 0], D, ZZRingElem[0, 1]) == -2
+  @test dot(ZZRingElem[1, 0], E, ZZRingElem[0, 1, 2]) == 0
+  @test dot(ZZRingElem[0, 1], E, ZZRingElem[0, 1, 2]) == 3
+
+  @test dot(ZZ[1 0], D, ZZ[1 0]) == 4
+  @test dot(ZZ[1; 1], D, ZZ[1 2]) == 2
+  @test dot(ZZ[1 0], D, ZZ[0; 1]) == -2
+  @test dot(ZZ[1 0], E, ZZ[0 1 2]) == 0
+  @test dot(ZZ[0 1], E, ZZ[0 1 2]) == 3
+
+  @test_throws ArgumentError dot(ZZRingElem[1], D, ZZRingElem[0, 1])
+  @test_throws ArgumentError dot(ZZRingElem[1, 0], D, ZZRingElem[0])
+  @test_throws ArgumentError dot(ZZRingElem[1, 0, 2], E, ZZRingElem[0, 1])
+
+  @test_throws ArgumentError dot(ZZ[1 0 0], D, ZZ[1 0])
+  @test_throws ArgumentError dot(ZZ[0 1 2], E, ZZ[0 1])
+  @test_throws ArgumentError dot(ZZ[1 0; 0 0], D, ZZ[1 0 0 0])
 
   # Submatrix
 
@@ -234,11 +283,11 @@ using SparseArrays
   @test b == QQFieldElem(-10)
 
   D = sparse_matrix(FlintZZ, [0 2 0; 0 0 1; 0 0 0])
-  @test @inferred isupper_triangular(D)
+  @test @inferred is_upper_triangular(D)
   D = sparse_matrix(FlintZZ, [0 0 2; 0 0 1; 0 0 0])
-  @test !isupper_triangular(D)
+  @test !is_upper_triangular(D)
   D = sparse_matrix(FlintZZ, [0 0 0; 0 0 0; 0 0 0])
-  @test @inferred isupper_triangular(D)
+  @test @inferred is_upper_triangular(D)
 
   # Zero and identity matrix
 
@@ -250,6 +299,17 @@ using SparseArrays
   D = @inferred zero_matrix(SMat, FlintZZ, 4, 3)
   @test D == sparse_matrix(FlintZZ, [0 0 0; 0 0 0; 0 0 0; 0 0 0]);
   @test D == sparse_matrix(FlintZZ, 4, 3)
+
+  # Block diag matrix
+
+  D1 = sparse_matrix(FlintZZ, [1 5; 0 1])
+  D2 = sparse_matrix(FlintZZ, [2 3 8; 4 0 0])
+  D = @inferred block_diagonal_matrix([D1, D2])
+  @test D == sparse_matrix(FlintZZ, [1 5 0 0 0; 0 1 0 0 0; 0 0 2 3 8; 0 0 4 0 0])
+  D = @inferred diagonal_matrix([D1, D2])
+  @test D == sparse_matrix(FlintZZ, [1 5 0 0 0; 0 1 0 0 0; 0 0 2 3 8; 0 0 4 0 0])
+  D = @inferred diagonal_matrix(D1, D2)
+  @test D == sparse_matrix(FlintZZ, [1 5 0 0 0; 0 1 0 0 0; 0 0 2 3 8; 0 0 4 0 0])
 
   # Concatenation syntax
 
@@ -286,9 +346,17 @@ using SparseArrays
 
   # Conversion to julia types
   D = sparse_matrix(FlintZZ, [1 5 3; 0 -10 0; 0 1 0])
+  @test Matrix(D) == ZZRingElem[1 5 3; 0 -10 0; 0 1 0]
+  @test Array(D) == ZZRingElem[1 5 3; 0 -10 0; 0 1 0]
   E = SparseArrays.sparse(D)
   @test Matrix(E) == ZZRingElem[1 5 3; 0 -10 0; 0 1 0]
   @test Array(E) == ZZRingElem[1 5 3; 0 -10 0; 0 1 0]
+
+  # kronecker_product
+  D1 = sparse_matrix(FlintZZ, [12 403 -23; 0 0 122; -1 2 99])
+  D2 = sparse_matrix(FlintZZ, [81 0 2; 31 0 -5])
+  E = @inferred kronecker_product(D1, D2)
+  @test E == sparse_matrix(kronecker_product(matrix(D1), matrix(D2)))
 end
 
 @testset "Oscar #2128" begin
@@ -301,4 +369,16 @@ end
   S0 = sparse_matrix(ZZ,[1 0; 0 1])
   S1 = sparse_matrix(ZZ,[-1 0; 0 -1])
   @test S0 + S1 == sparse_matrix(ZZ, 2, 2)
+end
+
+@testset "Hecke #1227" begin
+  A = sparse_matrix(FlintZZ, [2 0; 0 0])
+  @test kronecker_product(A, A) == sparse_matrix(FlintZZ, [4 0 0 0; 0 0 0 0; 0 0 0 0; 0 0 0 0])
+end
+
+@testset "Hecke #1261" begin
+  D1 = sparse_matrix(FlintZZ, [3 0 4 0; 0 3 0 4; 0 0 2 0; 0 0 0 2])
+  D2 = identity_matrix(SMat, FlintZZ, 2)
+  E = kronecker_product(D1, D2)
+  @test E == sparse_matrix(kronecker_product(matrix(D1), matrix(D2)))
 end

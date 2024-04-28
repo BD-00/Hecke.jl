@@ -1,9 +1,7 @@
-export simplify
-
 add_verbosity_scope(:Simplify)
 
 @doc raw"""
-    simplify(K::AnticNumberField; canonical::Bool = false) -> AnticNumberField, NfToNfMor
+    simplify(K::AbsSimpleNumField; canonical::Bool = false) -> AbsSimpleNumField, NumFieldHom{AbsSimpleNumField, AbsSimpleNumField}
 
 Tries to find an isomorphic field $L$ given by a "simpler" defining polynomial.
 By default, "simple" is defined to be of smaller index, testing is done only
@@ -15,7 +13,7 @@ http://beta.lmfdb.org/knowledge/show/nf.polredabs.
 
 Both versions require a LLL reduced basis for the maximal order.
 """
-function simplify(K::AnticNumberField; canonical::Bool = false, cached::Bool = true, save_LLL_basis::Bool = true)
+function simplify(K::AbsSimpleNumField; canonical::Bool = false, cached::Bool = true, save_LLL_basis::Bool = true)
   Qx, x = polynomial_ring(FlintQQ, "x")
 
   if degree(K) == 1
@@ -37,26 +35,26 @@ function simplify(K::AnticNumberField; canonical::Bool = false, cached::Bool = t
   n = degree(K)
   OK = maximal_order(K)
   if isdefined(OK, :lllO)
-    @vprint :Simplify 1 "LLL basis was already there\n"
+    @vprintln :Simplify 1 "LLL basis was already there"
     ZK = OK.lllO::typeof(OK)
   else
     b = _simplify(OK)
     if b != gen(K)
-      @vprint :Simplify 1 "The basis of the maximal order contains a better primitive element\n"
+      @vprintln :Simplify 1 "The basis of the maximal order contains a better primitive element"
       f1 = Qx(minpoly(representation_matrix(OK(b))))
       L1 = number_field(f1, cached = cached, check = false)[1]
       #Before calling again the simplify on L1, we need to define the maximal order of L1
       mp = hom(L1, K, b, check = false)
       _assure_has_inverse_data(mp)
       B = basis(OK, K)
-      BOL1 = Vector{nf_elem}(undef, degree(L1))
+      BOL1 = Vector{AbsSimpleNumFieldElem}(undef, degree(L1))
       for i = 1:degree(L1)
         BOL1[i] = mp\(B[i])
       end
-      OL1 = NfOrd(BOL1, false)
+      OL1 = AbsSimpleNumFieldOrder(BOL1, false)
       OL1.is_maximal = 1
       set_attribute!(L1, :maximal_order => OL1)
-      @vprint :Simplify 3 "Trying to simplify $(L1.pol)\n"
+      @vprintln :Simplify 3 "Trying to simplify $(L1.pol)"
       L2, mL2 = simplify(L1, cached = cached, save_LLL_basis = save_LLL_basis)
       h = mL2 * mp
       return L2, mL2*mp
@@ -76,11 +74,11 @@ function simplify(K::AnticNumberField; canonical::Bool = false, cached::Bool = t
   if save_LLL_basis
     _assure_has_inverse_data(m)
     B = basis(ZK, K)
-    BOL = Vector{nf_elem}(undef, degree(L))
+    BOL = Vector{AbsSimpleNumFieldElem}(undef, degree(L))
     for i = 1:degree(L)
       BOL[i] = m\(B[i])
     end
-    OL = NfOrd(BOL, false)
+    OL = AbsSimpleNumFieldOrder(BOL, false)
     if isdefined(ZK, :disc)
       OL.disc = ZK.disc
       if is_defining_polynomial_nice(L)
@@ -97,7 +95,7 @@ function simplify(K::AnticNumberField; canonical::Bool = false, cached::Bool = t
   return L, m
 end
 
-function _simplify(O::NfAbsOrd)
+function _simplify(O::AbsNumFieldOrder)
   K = nf(O)
 
   B = basis(O, K, copy = false)
@@ -130,22 +128,22 @@ function _simplify(O::NfAbsOrd)
   return a
 end
 
-function primitive_element(K::AnticNumberField)
+function primitive_element(K::AbsSimpleNumField)
   return gen(K)
 end
 
-function _sieve_primitive_elements(B::Vector{NfAbsNSElem})
+function _sieve_primitive_elements(B::Vector{AbsNonSimpleNumFieldElem})
   K = parent(B[1])
   Zx = polynomial_ring(FlintZZ, "x", cached = false)[1]
   pols = [Zx(to_univariate(Globals.Qx, x)) for x in K.pol]
   p, d = _find_prime(pols)
-  F = FlintFiniteField(p, d, "w", cached = false)[1]
-  Fp = GF(p, cached = false)
+  F = Native.finite_field(p, d, "w", cached = false)[1]
+  Fp = Native.GF(p, cached = false)
   Fpt = polynomial_ring(Fp, ngens(K))[1]
   Ft = polynomial_ring(F, "t", cached = false)[1]
   rt = Vector{Vector{fqPolyRepFieldElem}}(undef, ngens(K))
   for i = 1:length(pols)
-    rt[i] = roots(pols[i], F)
+    rt[i] = roots(F, pols[i])
   end
   rt_all = Vector{Vector{fqPolyRepFieldElem}}(undef, degree(K))
   ind = 1
@@ -169,7 +167,7 @@ function _sieve_primitive_elements(B::Vector{NfAbsNSElem})
   return B[indices]
 end
 
-function _is_primitive_via_block(el::NfAbsNSElem, rt::Vector{Vector{fqPolyRepFieldElem}}, Rt::MPolyRing)
+function _is_primitive_via_block(el::AbsNonSimpleNumFieldElem, rt::Vector{Vector{fqPolyRepFieldElem}}, Rt::MPolyRing)
   K = parent(el)
   fR = map_coefficients(base_ring(Rt), data(el), parent = Rt)
   s = Set{fqPolyRepFieldElem}()
@@ -186,8 +184,8 @@ function _is_primitive_via_block(el::NfAbsNSElem, rt::Vector{Vector{fqPolyRepFie
   error("Something went wrong")
 end
 
-function _block(el::NfAbsNSElem, rt::Vector{Vector{fqPolyRepFieldElem}}, R::fpField)
-  fR = map_coefficients(R, data(el))
+function _block(el::AbsNonSimpleNumFieldElem, rt::Vector{Vector{fqPolyRepFieldElem}}, R::fpField)
+  fR = map_coefficients(R, data(el), cached = false)
   s = fqPolyRepFieldElem[evaluate(fR, x) for x in rt]
   b = Vector{Int}[]
   a = BitSet()
@@ -207,25 +205,7 @@ function _block(el::NfAbsNSElem, rt::Vector{Vector{fqPolyRepFieldElem}}, R::fpFi
   return b
 end
 
-function AbstractAlgebra.map_coefficients(F::fpField, f::QQMPolyRingElem; parent = polynomial_ring(F, nvars(parent(f)), cached = false)[1])
-  dF = denominator(f)
-  d = F(dF)
-  if iszero(d)
-    error("Denominator divisible by p!")
-  end
-  m = inv(d)
-  ctx = MPolyBuildCtx(parent)
-  for x in zip(coefficients(f), exponent_vectors(f))
-    el = numerator(x[1]*dF)
-    push_term!(ctx, F(el)*m, x[2])
-  end
-  return finish(ctx)
-end
-
-
-
-
-function _sieve_primitive_elements(B::Vector{nf_elem})
+function _sieve_primitive_elements(B::Vector{AbsSimpleNumFieldElem})
   K = parent(B[1])
   Zx = polynomial_ring(FlintZZ, "x", cached = false)[1]
   f = Zx(K.pol*denominator(K.pol))
@@ -233,11 +213,11 @@ function _sieve_primitive_elements(B::Vector{nf_elem})
 
   p, d = _find_prime(ZZPolyRingElem[f])
 
-  F = FlintFiniteField(p, d, "w", cached = false)[1]
+  F = Nemo.Native.finite_field(p, d, "w", cached = false)[1]
   Ft = polynomial_ring(F, "t", cached = false)[1]
   ap = zero(Ft)
   fit!(ap, degree(K)+1)
-  rt = roots(f, F)
+  rt = roots(F, f)
 
   n = degree(K)
   indices = Int[]
@@ -265,13 +245,13 @@ end
  #the length of such a block (system) is the degree of Q(a):Q, the length
  # of a block is the degree K:Q(a)
  # a is primitive iff the block system has length n
-function _block(a::nf_elem, R::Vector{fqPolyRepFieldElem}, ap::fqPolyRepPolyRingElem)
+function _block(a::AbsSimpleNumFieldElem, R::Vector{fqPolyRepFieldElem}, ap::fqPolyRepPolyRingElem)
   # TODO:
   # Maybe this _tmp business has to be moved out of this function too
-  _R = GF(Int(characteristic(base_ring(ap))), cached = false)
+  _R = Native.GF(Int(characteristic(base_ring(ap))), cached = false)
   _Ry, _ = polynomial_ring(_R, "y", cached = false)
   _tmp = _Ry()
-  nf_elem_to_gfp_poly!(_tmp, a, false) # ignore denominator
+  Nemo.nf_elem_to_gfp_poly!(_tmp, a, false) # ignore denominator
   set_length!(ap, length(_tmp))
   for i in 0:(length(_tmp) - 1)
     setcoeff!(ap, i, base_ring(ap)(_get_coeff_raw(_tmp, i)))
@@ -324,7 +304,7 @@ function _find_prime(v::Vector{ZZPolyRingElem})
   polsR = Vector{fpPolyRingElem}(undef, length(v))
   while i < n_attempts+1
     p = next_prime(p)
-    R = GF(p, cached=false)
+    R = Native.GF(p, cached=false)
     Rt = polynomial_ring(R, "t", cached = false)[1]
     found_bad = false
     for j = 1:length(v)
@@ -359,7 +339,7 @@ function _find_prime(v::Vector{ZZPolyRingElem})
   return res[1], res[2]
 end
 
-function polredabs(K::AnticNumberField)
+function polredabs(K::AbsSimpleNumField)
   #intended to implement
   # http://beta.lmfdb.org/knowledge/show/nf.polredabs
   #as in pari
@@ -372,11 +352,11 @@ function polredabs(K::AnticNumberField)
   f = Zx(K.pol)
   p, d = _find_prime(ZZPolyRingElem[f])
 
-  F = FlintFiniteField(p, d, "w", cached = false)[1]
+  F = Native.finite_field(p, d, "w", cached = false)[1]
   Ft = polynomial_ring(F, "t", cached = false)[1]
   ap = zero(Ft)
   fit!(ap, degree(K)+1)
-  rt = roots(f, F)
+  rt = roots(F, f)
 
   n = degree(K)
 
@@ -411,14 +391,13 @@ function polredabs(K::AnticNumberField)
     end
   end
 
-  l = zeros(FlintZZ, n)
-  l[i] = 1
-
   scale = 1.0
-  enum_ctx_start(E, matrix(FlintZZ, 1, n, l), eps = 1.01)
+  enum_ctx_start(E, i, eps = 1.01) #start at the 1st vector having
+                       # a 1 at position i, it's pointless to start earlier
+                       #as none of the elements can be primitive.
 
   a = gen(K)
-  all_a = nf_elem[a]
+  all_a = AbsSimpleNumFieldElem[a]
   la = length(a)*BigFloat(E.t_den^2)
   Ec = BigFloat(E.c//E.d)
   eps = BigFloat(E.d)^(1//2)
@@ -428,7 +407,6 @@ function polredabs(K::AnticNumberField)
   while !found_pe
     while first || enum_ctx_next(E)
       first = false
-#      @show E.x
       M = E.x*E.t
       q = elem_from_mat_row(K, M, 1, E.t_den)
       bb = _block(q, rt, ap)
@@ -447,7 +425,7 @@ function polredabs(K::AnticNumberField)
 #          @show "new one", q, minpoly(q), bb
         else
           a = q
-          all_a = nf_elem[a]
+          all_a = AbsSimpleNumFieldElem[a]
           if lq/la < 0.8
 #            @show "re-init"
             enum_ctx_start(E, E.x, eps = 1.01)  #update upperbound
@@ -460,7 +438,7 @@ function polredabs(K::AnticNumberField)
       end
     end
     scale *= 2
-    enum_ctx_start(E, matrix(FlintZZ, 1, n, l), eps = scale)
+    enum_ctx_start(E, i, eps = scale)
     first = true
     Ec = BigFloat(E.c//E.d)
   end
@@ -492,16 +470,16 @@ K"orper definieren ??
   end
   all_a = all_a[1:i]
 
-  all_f = Tuple{nf_elem, QQPolyRingElem}[(x, minpoly(x)) for x=all_a]
+  all_f = Tuple{AbsSimpleNumFieldElem, QQPolyRingElem}[(x, minpoly(x)) for x=all_a]
   all_d = QQFieldElem[abs(discriminant(x[2])) for x= all_f]
   m = minimum(all_d)
-  L1 = Tuple{nf_elem, QQPolyRingElem}[]
+  L1 = Tuple{AbsSimpleNumFieldElem, QQPolyRingElem}[]
   for i = 1:length(all_f)
     if all_d[i] == m
       push!(L1, all_f[i])
     end
   end
-  L2 = Tuple{nf_elem, QQPolyRingElem}[minQ(x) for x=L1]
+  L2 = Tuple{AbsSimpleNumFieldElem, QQPolyRingElem}[minQ(x) for x=L1]
   if length(L2) == 1
     return L2[1]
   end
@@ -510,7 +488,7 @@ K"orper definieren ??
   return L3[1]
 end
 
-function Q1Q2(f::PolyElem)
+function Q1Q2(f::PolyRingElem)
   q1 = parent(f)()
   q2 = parent(f)()
   g = gen(parent(f))
@@ -524,7 +502,7 @@ function Q1Q2(f::PolyElem)
   return q1, q2
 end
 
-function minQ(A::Tuple{nf_elem, QQPolyRingElem})
+function minQ(A::Tuple{AbsSimpleNumFieldElem, QQPolyRingElem})
   a = A[1]
   f = A[2]
   q1, q2 = Q1Q2(f)

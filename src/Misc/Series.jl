@@ -1,6 +1,3 @@
-Nemo.fit!(::QQRelPowerSeriesRingElem, Int) = nothing
-Nemo.fit!(::QQAbsPowerSeriesRingElem, Int) = nothing
-
 @doc raw"""
     integral(f::RelPowerSeriesRingElem{T}) -> RelPowerSeriesRingElem
 
@@ -22,7 +19,7 @@ function Nemo.integral(f::RelPowerSeriesRingElem{T}) where T
   return g
 end
 
-function *(f::PolyElem{<:SeriesElem{qadic}}, g::PolyElem{<:SeriesElem{qadic}})
+function *(f::PolyRingElem{<:SeriesElem{QadicFieldElem}}, g::PolyRingElem{<:SeriesElem{QadicFieldElem}})
   if degree(f) > 2 &&  degree(g) > 2
     fg = mymul_ks(f, g)
 #    @hassert :AbsFact 2 fg == Nemo.mul_classical(f, g)
@@ -38,7 +35,7 @@ function *(f::PolyElem{<:SeriesElem{qadic}}, g::PolyElem{<:SeriesElem{qadic}})
 end
 
 #=
-function *(f::RelPowerSeriesRingElem{qadic}, g::RelPowerSeriesRingElem{qadic})
+function *(f::RelPowerSeriesRingElem{QadicFieldElem}, g::RelPowerSeriesRingElem{QadicFieldElem})
   return mymul_ks(f, g)
   if pol_length(f) > 2 &&  pol_length(g) > 2
     fg = mymul_ks(f, g)
@@ -55,17 +52,8 @@ function *(f::RelPowerSeriesRingElem{qadic}, g::RelPowerSeriesRingElem{qadic})
 end
 =#
 
-function Base.minimum(::typeof(precision), a::Vector{<:SeriesElem})
-  return minimum(map(precision, a))
-end
 
-function Base.maximum(::typeof(precision), a::Vector{<:SeriesElem})
-  return maximum(map(precision, a))
-end
-Base.length(a::qadic) = a.length
-
-
-@inline function coeffraw(q::qadic, i::Int)
+@inline function coeffraw(q::QadicFieldElem, i::Int)
   @assert i < length(q)
   return reinterpret(Ptr{ZZRingElem}, q.coeffs)+i*sizeof(Ptr{Int})
 end
@@ -75,26 +63,13 @@ end
   return reinterpret(Ptr{ZZRingElem}, q.coeffs)+i*sizeof(Ptr{Int})
 end
 
-@inline function Hecke.setcoeff!(z::ZZPolyRingElem, n::Int, x::Ptr{ZZRingElem})
-   ccall((:fmpz_poly_set_coeff_fmpz, Hecke.libflint), Nothing,
-                    (Ref{ZZPolyRingElem}, Int, Ptr{ZZRingElem}), z, n, x)
-   return z
-end
-
-@inline function Hecke.mul!(a::Ref{ZZRingElem}, b::Ref{ZZRingElem}, c::ZZRingElem)
-  ccall((:fmpz_mul, Hecke.libflint), Cvoid, (Ref{ZZRingElem}, Ref{ZZRingElem}, Ref{ZZRingElem}),a, b, c)
-end
-@inline function Hecke.iszero(a::Ref{ZZRingElem})
-  return unsafe_load(reinterpret(Ptr{Int}, a))==0
-end
-
 #=
-function mul!(C::Generic.RelSeries{qadic}, f::Generic.RelSeries{qadic}, g::Generic.RelSeries{qadic})
+function mul!(C::Generic.RelSeries{QadicFieldElem}, f::Generic.RelSeries{QadicFieldElem}, g::Generic.RelSeries{QadicFieldElem})
   return f*g
 end
 =#
 
-function mymul_ks(f::SeriesElem{qadic}, g::SeriesElem{qadic})
+function mymul_ks(f::SeriesElem{QadicFieldElem}, g::SeriesElem{QadicFieldElem})
   rf = precision(f)
   rg = precision(g)
   S = parent(f)
@@ -143,7 +118,7 @@ function mymul_ks(f::SeriesElem{qadic}, g::SeriesElem{qadic})
 #  @show density(F), density(G), mp
   FG = mullow(F, G, min(rf, rg)*(2*h-1))
 
-  c = qadic[]
+  c = QadicFieldElem[]
   for j=0:min(rf,rg)-1
     H = Hecke.Globals.Zx()
     for x = 0:2*h-2
@@ -163,7 +138,7 @@ function mymul_ks(f::SeriesElem{qadic}, g::SeriesElem{qadic})
 end
 
 
-function mymul_ks(f::PolyElem{<:SeriesElem{qadic}}, g::PolyElem{<:SeriesElem{qadic}})
+function mymul_ks(f::PolyRingElem{<:SeriesElem{QadicFieldElem}}, g::PolyRingElem{<:SeriesElem{QadicFieldElem}})
   nf = degree(f)
   ng = degree(g)
   rf = minimum(precision, coefficients(f))
@@ -224,7 +199,7 @@ function mymul_ks(f::PolyElem{<:SeriesElem{qadic}}, g::PolyElem{<:SeriesElem{qad
   fg = parent(f)()
 
   for i=0:degree(f)+degree(g)
-    c = qadic[]
+    c = QadicFieldElem[]
     for j=0:min(rf,rg)-1
       H = Hecke.Globals.Zx()
       for x = 0:2*h-2
@@ -247,82 +222,9 @@ function mymul_ks(f::PolyElem{<:SeriesElem{qadic}}, g::PolyElem{<:SeriesElem{qad
   return fg
 end
 
-
-function Nemo.canonical_unit(a::SeriesElem)
-  iszero(a) && return one(parent(a))
-  v = valuation(a)
-  v == 0 && return a
-  v > 0 && return shift_right(a, v)
-  return shift_left(a, -v)
-end
-
-#TODO: this is for rings, not for fields, maybe different types?
-function Base.gcd(a::T, b::T) where {T <: SeriesElem}
-  iszero(a) && iszero(b) && return a
-  iszero(a) && return gen(parent(a))^valuation(b)
-  iszero(b) && return gen(parent(a))^valuation(a)
-  return gen(parent(a))^min(valuation(a), valuation(b))
-end
-
-function Base.lcm(a::T, b::T) where {T <: SeriesElem}
-  iszero(a) && iszero(b) && return a
-  iszero(a) && return a
-  iszero(b) && return b
-  return gen(parent(a))^max(valuation(a), valuation(b))
-end
-
-
 function Hecke.residue_field(S::SeriesRing{T}) where {T <: Nemo.RingElem} #darn zzModRingElem/gfp
   k = base_ring(S)
-  return k, MapFromFunc(x -> coeff(x, 0), y -> set_precision(S(y), 1), S, k)
-end
-
-#TODO: in Nemo, rename to setprecision
-#      fix/report series add for different length
-function set_precision(a::SeriesElem, i::Int)
-  b = deepcopy(a)
-  set_precision!(b, i)
-  return b
-end
-
-# should be Nemo/AA
-# TODO: symbols vs strings
-#       lift(PolyRing, Series)
-#       lift(FracField, Series)
-#       (to be in line with lift(ZZ, padic) and lift(QQ, padic)
-#TODO: some of this would only work for Abs, not Rel, however, this should be fine here
-function Hecke.map_coefficients(f, a::RelPowerSeriesRingElem; parent::SeriesRing)
-  c = typeof(f(coeff(a, 0)))[]
-  for i=0:Nemo.pol_length(a)-1
-    push!(c, f(Nemo.polcoeff(a, i)))
-  end
-  b = parent(c, length(c), precision(a), valuation(a))
-  return b
-end
-
-#=
-function Hecke.map_coefficients(f, a::RelPowerSeriesRingElem)
-  d = f(coeff(a, 0))
-  T = parent(a)
-  if parent(d) == base_ring(T)
-    S = T
-  else
-    S = power_series_ring(parent(d), max_precision(T), string(var(T)), cached = false)[1]
-  end
-  c = typeof(d)[d]
-  for i=1:Nemo.pol_length(a)-1
-    push!(c, f(Nemo.polcoeff(a, i)))
-  end
-  b = S(c, length(c), precision(a), valuation(a))
-  return b
-end
-=#
-function lift(R::PolyRing{S}, s::SeriesElem{S}) where {S}
-  t = R()
-  for x = 0:pol_length(s)
-    setcoeff!(t, x, polcoeff(s, x))
-  end
-  return shift_left(t, valuation(s))
+  return k, MapFromFunc(S, k, x -> coeff(x, 0), y -> set_precision(S(y), 1))
 end
 
 function rational_reconstruction(a::SeriesElem; parent::PolyRing = polynomial_ring(base_ring(a), cached = false)[1])
@@ -337,15 +239,14 @@ function rational_reconstruction(a::SeriesElem; parent::PolyRing = polynomial_ri
   return rational_reconstruction(b, t^precision(a))
 end
 
-function rational_reconstruction(a::padic)
+function rational_reconstruction(a::PadicFieldElem)
   return rational_reconstruction(Hecke.lift(a), prime(parent(a), precision(a)))
 end
 
-Hecke.gcd_into!(a::PolyElem, b::PolyElem, c::PolyElem) = gcd(b, c)
-Base.copy(a::PolyElem) = deepcopy(a)
-Base.copy(a::SeriesElem) = deepcopy(a)
+Hecke.gcd_into!(a::PolyRingElem, b::PolyRingElem, c::PolyRingElem) = gcd(b, c)
 
-function Hecke.squarefree_part(a::PolyElem)
+
+function Hecke.squarefree_part(a::PolyRingElem)
   return divexact(a, gcd(a, derivative(a)))
 end
 

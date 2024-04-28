@@ -5,12 +5,12 @@
 ################################################################################
 
 @doc raw"""
-    unit_group_rank(O::NfOrd) -> Int
+    unit_group_rank(O::AbsSimpleNumFieldOrder) -> Int
 
 Returns the unit rank of $\mathcal O$, that is, the rank of the unit group
 $\mathcal O^\times$.
 """
-function unit_group_rank(O::NfOrd)
+function unit_group_rank(O::AbsSimpleNumFieldOrder)
   return unit_group_rank(nf(O))
 end
 
@@ -38,7 +38,7 @@ function _isindependent(x::Vector{T}, p::Int = 32) where T
   rr = r1 + r2
   r = rr - 1 # unit rank
 
-  conlog = Vector{Vector{arb}}(undef, length(x))
+  conlog = Vector{Vector{ArbFieldElem}}(undef, length(x))
 
   # This can be made more memory friendly
   while true
@@ -46,7 +46,7 @@ function _isindependent(x::Vector{T}, p::Int = 32) where T
 
     q = 2
     for i in 1:length(x)
-      @vprint :UnitGroup 3 "Computing conjugates with precision $p of ($i) $(length(x[i].fac))...\n"
+      @vprintln :UnitGroup 3 "Computing conjugates with precision $p of ($i) $(length(x[i].fac))..."
       conlog[i] = conjugates_arb_log(x[i], p)
       for j in 1:rr
         q = max(q, bits(conlog[i][j]))
@@ -65,7 +65,7 @@ function _isindependent(x::Vector{T}, p::Int = 32) where T
     Ar = base_ring(A)
 
     B = A*transpose(A)
-    @vprint :UnitGroup 1 "Computing det of $(nrows(B))x$(ncols(B)) matrix with precision $(p) ... \n"
+    @vprintln :UnitGroup 1 "Computing det of $(nrows(B))x$(ncols(B)) matrix with precision $(p) ..."
     d = det(B)
 
     y = (Ar(1)//Ar(r))^r * (Ar(21)//Ar(128) * log(Ar(deg))//(Ar(deg)^2))^(2*r)

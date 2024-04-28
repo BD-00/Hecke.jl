@@ -1,10 +1,3 @@
-export binary_quadratic_form, can_solve, discriminant,
-       fundamental_discriminant, is_discriminant, QuadBin,
-       is_fundamental_discriminant, prime_form, cycle,
-       is_indefinite, is_positive_definite, is_negative_definite, is_reduced
-
-import Nemo: can_solve
-
 ###############################################################################
 #
 #   Constructor
@@ -35,16 +28,33 @@ binary_quadratic_form(R::Ring, a, b, c) = binary_quadratic_form(R(a), R(b), R(c)
 ################################################################################
 
 function show(io::IO, ::MIME"text/plain", f::QuadBin)
-  _show(io, f, get(io, :compact, false))
+  _show(io, f, false)
 end
 
 function show(io::IO, f::QuadBin)
-  _show(io, f, true)
+  if get(io, :supercompact, false)
+    print(io, "Binary quadratic form")
+  else
+    io = pretty(io)
+    print(io, "Binary quadratic form over ")
+    print(IOContext(io, :supercompact => true), Lowercase(), base_ring(f))
+    print(io, ": ")
+    _show(io, f, true)
+  end
 end
 
 function _show(io::IO, f::QuadBin, compact = false)
   if !compact
-    print(io, "Binary quadratic form with equation\n")
+    io = pretty(io)
+    println(io, "Binary quadratic form")
+    if base_ring(f) == ZZ
+      print(io, Indent(), "over integer ring")
+    else
+      print(io, Indent(), "over ", Lowercase())
+      show(io, MIME"text/plain"(), base_ring(f))
+    end
+    println(io, Dedent())
+    print(io, "with equation ")
   end
   sum = Expr(:call, :+)
   a = f[1]
@@ -118,9 +128,10 @@ function Base.:(*)(c::Integer, f::QuadBin)
   return binary_quadratic_form(c * f[1], c * f[2], c * f[3])
 end
 
-function divexact(f::QuadBin{T}, c::T) where T <: RingElem
-  return binary_quadratic_form(divexact(f[1], c), divexact(f[2], c),
-                                                  divexact(f[3], c))
+function divexact(f::QuadBin{T}, c::T; check::Bool=true) where T <: RingElem
+  return binary_quadratic_form(divexact(f[1], c; check=check),
+                               divexact(f[2], c; check=check),
+                               divexact(f[3], c; check=check))
 end
 
 ###############################################################################
@@ -137,33 +148,45 @@ end
 #
 ################################################################################
 
+# Keyword argument `sol` only for internal use, to avoid to compute a solution
+# in case one just wants to decide on representation.
 @doc raw"""
-     can_solve_with_solution(f::QuadBin, n::Int64)
-For a binary quadratic form $f$ with negative discriminant and an integer $n$,
-returns tuple (`true`, (`x`,`y`)) if $f$(`x`,`y`) = $n$ for integers `x`,`y`.
-If no such integers exist, return (`false`,(0,0))
+     can_solve_with_solution(f::QuadBin, n::IntegerUnion)
+                                           -> Bool, Tuple{ZZRingElem, ZZRingElem}
+
+For a binary quadratic form `f` with negative discriminant and an integer `n`,
+return the tuple `(true, (x, y))` if $f(x, y) = n$ for integers `x`, `y`.
+If no such integers exist, return `(false, (0, 0))`
 """
-function can_solve(f::QuadBin, n::Int64)
-    if discriminant(f) >= 0
-        @error("$f has non-negative discriminant")
+function can_solve_with_solution(f::QuadBin, n::IntegerUnion; sol::Bool = true)
+  @req discriminant(f) < 0 "f must have negative discriminant"
+  for y in 1:Int(floor(sqrt(Int(4*f[1]*n)//abs(Int(discriminant(f))))))
+    #now f(x,y) quadratic in one variable -> use quadratic formula
+    aq = f[1]
+    bq = f[2] * y
+    cq = f[3] * y^2 - n
+    d = bq^2 - 4*aq*cq
+    if is_square(d)
+      if divides(-bq + sqrt(d), 2*aq)[1]
+        !sol && return true, (ZZ(0), ZZ(0))
+        return true, (divexact(-bq + sqrt(d), 2*aq), ZZ(y))
+      end
+      if divides(-bq - sqrt(d), 2*aq)[1]
+        !sol && return true, (ZZ(0), ZZ(0))
+        return true, (divexact(-bq - sqrt(d), 2*aq), ZZ(y))
+      end
     end
-    for y in 1:Int64(floor(sqrt(Int64(4*f[1]*n)//abs(Int64(discriminant(f))))))
-        #now f(x,y) quadratic in one variable -> use quadratic formula
-        aq = f[1]
-        bq = f[2] * y
-        cq = f[3] * y^2 - n
-        d = bq^2 - 4*aq*cq
-        if is_square(d)
-            if divides(-bq + sqrt(d), 2*aq)[1]
-                return(true, (divexact(-bq + sqrt(d), 2*aq), ZZ(y)))
-            end
-            if divides(-bq - sqrt(d), 2*aq)[1]
-                return(true, (divexact(-bq - sqrt(d), 2*aq), ZZ(y)))
-            end
-        end
-    end
-    return (false, (FlintZZ(0),ZZ(0)))
+  end
+  return false, (ZZ(0), ZZ(0))
 end
+
+@doc raw"""
+     can_solve(f::QuadBin, n::IntegerUnion) -> Bool
+
+For a binary quadratic form `f` with negative discriminant and an integer `n`,
+return whether `f` represents `n`.
+"""
+can_solve(f::QuadBin, n::IntegerUnion) = can_solve_with_solution(f, n, sol = false)[1]
 
 ###############################################################################
 #
@@ -517,8 +540,10 @@ end
 # TODO (TH):
 # - Make the functions operate on (a, b, c)
 # - Don't build up T, just do the operations directly on U
-function _reduction_indefinite(f)
+function _reduction_indefinite(_ff)
   # Compute a reduced form in the proper equivalence class of f
+  local f::QuadBin{ZZRingElem} = _ff
+  local _f
   RR = ArbField(53, cached = false)
   U = identity_matrix(FlintZZ, 2)
   d = sqrt(RR(discriminant(f)))

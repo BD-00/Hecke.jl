@@ -1,9 +1,3 @@
-export QuadGenus
-export QuadLat
-export QuadLocalGenus
-export ZGenus
-export ZpGenus
-
 ###############################################################################
 #
 #  Integer genera
@@ -13,7 +7,7 @@ export ZpGenus
 ### Local
 
 @doc raw"""
-    ZpGenus
+    ZZLocalGenus
 
 Local genus symbol over a p-adic ring.
 
@@ -45,11 +39,11 @@ Reference: [CS99](@cite) Chapter 15, Section 7.
 - `symbol`: the list of invariants for Jordan blocks `A_t,...,A_t` given
   as a list of lists of integers
 """
-mutable struct ZpGenus
+mutable struct ZZLocalGenus
   _prime::ZZRingElem
   _symbol::Vector{Vector{Int}}
 
-  function ZpGenus(prime, symbol, check=true)
+  function ZZLocalGenus(prime, symbol, check=true)
     if check
       if prime == 2
         @assert all(length(g)==5 for g in symbol)
@@ -58,6 +52,7 @@ mutable struct ZpGenus
         @assert all(length(g)==3 for g in symbol)
       end
     end
+    deleteat!(symbol, [i for (i,s) in enumerate(symbol) if s[2]==0])
     g = new()
     g._prime = prime
     g._symbol = symbol
@@ -68,28 +63,28 @@ end
 ### Global
 
 @doc raw"""
-    ZGenus
+    ZZGenus
 
 A collection of local genus symbols (at primes)
 and a signature pair. Together they represent the genus of a
-non-degenerate Zlattice.
+non-degenerate integer_lattice.
 """
-@attributes mutable struct ZGenus
+@attributes mutable struct ZZGenus
   _signature_pair::Tuple{Int, Int}
-  _symbols::Vector{ZpGenus} # assumed to be sorted by their primes
-  _representative::ZLat
+  _symbols::Vector{ZZLocalGenus} # assumed to be sorted by their primes
+  _representative::ZZLat
 
-  function ZGenus(signature_pair, symbols)
+  function ZZGenus(signature_pair, symbols::Vector{ZZLocalGenus})
     G = new()
     G._signature_pair = signature_pair
-    G._symbols = sort!(symbols, by = x->prime(x))
+    sort!(symbols, by = x->prime(x))
+    deleteat!(symbols, [i for (i,s) in enumerate(symbols) if prime(s)!=2 && is_unimodular(s)])
+    G._symbols = symbols
     return G
   end
 
-  function ZGenus(signature_pair, symbols, representative::ZLat)
-    G = new()
-    G._signature_pair = signature_pair
-    G._symbols = sort!(symbols, by = x->prime(x))
+  function ZZGenus(signature_pair, symbols, representative::ZZLat)
+    G = ZZGenus(signature_pair, symbols)
     G._representative = representative
     return G
   end
@@ -238,7 +233,7 @@ mutable struct QuadGenus{S, T, U}
   primes::Vector{T}
   LGS::Vector{QuadLocalGenus{S, T, U}}
   rank::Int
-  signatures::Dict{InfPlc{AnticNumberField, NumFieldEmbNfAbs}, Int}
+  signatures::Dict{InfPlc{AbsSimpleNumField, AbsSimpleNumFieldEmbedding}, Int}
   d::U
   space
 
@@ -307,9 +302,9 @@ end
 # To keep track of ray class groups
 mutable struct SpinorGeneraCtx
   mR::MapRayClassGrp # ray class group map
-  mQ::GrpAbFinGenMap # quotient
-  rayprimes::Vector{NfAbsOrdIdl{AnticNumberField, nf_elem}}
-  criticalprimes::Vector{NfAbsOrdIdl{AnticNumberField, nf_elem}}
+  mQ::FinGenAbGroupHom # quotient
+  rayprimes::Vector{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}}
+  criticalprimes::Vector{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}}
 
   function SpinorGeneraCtx()
     return new()
@@ -325,21 +320,21 @@ end
 # Move this to a proper place
 #
 # TODO: Cache this in the dyadic case (on the lattice or the field)
-mutable struct LocMultGrpModSquMap <: Map{GrpAbFinGen, GrpAbFinGen, HeckeMap, LocMultGrpModSquMap}
-  domain::GrpAbFinGen
-  codomain::AnticNumberField
+mutable struct LocMultGrpModSquMap <: Map{FinGenAbGroup, FinGenAbGroup, HeckeMap, LocMultGrpModSquMap}
+  domain::FinGenAbGroup
+  codomain::AbsSimpleNumField
   is_dyadic::Bool
-  p::NfAbsOrdIdl{AnticNumberField, nf_elem}
-  e::nf_elem
-  pi::nf_elem
-  piinv::nf_elem
+  p::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}
+  e::AbsSimpleNumFieldElem
+  pi::AbsSimpleNumFieldElem
+  piinv::AbsSimpleNumFieldElem
   hext::NfToFinFldMor{FqField}
-  h::AbsOrdQuoMap{NfAbsOrd{AnticNumberField,nf_elem},NfAbsOrdIdl{AnticNumberField,nf_elem},NfAbsOrdElem{AnticNumberField,nf_elem}}
-  g::GrpAbFinGenToAbsOrdQuoRingMultMap{NfAbsOrd{AnticNumberField,nf_elem},NfAbsOrdIdl{AnticNumberField,nf_elem},NfAbsOrdElem{AnticNumberField,nf_elem}}
-  i::GrpAbFinGenMap
-  mS::GrpAbFinGenMap
+  h::AbsOrdQuoMap{AbsNumFieldOrder{AbsSimpleNumField,AbsSimpleNumFieldElem},AbsNumFieldOrderIdeal{AbsSimpleNumField,AbsSimpleNumFieldElem},AbsSimpleNumFieldOrderElem}
+  g::GrpAbFinGenToAbsOrdQuoRingMultMap{AbsNumFieldOrder{AbsSimpleNumField,AbsSimpleNumFieldElem},AbsNumFieldOrderIdeal{AbsSimpleNumField,AbsSimpleNumFieldElem},AbsSimpleNumFieldOrderElem}
+  i::FinGenAbGroupHom
+  mS::FinGenAbGroupHom
 
-  function LocMultGrpModSquMap(K::AnticNumberField, p::NfAbsOrdIdl{AnticNumberField, nf_elem})
+  function LocMultGrpModSquMap(K::AbsSimpleNumField, p::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem})
     R = order(p)
     @assert nf(R) === K
     @assert is_absolute(K)

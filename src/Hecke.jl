@@ -27,7 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 # (C) 2015-2019 Claus Fieker, Tommy Hofmann
-# (C) 2020-2022 Claus Fieker, Tommy Hofmann, Carlo Sircana
+# (C) 2020-2024 Claus Fieker, Tommy Hofmann, Carlo Sircana
 #
 ################################################################################
 
@@ -59,14 +59,25 @@ import Base: show, minimum, rand, prod, copy, rand, ceil, round, size, in,
 # we have to export everything again
 # dong it the "import" route, we can pick & choose...
 
-using Requires
-
 using LazyArtifacts
 
-using LinearAlgebra, Markdown, InteractiveUtils, Libdl, Distributed, Printf, SparseArrays, Serialization, Random, Pkg, Test
+using LinearAlgebra
+using Markdown
+using InteractiveUtils
+using Libdl
+using Distributed
+using Printf
+using SparseArrays
+using Serialization
+using Random
+using Pkg
 
 import AbstractAlgebra
 import AbstractAlgebra: get_cached!, @alias
+
+import AbstractAlgebra: pretty, Lowercase, LowercaseOff, Indent, Dedent
+
+import AbstractAlgebra: Solve
 
 import LinearAlgebra: dot, nullspace, rank, ishermitian
 
@@ -81,37 +92,26 @@ using RandomExtensions: RandomExtensions, make, Make2, Make3, Make4
 
 import Nemo
 
-# TODO: remove/simplify the following once Nemo has IntegerUnion
-# (and the version adding IntegerUnion is required in Project.toml)
-if isdefined(Nemo, :IntegerUnion)
-  import Nemo.IntegerUnion
-else
-  const IntegerUnion = Union{Integer, Nemo.ZZRingElem}
-end
-
-const RationalUnion = Union{IntegerUnion, Rational{<: Integer}, Nemo.QQFieldElem}
-
 import Pkg
 
 exclude = [:Nemo, :AbstractAlgebra, :RealNumberField, :zz, :qq, :factor, :call,
            :factors, :parseint, :strongequal, :window, :xgcd, :rows, :cols,
-           :can_solve, :set_entry!, :factor]
+           :set_entry!,]
 
 for i in names(Nemo)
   (i in exclude || !isdefined(Nemo, i)) && continue
-  eval(Meta.parse("import Nemo." * string(i)))
-  eval(Expr(:export, i))
+  @eval import Nemo: $i
+  @eval export $i
 end
 
 import Nemo: acb_struct, Ring, Group, Field, zzModRing, zzModRingElem, arf_struct,
              elem_to_mat_row!, elem_from_mat_row, fpFieldElem, fpMatrix,
              FpFieldElem, Zmodn_poly, Zmodn_mat, fpField,
              FpField, acb_vec, array, acb_vec_clear, force_coerce,
-             force_op, fmpz_mod_ctx_struct, divisors, is_zero_entry
+             force_op, fmpz_mod_ctx_struct, divisors, is_zero_entry, IntegerUnion, remove!,
+             valuation!
 
-export show, StepRange, domain, codomain, image, preimage, modord, resultant,
-       next_prime, is_power, number_field, factor, @vtime, RationalUnion
-
+const RationalUnion = Union{IntegerUnion, Rational{<: Integer}, QQFieldElem}
 
 ###############################################################################
 #
@@ -170,7 +170,7 @@ function __init__()
     printstyled(" $VERSION_NUMBER ", color = :green)
     print("... \n ... which comes with absolutely no warranty whatsoever")
     println()
-    println("(c) 2015-2023 by Claus Fieker, Tommy Hofmann and Carlo Sircana")
+    println("(c) 2015-2024 by Claus Fieker, Tommy Hofmann and Carlo Sircana")
     println()
   end
 
@@ -181,24 +181,6 @@ function __init__()
   global R = _RealRing()
 
   global flint_rand_ctx = flint_rand_state()
-
-  @require GAP="c863536a-3901-11e9-33e7-d5cd0df7b904" begin
-    include("FieldFactory/fields.jl")
-    include("FieldFactory/FrobeniusExtensions.jl")
-    include("ModAlgAss/GAPMeatAxe.jl")
-    #@require Revise="295af30f-e4ad-537b-8983-00126c2a3abe" begin
-    #  import .Revise
-    #  #Revise.track(Hecke, joinpath(pkgdir, "src/FieldFactory/fields.jl"))
-    #  #Revise.track(Hecke, "FieldFactory/abelian_layer.jl")
-    #  #Revise.track(Hecke, "FieldFactory/brauer.jl")
-    #  #Revise.track(Hecke, "FieldFactory/merge.jl")
-    #  #Revise.track(Hecke, "FieldFactory/read_write.jl")
-    #end
-  end
-
-  @require Polymake="d720cf60-89b5-51f5-aff5-213f193123e7" begin
-    include("AlgAssRelOrd/NEQ_polymake.jl")
-  end
 
   resize!(_RealRings, Threads.nthreads())
   for i in 1:Threads.nthreads()
@@ -215,6 +197,21 @@ module Globals
 end
 
 using .Globals
+
+################################################################################
+#
+#  Aliases
+#
+################################################################################
+
+# to make the alias of a function introduced in Hecke already available,
+# one needs to create a function stub, export it, and then do the alias
+function number_of_lattices end
+function number_of_relations end
+export number_of_lattices
+export number_of_relations
+@alias nlattices number_of_lattices
+@alias nrels number_of_relations
 
 ################################################################################
 #
@@ -241,17 +238,17 @@ include("Assertions.jl")
 #
 ################################################################################
 
-function is_maximal_order_known(K::AnticNumberField)
+function is_maximal_order_known(K::AbsSimpleNumField)
   return has_attribute(K, :maximal_order)
 end
 
-function conjugate_data_arb(K::AnticNumberField)
+function conjugate_data_arb(K::AbsSimpleNumField)
   return get_attribute!(K, :conjugate_data_arb) do
     return acb_root_ctx(K.pol)
   end::acb_root_ctx
 end
 
-function conjugate_data_arb_roots(K::AnticNumberField, p::Int)
+function conjugate_data_arb_roots(K::AbsSimpleNumField, p::Int)
   already_set = false
   _c = get_attribute(K, :conjugate_data_arb_roots)
   if _c !== nothing
@@ -277,27 +274,27 @@ function conjugate_data_arb_roots(K::AnticNumberField, p::Int)
       p = max(p, 2)
       rall = [one(AcbField(p, cached = false))]
       rreal = [one(ArbField(p, cached = false))]
-      rcomplex = Vector{acb}()
+      rcomplex = Vector{AcbFieldElem}()
     elseif f == 2
       # x + 1
       p = max(p, 2)
       rall = [-one(AcbField(p, cached = false))]
       rreal = [-one(ArbField(p, cached = false))]
-      rcomplex = Vector{acb}()
+      rcomplex = Vector{AcbFieldElem}()
     else
       # Use that e^(i phi) = cos(phi) + i sin(phi)
       # Call sincospi to determine these values
       pstart = max(p, 2) # Sometimes this gets called with -1
-      local _rall::Vector{Tuple{arb, arb}}
-      rreal = arb[]
-      rcomplex = Vector{acb}(undef, div(degree(K), 2))
+      local _rall::Vector{Tuple{ArbFieldElem, ArbFieldElem}}
+      rreal = ArbFieldElem[]
+      rcomplex = Vector{AcbFieldElem}(undef, div(degree(K), 2))
       while true
         R = ArbField(pstart, cached = false)
         # We need to pair them
-        _rall = Tuple{arb, arb}[ sincospi(QQFieldElem(2*k, f), R) for k in 1:f if gcd(f, k) == 1]
+        _rall = Tuple{ArbFieldElem, ArbFieldElem}[ sincospi(QQFieldElem(2*k, f), R) for k in 1:f if gcd(f, k) == 1]
         if all(x -> radiuslttwopower(x[1], -p) && radiuslttwopower(x[2], -p), _rall)
           CC = AcbField(pstart, cached = false)
-          rall = acb[ CC(l[2], l[1]) for l in _rall]
+          rall = AcbFieldElem[ CC(l[2], l[1]) for l in _rall]
           j = 1
           good = true
           for i in 1:degree(K)
@@ -346,13 +343,13 @@ function conjugate_data_arb_roots(K::AnticNumberField, p::Int)
   return c[p]::acb_roots
 end
 
-function signature(K::AnticNumberField)
+function signature(K::AbsSimpleNumField)
   return get_attribute!(K, :signature) do
     return signature(defining_polynomial(K))
   end::Tuple{Int, Int}
 end
 
-function _get_prime_data_lifting(K::AnticNumberField)
+function _get_prime_data_lifting(K::AbsSimpleNumField)
   return get_attribute!(K, :_get_prime_data_lifting) do
     return Dict{Int,Any}()
   end::Dict{Int,Any}
@@ -390,23 +387,6 @@ function _get_version()
 end
 const pkg_version = _get_version()
 
-######################################################################
-# named printing support
-######################################################################
-
-# to use:
-# in HeckeMap
-#   in the show function, start with @show_name(io, map)
-# for other objects
-#   add @attributes to the struct
-#   add @show_name(io, obj) to show
-#   optionally, add @show_special(io, obj) as well
-# on creation, or whenever, call set_name!(obj, string)
-# @show_name will set on printing if bound in the REPL
-# moved into AbstractAlgebra
-
-#maps are different - as are number fields
-
 ################################################################################
 #
 #  Jupyter notebook check
@@ -428,7 +408,7 @@ abstract type HeckeMap <: SetMap end  #needed here for the hasspecial stuff
 
 import AbstractAlgebra: get_attribute, set_attribute!, @show_name, @show_special,
        _get_attributes, _get_attributes!, _is_attribute_storing_type,
-       @show_special_elem, @attributes, extra_name, set_name!, find_name
+       @show_special_elem, @attributes, extra_name, set_name!, get_name
 
 # Hecke maps store attributes in the header object
 _get_attributes(G::Map{<:Any, <:Any, HeckeMap, <:Any}) = _get_attributes(G.header)
@@ -479,8 +459,8 @@ function test_module(x, new::Bool = true; long::Bool = false, with_gap::Bool = f
      Hecke.@eval _with_polymake = $with_polymake
      assertions(true)
      @info("Running tests for $x in same session")
-     include(setup_file)
-     include(test_file)
+     Base.include(Main, setup_file)
+     Base.include(Main, test_file)
      assertions(false)
    end
 end
@@ -581,10 +561,22 @@ add_assertion_scope(:PID_Test)
 
 ################################################################################
 #
+#  Function stub
+#
+################################################################################
+
+# - The following function is introduced in src/ModAlgAss/*
+# - The Hecke.MPolyFactor submodule wants to extend it, but is loaded earlier
+# - Introduce the function here, to make everyone happy
+function is_absolutely_irreducible end
+
+################################################################################
+#
 #  "Submodules"
 #
 ################################################################################
 
+include("exports.jl")
 include("HeckeTypes.jl")
 include("Sparse.jl")
 include("NumField/NfRel/Types.jl")
@@ -626,7 +618,7 @@ const _RealRings = _RealRing[_RealRing()]
 #
 ################################################################################
 
-#precompile(maximal_order, (AnticNumberField, ))
+#precompile(maximal_order, (AbsSimpleNumField, ))
 
 ################################################################################
 #
@@ -671,8 +663,6 @@ end
 # Nemo only provides element_types for parent objects
 
 elem_type(::Type{FacElemMon{T}}) where {T} = FacElem{elem_type(T), T}
-
-elem_type(::Type{Generic.ResidueRing{T}}) where {T} = Generic.ResidueRingElem{T}
 
 ################################################################################
 #
@@ -774,7 +764,7 @@ function open_doc()
     end
 end
 
-function build_doc(; doctest=false, strict=false, format=:mkdocs)
+function build_doc(; doctest=false, strict=false, format=:vitepress)
   if !isdefined(Main, :Build)
     doc_init()
   end
@@ -783,7 +773,7 @@ function build_doc(; doctest=false, strict=false, format=:mkdocs)
   end
   if format == :html
     open_doc()
-  elseif format == :mkdocs
+  elseif format == :vitepress
     println("""Run `mkdocs serve` inside `../Hecke/docs/` to view the documentation.
 
             Use `format = :html` for a simplified version of the docs which does
@@ -817,8 +807,6 @@ function percent_P()
   print_history(REPL.LineEdit.mode(s).hist)
 end
 
-export percent_P
-
 #same (copied) as in stdlib/v1.0/InteractiveUtils/src/InteractiveUtils.jl
 #difference: names(m, all = true) to also see non-exported variables, aka
 # caches...
@@ -840,7 +828,7 @@ varinfo(pat::Regex) = varinfo(Main, pat)
 
 
 function print_cache(sym::Vector{Any})
-  for f in sym;
+  for f in sym
     #if f[2] isa Array || f[2] isa Dict || f[2] isa IdDict;
     try
       print(f[1], " ", length(f[2]), "\n");
@@ -858,11 +846,10 @@ end
 function find_cache(M::Module)
   sym = []
   for a in collect(names(M, all = true))
-    d = Meta.parse("$M.$a")
       try
-        z = eval(d);
+        z = getproperty(M, a)
         if isa(z, AbstractArray) || isa(z, AbstractDict)
-          push!(sym, (d, z))
+          push!(sym, ((M,a), z))
         end
     catch e
     end
@@ -870,19 +857,25 @@ function find_cache(M::Module)
   return sym
 end
 
-protect = [:(Hecke.ASSERT_LOOKUP), :(Hecke.VERBOSE_LOOKUP),
-           :(Hecke.ASSERT_SCOPE), :(Hecke.VERBOSE_SCOPE),
-           :(Hecke._euler_phi_inverse_maximum),
-           :(Hecke.odlyzko_bound_grh),
-           :(Hecke.nC), :(Hecke.B1), #part of ECM
-           :(Hecke.VERBOSE_PRINT_INDENT),
-           :(Hecke._RealRings),
-           :(Hecke.protect)] # We need to protect protect itself :)
-                             # Otherwise it might emptied and then everything
-                             # is emptied.
+const protect = [
+  # We need to protect protect itself :)
+  # Otherwise it might emptied and then everything
+  # is emptied.
+  (Hecke, :protect),
+
+  (Hecke, :ASSERT_LOOKUP),
+  (Hecke, :VERBOSE_LOOKUP),
+  (Hecke, :ASSERT_SCOPE),
+  (Hecke, :VERBOSE_SCOPE),
+  (Hecke, :_euler_phi_inverse_maximum),
+  (Hecke, :odlyzko_bound_grh),
+  (Hecke, :nC), (Hecke, :B1), #part of ECM
+  (Hecke, :VERBOSE_PRINT_INDENT),
+  (Hecke, :_RealRings),
+]
 
 function clear_cache(sym::Vector{Any})
-  for f in sym;
+  for f in sym
     if f[1] in protect
       continue
     end
@@ -899,8 +892,8 @@ function clear_cache()
   clear_cache(find_cache(Hecke))
 end
 
-precompile(maximal_order, (AnticNumberField, ))
-precompile(class_group, (NfAbsOrd{AnticNumberField, nf_elem},))
+precompile(maximal_order, (AbsSimpleNumField, ))
+precompile(class_group, (AbsSimpleNumFieldOrder,))
 
 @inline __get_rounding_mode() = Base.MPFR.rounding_raw(BigFloat)
 
@@ -911,5 +904,35 @@ using .NormRel
 #    include(joinpath("..", "system", "precompile.jl"))
 #  end
 #end
+
+################################################################################
+#
+#  Extended methods by GAPExt
+#
+################################################################################
+
+function fields
+end
+
+function IdGroup
+end
+
+function check_obstruction
+end
+
+function field_context
+end
+
+function primitive_frobenius_extensions
+end
+
+################################################################################
+#
+#  Extended methods by PolymakeExt
+#
+################################################################################
+
+function solve_mixed
+end
 
 end # module

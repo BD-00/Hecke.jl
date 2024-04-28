@@ -51,7 +51,7 @@ function hnf_modular(M::MatElem{T}, d::T, is_prime::Bool = false) where {T}
       R, mR = x
     else
       R = x
-      mR = MapFromFunc(x->R(x), x->lift(x), parent(d), R)
+      mR = MapFromFunc(parent(d), R, x->R(x), x->lift(x))
     end
     r, h = rref(map_entries(mR, M))
     H = map_entries(x->preimage(mR, x), h[1:r, :])
@@ -61,7 +61,7 @@ function hnf_modular(M::MatElem{T}, d::T, is_prime::Bool = false) where {T}
       R, mR = x
     else
       R = x
-      mR = MapFromFunc(x->R(x), x->lift(x), parent(d), R)
+      mR = MapFromFunc(parent(d), R, x->R(x), x->lift(x))
     end
     r, h = rref(map_entries(mR, M))
     H = map_entries(x->preimage(mR, x), hnf(map_entries(mR, M)))
@@ -72,38 +72,12 @@ function hnf_modular(M::MatElem{T}, d::T, is_prime::Bool = false) where {T}
   return H[1:ncols(M), :]
 end
 
-function Base.divrem(a::ZZModRingElem, b::ZZModRingElem)
-  R = parent(a)
-  r = rem(a, b)
-  return divexact(a-r, b), r
+function function_field(f::PolyRingElem{<:Generic.RationalFunctionFieldElem}, s::VarName = :_a; check::Bool = true, cached::Bool = false)
+  return function_field(f, s, cached = cached)
 end
 
-function Base.div(a::ZZModRingElem, b::ZZModRingElem)
-  R = parent(a)
-  r = rem(a, b)
-  return divexact(a-r, b)
-end
-
-function Base.rem(a::ZZModRingElem, b::ZZModRingElem)
-  R = parent(a)
-  r = R(rem(lift(a), gcd(modulus(R), lift(b))))
-  return r
-end
-
-function function_field(f::PolyElem{<:Generic.RationalFunctionFieldElem}, s::String = "_a"; check::Bool = true, cached::Bool = false)
-  return FunctionField(f, s, cached = cached)
-end
-
-function function_field(f::PolyElem{<:Generic.RationalFunctionFieldElem}, s::Symbol; check::Bool = true, cached::Bool = false)
-  return FunctionField(f, s, cached = cached)
-end
-
-function extension_field(f::PolyElem{<:Generic.RationalFunctionFieldElem}, s::String = "_a"; check::Bool = true, cached::Bool = false)
-  return FunctionField(f, s, cached = cached)
-end
-
-function extension_field(f::PolyElem{<:Generic.RationalFunctionFieldElem}, s::Symbol; check::Bool = true, cached::Bool = false)
-  return FunctionField(f, s, cached = cached)
+function extension_field(f::PolyRingElem{<:Generic.RationalFunctionFieldElem}, s::VarName = :_a; check::Bool = true, cached::Bool = false)
+  return function_field(f, s, cached = cached)
 end
 
 function Hecke.basis(F::Generic.FunctionField)
@@ -115,18 +89,13 @@ function Hecke.basis(F::Generic.FunctionField)
   return bas
 end
 
-function Hecke.residue_field(R::QQPolyRing, p::QQPolyRingElem)
-  K, _ = number_field(p)
-  return K, MapFromFunc(x->K(x), y->R(y), R, K)
-end
-
-function Hecke.residue_field(R::PolyRing{T}, p::PolyElem{T}) where {T <: NumFieldElem}
+function Hecke.residue_field(R::PolyRing{T}, p::PolyRingElem{T}) where {T <: NumFieldElem}
   @assert parent(p) === R
   K, _ = number_field(p)
-  return K, MapFromFunc(x -> K(x), y -> R(y), R, K)
+  return K, MapFromFunc(R, K, x -> K(x), y -> R(y))
 end
 
-function (F::Generic.FunctionField{T})(p::PolyElem{<:AbstractAlgebra.Generic.RationalFunctionFieldElem{T}}) where {T <: FieldElem}
+function (F::Generic.FunctionField{T})(p::PolyRingElem{<:AbstractAlgebra.Generic.RationalFunctionFieldElem{T}}) where {T <: FieldElem}
   @assert parent(p) == parent(F.pol)
   @assert degree(p) < degree(F) # the reduction is not implemented
   R = parent(gen(F).num)
@@ -153,20 +122,11 @@ function Hecke.discriminant(F::Generic.FunctionField)
   return discriminant(defining_polynomial(F))
 end
 
-function (R::QQPolyRing)(a::Generic.RationalFunctionFieldElem{QQFieldElem})
-  @assert isone(denominator(a))
-  return R(numerator(a))
-end
-
 #######################################################################
 #
 # support for ZZ
 #
 #######################################################################
-
-denominator(a::QQFieldElem, ::ZZRing) = denominator(a)
-
-numerator(a::QQFieldElem, ::ZZRing) = numerator(a)
 
 integral_split(a::QQFieldElem, ::ZZRing) = (numerator(a), denominator(a))
 
@@ -174,10 +134,10 @@ integral_split(a::Rational, R::ZZRing) = integral_split(QQFieldElem(a), R)
 
 #######################################################################
 #
-# support for Loc{ZZRingElem}
+# support for LocalizedEuclideanRing{ZZRingElem}
 #
 #######################################################################
-function Hecke.integral_split(a::QQFieldElem, R::Loc{ZZRingElem})
+function Hecke.integral_split(a::QQFieldElem, R::LocalizedEuclideanRing{ZZRingElem})
   d = denominator(a)
   p = R.prime
   q,w = Hecke.ppio(d, p)
@@ -187,11 +147,11 @@ function Hecke.integral_split(a::QQFieldElem, R::Loc{ZZRingElem})
     return R(numerator(a)//w), R(q)
   end
 end
-Hecke.denominator(a::QQFieldElem, R::Loc{ZZRingElem}) = integral_split(a, R)[2]
-Hecke.numerator(a::QQFieldElem, R::Loc{ZZRingElem}) = integral_split(a, R)[1]
-(::QQField)(a::LocElem{ZZRingElem}) = data(a)
+Hecke.denominator(a::QQFieldElem, R::LocalizedEuclideanRing{ZZRingElem}) = integral_split(a, R)[2]
+Hecke.numerator(a::QQFieldElem, R::LocalizedEuclideanRing{ZZRingElem}) = integral_split(a, R)[1]
+(::QQField)(a::LocalizedEuclideanRingElem{ZZRingElem}) = data(a)
 
-function Hecke.factor(a::LocElem{ZZRingElem})
+function Hecke.factor(a::LocalizedEuclideanRingElem{ZZRingElem})
   c = canonical_unit(a)
   b = a*inv(c)
   L = parent(a)
@@ -200,14 +160,14 @@ function Hecke.factor(a::LocElem{ZZRingElem})
   return Fac(c, Dict(L(p)=>v for (p,v) = lf.fac))
 end
 
-function Hecke.residue_field(R::Loc{ZZRingElem}, p::LocElem{ZZRingElem})
+function Hecke.residue_field(R::LocalizedEuclideanRing{ZZRingElem}, p::LocalizedEuclideanRingElem{ZZRingElem})
   pp = numerator(data(p))
   @assert is_prime(pp) && isone(denominator(p))
   F = GF(pp)
-  return F, MapFromFunc(x->F(data(x)), y->R(lift(y)), R, F)
+  return F, MapFromFunc(R, F, x->F(data(x)), y->R(lift(ZZ, y)))
 end
 
-Hecke.is_domain_type(::Type{LocElem{ZZRingElem}}) = true
+Hecke.is_domain_type(::Type{LocalizedEuclideanRingElem{ZZRingElem}}) = true
 
 #######################################################################
 #
@@ -235,42 +195,6 @@ end
 
 (R::Generic.RationalFunctionField{T})(x::KInftyElem{T}) where {T <: FieldElem} = x.d
 
-base_ring_type(::Type{AbstractAlgebra.Generic.PolyRing{T}}) where {T} = parent_type(T)
-
-base_ring_type(::Type{AcbPolyRing}) = AcbField
-
-base_ring_type(::Type{ArbPolyRing}) = ArbField
-
-base_ring_type(::Type{QQPolyRing}) = QQField
-
-base_ring_type(::Type{ZZModPolyRing}) = Nemo.ZZModRing
-
-base_ring_type(::Type{ZZPolyRing}) = ZZRing
-
-base_ring_type(::Type{FqPolyRing}) = FqField
-
-base_ring_type(::Type{fqPolyRepPolyRing}) = fqPolyRepField
-
-base_ring_type(::Type{FqPolyRepPolyRing}) = FqPolyRepField
-
-base_ring_type(::Type{FpPolyRing}) = Nemo.FpField
-
-base_ring_type(::Type{fpPolyRing}) = Nemo.fpField
-
-base_ring_type(::Type{zzModPolyRing}) = Nemo.zzModRing
-
-function (R::Generic.PolyRing{T})(x::AbstractAlgebra.Generic.RationalFunctionFieldElem{T, U}) where {T <: RingElem, U}
-  @assert isone(denominator(x))
-  @assert parent(numerator(x)) === R
-  return numerator(x)
-end
-
-function (R::PolyRing{T})(x::AbstractAlgebra.Generic.RationalFunctionFieldElem{T, U}) where {T <: RingElem, U}
-  @assert isone(denominator(x))
-  @assert parent(numerator(x)) === R
-  return numerator(x)
-end
-
 # RationalFunctionFieldElem{T}, PolyRing{T}
 function Hecke.numerator(a::Generic.RationalFunctionFieldElem{T}, S::PolyRing{T}) where {T}
   return numerator(a)
@@ -284,7 +208,7 @@ function Hecke.integral_split(a::Generic.RationalFunctionFieldElem{T}, S::PolyRi
   return numerator(a), denominator(a)
 end
 
-function Hecke.factor(a::Generic.RationalFunctionFieldElem{T}, R::S) where {T, S<:PolyRing{T}}
+function Hecke.factor(R::S, a::Generic.RationalFunctionFieldElem{T}) where {T, S<:PolyRing{T}}
   @assert parent(numerator(a)) == R
   f1 = factor(numerator(a))
   f2 = factor(denominator(a))
@@ -339,7 +263,6 @@ function Hecke.integral_split(M::MatElem{<:AbstractAlgebra.FieldElem}, S::Generi
   return m, den
 end
 
-Nemo.ngens(R::MPolyRing) = Nemo.nvars(R)
 #TODO: move elsewhere?
 function Hecke.lcm(a::Vector{<:RingElem})
   if length(a) == 0

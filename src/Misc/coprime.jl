@@ -1,11 +1,4 @@
 import Nemo.isone, Nemo.divexact, Base.copy
-export divexact!, gcd_into!, coprime_base, coprime_base_insert
-
-function divexact!(a::ZZRingElem, b::ZZRingElem)
-  ccall((:fmpz_divexact, libflint), Nothing,
-          (Ref{ZZRingElem}, Ref{ZZRingElem}, Ref{ZZRingElem}), a, a, b)
-  return a
-end
 
 function gcd_into!(a::ZZRingElem, b::ZZRingElem, c::ZZRingElem)
   ccall((:fmpz_gcd, libflint), Nothing,
@@ -24,10 +17,6 @@ end
 function mul_into!(a::ZZRingElem, b::ZZRingElem, c::ZZRingElem)
   mul!(a, b, c)
   return a
-end
-
-function copy(a::ZZRingElem)
-  return deepcopy(a)
 end
 
 function copy_into!(a, b)
@@ -224,7 +213,7 @@ function _my_eval(a, x::T) where T
   return finish(b)
 end
 my_eval(a::AbstractVector{T}, x::T) where {T} = _my_eval(a, x)
-function my_eval(f::PolyElem{T}, x::T) where T
+function my_eval(f::PolyRingElem{T}, x::T) where T
   return _my_eval(coefficients(f), x)
 end
 

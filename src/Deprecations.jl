@@ -1,86 +1,240 @@
-# Deprecated during 0.7.*
+# Deprecated during 0.24.*
 
-@deprecate principal_gen principal_generator
+@deprecate hasimage has_image_with_image
+@deprecate has_image has_image_with_image
 
-@deprecate principal_gen_fac_elem principal_generator_fac_elem
+@deprecate haspreimage has_preimage_with_preimage
+@deprecate has_preimage has_preimage_with_preimage
 
-@deprecate right_principal_gen right_principal_generator
+@deprecate TorQuadModuleMor TorQuadModuleMap
 
-@deprecate left_principal_gen left_principal_generator
+@deprecate psylow_subgroup sylow_subgroup
 
-@deprecate principal_gen_eichler principal_generator_eichler
+# Deprecated during 0.27
 
-# Deprecated during 0.10.*
+@deprecate AbsLat AbstractLat
+@deprecate AbsSpace AbstractSpace
+@deprecate AbsSpaceMor AbstractSpaceMor
+@deprecate add_assert_scope add_assertion_scope
+@deprecate add_verbose_scope add_verbosity_scope
 
-@deprecate subgroup sub
+@deprecate get_assert_level get_assertion_level
+@deprecate get_verbose_level get_verbosity_level
+@deprecate genera integer_genera
+@deprecate genera_hermitian hermitian_genera
+@deprecate genera_quadratic quadratic_genera
+@deprecate GenusHerm HermGenus
+@deprecate GenusQuad QuadGenus
 
-@deprecate upper_bound(x::arb, y::Type{ZZRingElem}) upper_bound(y, x)
+@deprecate hasalgebra has_algebra
+@deprecate hasembedding has_embedding
+@deprecate hasmatrix_action has_matrix_action
+@deprecate hasroot has_root
 
-@deprecate abs_upper_bound(x::arb, y::Type{ZZRingElem}) abs_upper_bound(y, x)
+@deprecate is2_normal_difficult is_2_normal_difficult
+@deprecate isGLZ_conjugate is_GLZ_conjugate
+@deprecate isabelian is_abelian
+@deprecate isabelian2 is_abelian2
+@deprecate isabsolute is_absolute
+@deprecate isabsolutely_primitive is_absolutely_primitive
+@deprecate isalmost_maximally_ramified is_almost_maximally_ramified
+@deprecate isautomorphisms_known is_automorphisms_known
+@deprecate isbass is_bass
+@deprecate isbijective is_bijective
+@deprecate iscached is_cached
+@deprecate iscanonical is_canonical
+@deprecate iscentral is_central
+@deprecate ischain_complex is_chain_complex
+@deprecate ischaracteristic is_characteristic
+@deprecate iscm is_cm
+@deprecate iscm_field is_cm_field
+@deprecate iscm_field_easy is_cm_field_easy
+@deprecate iscm_field_known is_cm_field_known
+@deprecate iscochain_complex is_cochain_complex
+@deprecate iscommutative is_commutative
+@deprecate iscommutative_known is_commutative_known
+@deprecate iscomplex is_complex
+@deprecate iscomplex_conjugation is_complex_conjugation
+@deprecate isconductor is_conductor
+@deprecate isconjugate is_conjugate
+@deprecate isconsistent is_consistent
+@deprecate iscontained is_contained
+@deprecate iscoprime is_coprime
+@deprecate iscyclic is_cyclic
+@deprecate iscyclotomic_type is_cyclotomic_type
+@deprecate isdefining_polynomial_nice is_defining_polynomial_nice
+@deprecate isdefinite is_definite
+@deprecate isdegenerate is_degenerate
+@deprecate isdiagonalisable is_diagonalisable
+@deprecate isdiscriminant is_discriminant
+@deprecate isdivisible is_divisible
+@deprecate isdivisible2 is_divisible2
+@deprecate isdivisible_mod_ideal is_divisible_mod_ideal
+@deprecate isdyadic is_dyadic
+@deprecate iseichler is_eichler
+@deprecate iseisenstein_polynomial is_eisenstein_polynomial
+@deprecate iseq is_eq
+@deprecate isequation_order is_equation_order
+@deprecate isequivalent is_equivalent
+@deprecate isfinite_gen is_finite_gen
+@deprecate isfinite_snf is_finite_snf
+@deprecate isfixed_point_free is_fixed_point_free
+@deprecate isfree is_free
+@deprecate isfree_a4_fabi is_free_a4_fabi
+@deprecate isfree_a5_fabi is_free_a5_fabi
+@deprecate isfree_resolution is_free_resolution
+@deprecate isfree_s4_fabi is_free_s4_fabi
+@deprecate isfrom_db is_from_db
+@deprecate isfull_lattice is_full_lattice
+@deprecate isfundamental_discriminant is_fundamental_discriminant
+@deprecate isgenus is_genus
+@deprecate isgood_bong is_good_bong
+@deprecate isgorenstein is_gorenstein
+@deprecate isidentity is_identity
+@deprecate isin is_in
+@deprecate isindefinite is_indefinite
+@deprecate isindependent is_independent
+@deprecate isindex_divisor is_index_divisor
+@deprecate isinduced is_induced
+@deprecate isinert is_inert
+@deprecate isinfinite is_infinite
+@deprecate isinjective is_injective
+@deprecate isintegral is_integral
+@deprecate isinvolution is_involution
+@deprecate isirreducible_easy is_irreducible_easy
+@deprecate isirreducible_known is_irreducible_known
+@deprecate isisometric is_isometric
+@deprecate isisometric_with_isometry is_isometric_with_isometry
+@deprecate isisotropic is_isotropic
+@deprecate iskummer_extension is_kummer_extension
+@deprecate isleaf is_leaf
+@deprecate isleft_ideal is_left_ideal
+@deprecate islessorequal is_lessorequal
+@deprecate islinearly_disjoint is_linearly_disjoint
+@deprecate islll_reduced is_lll_reduced
+@deprecate islocal_norm is_local_norm
+@deprecate islocal_square is_local_square
+@deprecate islocally_equivalent is_locally_equivalent
+@deprecate islocally_free is_locally_free
+@deprecate islocally_hyperbolic is_locally_hyperbolic
+@deprecate islocally_isometric is_locally_isometric
+@deprecate islocally_isometric_kirschmer is_locally_isometric_kirschmer
+@deprecate islocally_isomorphic is_locally_isomorphic
+@deprecate islocally_isomorphic_with_isomophism is_locally_isomorphic_with_isomophism
+@deprecate islocally_represented_by is_locally_represented_by
+@deprecate ismaximal is_maximal
+@deprecate ismaximal_integral is_maximal_integral
+@deprecate ismaximal_known is_maximal_known
+@deprecate ismaximal_known_and_maximal is_maximal_known_and_maximal
+@deprecate ismaximal_order_known is_maximal_order_known
+@deprecate ismodular is_modular
+@deprecate isnegative_definite is_negative_definite
+@deprecate isnorm is_norm
+@deprecate isnorm_divisible is_norm_divisible
+@deprecate isnorm_divisible_pp is_norm_divisible_pp
+@deprecate isnorm_fac_elem is_norm_fac_elem
+@deprecate isnormal is_normal
+@deprecate isnormal_basis_generator is_normal_basis_generator
+@deprecate isnormal_difficult is_normal_difficult
+@deprecate isnormal_easy is_normal_easy
+@deprecate isnormalized is_normalized
+@deprecate isone_sided is_one_sided
+@deprecate ispairwise_coprime is_pairwise_coprime
+@deprecate ispositive_definite is_positive_definite
+@deprecate ispower_trager is_power_trager
+@deprecate ispower_unram is_power_unram
+@deprecate isprimary is_primary
+@deprecate isprime_known is_prime_known
+@deprecate isprime_nice is_prime_nice
+@deprecate isprime_power is_prime_power
+@deprecate isprimitive is_primitive
+@deprecate isprimitive_over is_primitive_over
+@deprecate isprimitive_root is_primitive_root
+@deprecate isprincipal is_principal
+@deprecate isprincipal_fac_elem is_principal_fac_elem
+#@deprecate isprincipal_maximal is_principal_maximal
+#@deprecate isprincipal_maximal_fac_elem is_principal_maximal_fac_elem
+#@deprecate isprincipal_non_maximal is_principal_non_maximal
+@deprecate ispseudo_hnf is_pseudo_hnf
+@deprecate isquadratic is_quadratic
+@deprecate isquadratic_type is_quadratic_type
+@deprecate isquaternion_algebra is_quaternion_algebra
+@deprecate isradical_extension is_radical_extension
+@deprecate isramified is_ramified
+@deprecate isrationally_isometric is_rationally_isometric
+@deprecate isreduced is_reduced
+@deprecate isreducible is_reducible
+@deprecate isregular is_regular
+@deprecate isregular_at is_regular_at
+@deprecate isrepresented_by is_represented_by
+@deprecate isright_ideal is_right_ideal
+@deprecate issimilar is_similar
+@deprecate issimple is_simple
+@deprecate issimple_known is_simple_known
+@deprecate issimultaneous_diagonalizable is_simultaneous_diagonalizable
+@deprecate issmooth is_smooth
+@deprecate issmooth! is_smooth!
+@deprecate issplit is_split
+@deprecate isstable is_stable
+@deprecate issubfield is_subfield
+@deprecate issubfield_normal is_subfield_normal
+@deprecate issubgroup is_subgroup
+@deprecate issublattice is_sublattice
+@deprecate issublattice_with_relations is_sublattice_with_relations
+@deprecate issurjective is_surjective
+@deprecate istamely_ramified is_tamely_ramified
+@deprecate istorsion is_torsion
+@deprecate istorsion_point is_torsion_point
+@deprecate istorsion_unit is_torsion_unit
+@deprecate istorsion_unit_group_known is_torsion_unit_group_known
+@deprecate istotally_complex is_totally_complex
+@deprecate istotally_positive is_totally_positive
+@deprecate istotally_real is_totally_real
+@deprecate istriangular is_triangular
+@deprecate isweakly_ramified is_weakly_ramified
+@deprecate iszero_entry is_zero_entry
+@deprecate iszero_mod_hnf! is_zero_mod_hnf!
+@deprecate iszerodivisor is_zerodivisor
 
-@deprecate is_equivalent is_isometric
+@deprecate local_genera_hermitian hermitian_local_genera
+@deprecate local_genera_quadratic quadratic_local_genera
+@deprecate LocalGenusHerm HermLocalGenus
+@deprecate LocalGenusQuad QuadLocalGenus
 
-@deprecate is_equivalent_with_isometry is_isometric_with_isometry
+@deprecate set_assert_level set_assertion_level
+@deprecate set_verbose_level set_verbosity_level
 
-# Deprecated during 0.15.*
+@deprecate TorQuadMod TorQuadModule
+@deprecate TorQuadModElem TorQuadModuleElem
+@deprecate TorQuadModMor TorQuadModuleMap
 
-@deprecate automorphisms(x::NumField, y::NumField) automorphism_list(x, y)
+@deprecate ZGenus ZZGenus
+@deprecate ZLat ZZLat
+@deprecate Zgenera integer_genera
+@deprecate Zlattice integer_lattice
+@deprecate ZpGenus ZZLocalGenus
 
-@deprecate automorphisms(x::NumField) automorphism_list(x)
+@deprecate real_field real_number_field
 
-@deprecate automorphisms(x::Union{FlintPadicField, FlintQadicField, LocalField}) automorphism_list(x)
+@deprecate points_with_x points_with_x_coordinate
 
-@deprecate automorphisms(x::LocalField, y::Union{FlintPadicField, FlintQadicField, LocalField}) automorphism_list(x, y)
 
-# Deprecated during 0.18.*
+# Deprecated during 0.27
 
-@deprecate orthogonal_sum(x::T, y::T) where T <: Union{AbstractSpace, ZGenus, ZpGenus, HermGenus, HermLocalGenus, QuadGenus, QuadLocalGenus, JorDec, LocalQuadSpaceCls, QuadSpaceCls} direct_sum(x, y)
+@deprecate a_invars a_invariants
+@deprecate b_invars b_invariants
+@deprecate c_invars c_invariants
+@deprecate basis_mat_inv(x; copy = true) basis_mat_inv(FakeFmpqMat, x; copy)
 
-# Things that moved to Nemo
+# Deprecated in 0.31.0
 
-# > 0.18.1
-if isdefined(Nemo, :simplest_between)
-  simplest_inside(x::arb) = simplest_rational_inside(x)
-else
-  function _fmpq_simplest_between(l_num::ZZRingElem, l_den::ZZRingElem,
-                                  r_num::ZZRingElem, r_den::ZZRingElem)
-     n = ZZRingElem()
-     d = ZZRingElem()
+# TODO: remove the following functions and uncomment the deprecation for the 0.31.0 minor breaking release
 
-     ccall((:_fmpq_simplest_between, libflint), Nothing,
-           (Ref{ZZRingElem}, Ref{ZZRingElem}, Ref{ZZRingElem}, Ref{ZZRingElem}, Ref{ZZRingElem}, Ref{ZZRingElem}),
-           n, d, l_num, l_den, r_num, r_den)
-
-     return n//d
-  end
-
-  @doc raw"""
-        simplest_between(l::QQFieldElem, r::QQFieldElem)
-
-  > Return the simplest fraction in the closed interval `[l, r]`. A canonical >
-  > fraction `a_1/b_1` is defined to be simpler than `a_2/b_2` iff `b_1 < b_2` or
-  > `b_1 = b_2` and `a_1 < a_2`.
-  """
-  function simplest_between(l::QQFieldElem, r::QQFieldElem)
-     z = QQFieldElem()
-     ccall((:fmpq_simplest_between, libflint), Nothing,
-           (Ref{QQFieldElem}, Ref{QQFieldElem}, Ref{QQFieldElem}), z, l, r)
-     return z
-  end
-
-  function simplest_inside(x::arb)
-    a = ZZRingElem()
-    b = ZZRingElem()
-    e = ZZRingElem()
-
-    ccall((:arb_get_interval_fmpz_2exp, libarb), Nothing, (Ref{ZZRingElem}, Ref{ZZRingElem}, Ref{ZZRingElem}, Ref{arb}), a, b, e, x)
-    @assert fits(Int, e)
-    _e = Int(e)
-    if e >= 0
-      return a << _e
-    end
-    _e = -_e
-    d = one(ZZRingElem) << _e
-    return _fmpq_simplest_between(a, d, b, d)
-  end
-end
+force_coerce_cyclo(a::AbsSimpleNumField, b::AbsSimpleNumFieldElem, throw_error::Type{Val{T}}) where {T} = force_coerce_cyclo(a, b, Val(T))
+reduce_full(A::SMat{T}, g::SRow{T}, trafo::Type{Val{N}}) where {N, T} = reduce_full(A, g, Val(N))
+gens(A::GroupAlgebra, return_full_basis::Type{Val{T}}) where T = gens(A, Val(T))
+gens(A::AbstractAssociativeAlgebra, return_full_basis::Type{Val{T}}; thorough_search::Bool = false) where T = gens(A, Val(T); thorough_search)
+# @deprecate force_coerce_cyclo(a::AbsSimpleNumField, b::AbsSimpleNumFieldElem, throw_error::Type{Val{T}}) where {T} force_coerce_cyclo(a, b, Val(T)) false
+# @deprecate reduce_full(A::SMat{T}, g::SRow{T}, trafo::Type{Val{N}}) where {N, T} reduce_full(A, g, Val(N))
+# @deprecate gens(A::GroupAlgebra, return_full_basis::Type{Val{T}}) where T gens(A, Val(T))
+# @deprecate gens(A::AbstractAssociativeAlgebra, return_full_basis::Type{Val{T}}; thorough_search::Bool = false) where T gens(A, Val(T); thorough_search)

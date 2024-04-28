@@ -15,6 +15,12 @@
     @test dim(A) == 4
   end
 
+  @testset "multiplication table" begin
+    M = matrix_algebra(QQ, [matrix(QQ, 1, 1, [4])]; isbasis=true)
+    @test Hecke._matrix_in_algebra(matrix(QQ, 1, 1, [1]), M) == [QQ(1, 4)]
+    @test multiplication_table(M) == fill(QQ(4), 1, 1, 1)
+  end
+
   @testset "Radical" begin
 
     mats = [[0 0 0 0 0 0 0 0 0 0;
@@ -240,12 +246,13 @@
 
     mats2 = map(v -> matrix(FlintQQ, v), mats)
     A = matrix_algebra(FlintQQ, mats2)
+    @test dim(A) == 22
     J = radical(A)
     B, = quo(A, J)
     @test dim(B) == 4
   end
 
-  A = Hecke.AlgQuat(QQ, QQ(-1), QQ(-1))
+  A = Hecke.QuaternionAlgebra(QQ, QQ(-1), QQ(-1))
   M = matrix_algebra(QQ, A, 2)
   @test isone(inv(one(M)))
 end

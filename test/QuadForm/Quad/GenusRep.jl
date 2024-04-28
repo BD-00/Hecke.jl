@@ -70,7 +70,7 @@
   @test is_locally_isometric(L, LL, p)
 
   # Rank 2 case
-  # This is the Zlattice with basis [1 2; 3 4]
+  # This is the integer_lattice with basis [1 2; 3 4]
 
   Qx, x = polynomial_ring(FlintQQ, "x", cached = false)
   f = x - 1;
@@ -101,16 +101,20 @@
   V = quadratic_space(QQ, G)
   L = lattice(V, B)
   @test length(genus_representatives(L)) == 2
-  @test length(genus_representatives(Zlattice(gram = gram_matrix(L)))) == 2
+  @test length(genus_representatives(integer_lattice(gram = gram_matrix(L)))) == 2
 
-  L = Zlattice(ZZ[4 3; 3 8])
+  L = integer_lattice(ZZ[4 3; 3 8])
   @test length(genus_representatives(L)) == 4
 
   B = matrix(FlintQQ, 5, 5 ,[1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1]);
   G = matrix(FlintQQ, 5, 5 ,[-2, 0, 0, 0, 0, 0, -4, -2, 2, 2, 0, -2, -4, 0, 0, 0, 2, 0, -4, 0, 0, 2, 0, 0, -4]);
-  L = Zlattice(B, gram = G);
+  L = integer_lattice(B, gram = G);
   @test length(genus_representatives(L))==1
 
+  U = hyperbolic_plane_lattice()
+  L = direct_sum(U, U)[1]
+  G = genus(L)
+  @test length(representatives(G)) == 1
 end
 
 @testset "Genus Representatives Number Field" begin
@@ -1096,11 +1100,50 @@ end
 @testset "Genus Representatives non-full rank, definite" begin
   B = matrix(FlintQQ, 5, 8 ,[0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 4, 0, 1, 0, 0, 0, 0, 0, 31//2, 3//2, 1//2, 1, 0, 0, 0, 0, 5//2, 3//2, 0, 0, 1//2]);
   G = matrix(FlintQQ, 8, 8 ,[16, -8, 0, 0, 0, 0, 0, 0, -8, 16, 0, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 6]);
-  L = Zlattice(B, gram = G);
+  L = integer_lattice(B, gram = G);
   Ns = @inferred genus_representatives(L) #this uses the automorphisms
 
   L2 = Hecke._to_number_field_lattice(L)
   @test rank(L2) != degree(L2)
   Ns2 = @inferred genus_representatives(L2, use_auto = false)
   @test length(Ns2) == length(Ns)
+end
+
+@testset "More ZZGenus representatives" begin
+  # Tests for even and odd at the prime 2 (and cover some corner cases)
+  gg = integer_genera((0,5), 3*23)
+  lis = Vector{ZZLat}[enumerate_definite_genus(G) for G in gg]
+  @test length.(lis) == [11, 9, 8, 12]
+
+  # Tests for random enumeration
+  gg = integer_genera((0,4), 2^2*13; even=true)
+  lis = Vector{ZZLat}[enumerate_definite_genus(G, :random; rand_neigh=5) for G in gg]
+  @test length.(lis) == [2, 2, 2]
+
+  # Other random enumeration but too long for regular testing
+#  gg = integer_genera((0,10), 2^4*3, max_scale=6; even=true)[[1, 4]]
+#  lis = Vector{ZZLat}[enumerate_definite_genus(G) for G in gg]
+#  @test length.(lis) == [3, 3]
+
+  # Tests for even and odd at an odd prime number
+  gg = integer_genera((0,6), 2^3*7)
+  lis = Vector{ZZLat}[enumerate_definite_genus(G) for G in gg]
+  @test length.(lis) == [10, 8, 4, 3, 14, 11, 6, 10, 8, 8, 8, 8, 10, 6]
+
+  # Keep track of those tests, but too much for regular testing
+#  gg = integer_genera((0,10), 3^5; max_scale=3)
+#  lis = Vector{ZZLat}[enumerate_definite_genus(G) for G in gg]
+#  @test length.(lis) == [3, 11, 17]
+#
+#  gg = integer_genera((0,12), 5; max_scale=5)
+#  lis = Vector{ZZLat}[enumerate_definite_genus(G) for G in gg]
+#  @test length.(lis) == [2, 7, 8]
+#
+#  gg = integer_genera((0,7), 2^5*13; max_scale=26)
+#  lis = Vector{ZZLat}[enumerate_definite_genus(G; max=8) for G in gg]
+#  @test length.(lis) == [8, 8, 8, 8]
+#
+#  gg = integer_genera((0,7), 2^3*3^2; max_scale=6)
+#  lis = Vector{ZZLat}[enumerate_definite_genus(G) for G in gg]
+#  @test length.(lis) == [4, 12, 12, 4]
 end

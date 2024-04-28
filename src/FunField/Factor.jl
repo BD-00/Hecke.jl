@@ -1,7 +1,7 @@
 module FactorFF
 using Hecke
 
-function Hecke.norm(f::PolyElem{<: Generic.FunctionFieldElem})
+function Hecke.norm(f::PolyRingElem{<: Generic.FunctionFieldElem})
     K = base_ring(f)
     P = polynomial_to_power_sums(f, degree(f)*degree(K))
     PQ = elem_type(base_field(K))[tr(x) for x in P]
@@ -21,7 +21,7 @@ function from_mpoly(f::MPolyRingElem, S::PolyRing{<:Generic.RationalFunctionFiel
   return S(map(x->base_ring(S)(x//o), F))
 end
 
-function Hecke.factor(f::Generic.Poly{<:Generic.RationalFunctionFieldElem})
+function to_mpoly(f::Generic.Poly{<:Generic.RationalFunctionFieldElem})
   Pf = parent(f)
   R, r = polynomial_ring(base_ring(base_ring(f)), 2)
   d = is_zero(f) ? one(R) : lcm(map(denominator, coefficients(f)))
@@ -32,7 +32,12 @@ function Hecke.factor(f::Generic.Poly{<:Generic.RationalFunctionFieldElem})
       push_term!(Fc, coeff(c, j), [i,j])
     end
   end
-  lf = factor(finish(Fc))
+  return finish(Fc)
+end
+
+function Hecke.factor(f::Generic.Poly{<:Generic.RationalFunctionFieldElem})
+  Pf = parent(f)
+  lf = factor(to_mpoly(f))
   @assert is_constant(lf.unit)
 
   fa = Fac(Pf(constant_coefficient(lf.unit)), Dict((from_mpoly(k, Pf), e) for (k,e) = lf))
@@ -40,8 +45,28 @@ function Hecke.factor(f::Generic.Poly{<:Generic.RationalFunctionFieldElem})
   return fa
 end
 
-function Hecke.factor(f::Generic.Poly{<:Generic.RationalFunctionFieldElem{T}}, F::Generic.FunctionField{T}) where {T}
-  return factor(map_coefficients(F, f))
+function Hecke.factor_absolute(f::Generic.Poly{<:Generic.RationalFunctionFieldElem})
+  Pf = parent(f)
+  lf = factor_absolute(to_mpoly(f))
+
+  la = Any[from_mpoly(lf[1], Pf)]
+  for (gh, v) = lf[2:end]
+    g = gh[1]
+    h = gh[2]
+    k = base_ring(g)
+    kt, t = rational_function_field(k, base_ring(Pf).S, cached = false)
+    ktx, x = polynomial_ring(kt, symbols(Pf)[1], cached = false)
+    push!(la, [from_mpoly(g, ktx), from_mpoly(h, ktx)]=>v)
+  end
+  return la
+end
+
+function is_absolutely_irreducible(f::Generic.Poly{<:Generic.RationalFunctionFieldElem})
+  return is_absolutely_irreducible(to_mpoly(f))
+end
+
+function Hecke.factor(F::Generic.FunctionField{T}, f::Generic.Poly{<:Generic.RationalFunctionFieldElem{T}}) where {T}
+  return factor(map_coefficients(F, f, cached = false))
 end
 
 #plain vanilla Trager, possibly doomed in pos. small char.
@@ -96,7 +121,7 @@ function Hecke.splitting_field(f::Generic.Poly{<:Generic.RationalFunctionFieldEl
   end
 
   while true
-    G, b = FunctionField(lf[1], "b", cached = false)
+    G, b = function_field(lf[1], "b", cached = false)
     if length(lf) == 1 && degree(G) < 3
       return G
     end

@@ -1,7 +1,7 @@
 @testset "Orders" begin
 
-  @test elem_type(parent_type(NfOrdElem)) === NfOrdElem
-  @test parent_type(elem_type(NfOrd)) === NfOrd
+  @test elem_type(parent_type(AbsSimpleNumFieldOrderElem)) === AbsSimpleNumFieldOrderElem
+  @test parent_type(elem_type(AbsSimpleNumFieldOrder)) === AbsSimpleNumFieldOrder
 
   @testset "Construction" begin
      Qx, x = polynomial_ring(FlintQQ, "x")
@@ -9,13 +9,13 @@
      K1, a1 = number_field(x^3 - 2, "a")
     O1 = EquationOrder(K1, true)
 
-    @test @inferred nf(O1) == K1
+    @test @inferred Hecke.nf(O1) == K1
 
 
      K2, a2 = number_field(x - 2, "a")
     O2 = EquationOrder(K2, true)
 
-    @test @inferred nf(O2) == K2
+    @test @inferred Hecke.nf(O2) == K2
 
 
     f3 = x^64 - 64*x^62 +
@@ -39,14 +39,14 @@
     K3, a3 = number_field(f3, "a")
     O3 = Order(K3, [ a3^i for i in 0:63])
 
-    @test nf(O3) == K3
+    @test Hecke.nf(O3) == K3
 
      K4, a4 = number_field(x^2 - 5, "a")
     O4 = Order(K4, Hecke.FakeFmpqMat(FlintZZ[1 0; 0 2], ZZRingElem(1)))
     O44 = Order(K4, FlintQQ[1 0; 0 2])
     O444 = Order(K4, FlintZZ[1 0; 0 2])
 
-    @test nf(O4) == K4
+    @test Hecke.nf(O4) == K4
 
     #@test O4 == O44
     #@test O44 == O444
@@ -56,7 +56,7 @@
     K6, a6 = number_field(x^2 - 180, "a")
     O6 = EquationOrder(K6)
 
-    @test nf(O6) == K6
+    @test Hecke.nf(O6) == K6
 
     O7 = Order(K6, Hecke.FakeFmpqMat(FlintZZ[6 0; 0 1], FlintZZ(6)), check = true, cached = false)
     O77 = Order(K6, FlintQQ[1 0; 0 1//6])
@@ -64,7 +64,7 @@
     #@test O7 == O77
     #@test !(O7 === O77)
 
-    O8 = Order(K6, [a1])
+    O8 = Order(K1, [a1])
     @test O8 == EquationOrder(K1)
 
     @test_throws ErrorException Order(K1, [a1, a1, a1], isbasis = true)
@@ -119,16 +119,16 @@
 
   @testset "Deepcopy" begin
     O5 = @inferred deepcopy(O2)
-    @test nf(O2) == nf(O5)
+    @test Hecke.nf(O2) == Hecke.nf(O5)
   end
 
   @testset "Field access" begin
     b = @inferred parent(O2)
     @test b == @inferred parent(O5)
 
-    @test K1 == @inferred nf(O1)
-    @test K2 == @inferred nf(O2)
-    @test K3 == @inferred nf(O3)
+    @test K1 == @inferred Hecke.nf(O1)
+    @test K2 == @inferred Hecke.nf(O2)
+    @test K3 == @inferred Hecke.nf(O3)
 
     @test @inferred is_equation_order(O1)
     @test @inferred is_equation_order(O2)
@@ -157,28 +157,28 @@
     @test O4.basis_nf == [ a4^0, 2*a4 ]
 
     b = @inferred basis_matrix(O1)
-    @test b == Hecke.FakeFmpqMat(one(matrix_space(FlintZZ, 3, 3)), one(FlintZZ))
+    @test b == QQMatrix(Hecke.FakeFmpqMat(one(matrix_space(FlintZZ, 3, 3)), one(FlintZZ)))
 
     b = @inferred basis_matrix(O2)
-    @test b == Hecke.FakeFmpqMat(one(matrix_space(FlintZZ, 1, 1)), one(FlintZZ))
+    @test b == QQMatrix(Hecke.FakeFmpqMat(one(matrix_space(FlintZZ, 1, 1)), one(FlintZZ)))
 
     b = @inferred basis_matrix(O3)
-    @test b == Hecke.FakeFmpqMat(one(matrix_space(FlintZZ, 64, 64)), one(FlintZZ))
+    @test b == QQMatrix(Hecke.FakeFmpqMat(one(matrix_space(FlintZZ, 64, 64)), one(FlintZZ)))
 
     b = @inferred basis_matrix(O4)
-    @test b == Hecke.FakeFmpqMat(FlintZZ[1 0; 0 2], one(FlintZZ))
+    @test b == QQMatrix(Hecke.FakeFmpqMat(FlintZZ[1 0; 0 2], one(FlintZZ)))
 
-    b = @inferred basis_mat_inv(O1)
-    @test b == Hecke.FakeFmpqMat(one(matrix_space(FlintZZ, 3, 3)), one(FlintZZ))
+    b = @inferred basis_matrix_inverse(O1)
+    @test b == QQMatrix(Hecke.FakeFmpqMat(one(matrix_space(FlintZZ, 3, 3)), one(FlintZZ)))
 
-    b = @inferred basis_mat_inv(O2)
-    @test b == Hecke.FakeFmpqMat(one(matrix_space(FlintZZ, 1, 1)), one(FlintZZ))
+    b = @inferred basis_matrix_inverse(O2)
+    @test b == QQMatrix(Hecke.FakeFmpqMat(one(matrix_space(FlintZZ, 1, 1)), one(FlintZZ)))
 
-    b = @inferred basis_mat_inv(O3)
-    @test b == Hecke.FakeFmpqMat(one(matrix_space(FlintZZ, 64, 64)), one(FlintZZ))
+    b = @inferred basis_matrix_inverse(O3)
+    @test b == QQMatrix(Hecke.FakeFmpqMat(one(matrix_space(FlintZZ, 64, 64)), one(FlintZZ)))
 
-    b = @inferred basis_mat_inv(O4)
-    @test b == Hecke.FakeFmpqMat(FlintZZ[2 0; 0 1], FlintZZ(2))
+    b = @inferred basis_matrix_inverse(O4)
+    @test b == QQMatrix(Hecke.FakeFmpqMat(FlintZZ[2 0; 0 1], FlintZZ(2)))
   end
 
   @testset "Index" begin
@@ -346,14 +346,14 @@
 
     b = @inferred O6_2 +
  O6_3
-    @test basis_matrix(b) == Hecke.FakeFmpqMat(FlintZZ[6 0; 0 1], FlintZZ(6))
+    @test basis_matrix(b) == QQMatrix(Hecke.FakeFmpqMat(FlintZZ[6 0; 0 1], FlintZZ(6)))
 
     @test discriminant(b) == 20
 
     @test O4 +
  O4 == O4
     @test (@inferred O6_2 +
- O6_2) isa NfOrd
+ O6_2) isa AbsSimpleNumFieldOrder
   end
 
   @testset "Maximal Order" begin
@@ -492,4 +492,9 @@
     E = equation_order(K)
     @test (@inferred norm_change_const(E)) isa Tuple{BigFloat, BigFloat}
   end
+
+  # precision problems in LLL
+  f = x^12 - 250349706547880191926288*x^11 + 74595245829812047461608710885384864584184075264*x^10 + 11500382757249344946509529254629529643171467828436091429675069181149184*x^9 + 4121104520192762714773040516367436009159340853342896289345879633346178789493243904*x^8 + 680037764450244753807924221757203168417485207084776345530468394172899606780931475903887704064*x^7 - 62881649861330021411909361623035870040028962186735502944796695071507816297675501253446611428624581001216*x^6 + 78882842937791953735274702741754034611950265620394838674183533434023003335207752148539483243594097390934867050496*x^5 - 32283152897437231517289450251171040984974341167767514949554911647033892621078553328807416592026635448617134915338280894464*x^4 + 6016479106842227179149975895377482229124165847020230826128140779463231465870759528344310125781789033732036562197891874591470518272*x^3 - 57635671993393792623165667324853189654823120409326447709979613092082242672587545572967224680889135071211347474974867237029797839702589440*x^2 - 690411024336182247105061728174361130991749907071834431223169742375064166467387860401897723336942542872163265220822984407264686949811812474814464*x - 3869629674757282439387012151012607040578581316320546021110338580443193570214507911059162243339617203868302851339867746219874454004061786376786260525056
+  K, a = number_field(f, cached = false)
+  @test discriminant(maximal_order(K)) == 28975330946137036032
 end

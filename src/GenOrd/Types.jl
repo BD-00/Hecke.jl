@@ -16,7 +16,7 @@
     empty && return r
     Qt = base_field(F)
     d = reduce(lcm, map(x->denominator(x, R), coefficients(defining_polynomial(F))))
-    f = map_coefficients(x->numerator(Qt(d)*x, R), defining_polynomial(F))
+    f = map_coefficients(x->numerator(Qt(d)*x, R), defining_polynomial(F), cached = false)
     if !is_monic(f) #need Lenstra Order
       d = degree(F)
       M = zero_matrix(Qt, d, d)
@@ -138,7 +138,7 @@ end
   function GenOrdIdl(O::GenOrd, T::Vector{<:GenOrdElem})
     @assert all(x -> parent(x) === O, T)
     # One should do this block by block instead of the big matrix
-    V = hnf(vcat([representation_matrix(O) for x in T]), :lowerleft)
+    V = hnf(reduce(vcat, [representation_matrix(O) for x in T]), :lowerleft)
     d = ncols(V)
     n = length(T)
     return GenOrdIdl(O, V[((n - 1)*d + 1):(n*d), :])
@@ -172,7 +172,7 @@ end
     z.order = O
     if isa(b, KInftyElem)
       b = O.R(Hecke.AbstractAlgebra.MPolyFactor.make_monic(numerator(b))//denominator(b))
-    elseif isa(b, PolyElem)
+    elseif isa(b, PolyRingElem)
       b = Hecke.AbstractAlgebra.MPolyFactor.make_monic(b)
     end
     z.num = a

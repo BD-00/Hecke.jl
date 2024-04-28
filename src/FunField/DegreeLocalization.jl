@@ -7,8 +7,6 @@
 #
 ###############################################################################
 
-export KInftyRing, KInftyElem, function_field
-
 ###############################################################################
 #
 #   Data type and parent object methods
@@ -33,7 +31,7 @@ function check_parent(a::KInftyElem{T}, b::KInftyElem{T})  where T <: FieldEleme
 end
 
 function Base.hash(a::KInftyElem, h::UInt)
-  b = 0x32ba43ad011affd1%UInt 
+  b = 0x32ba43ad011affd1%UInt
   return xor(b, hash(data(a), h))
 end
 
@@ -89,7 +87,7 @@ end
     in(a::Generic.RationalFunctionFieldElem{T}, R::KInftyRing{T}) where T <: FieldElement
 
 Return `true` if the given element of the rational function field is an
-element of `k_\infty(x)`, i.e. if `degree(numerator) <= degree(denominator)`.
+element of $k_\infty(x)$, i.e. if `degree(numerator) <= degree(denominator)`.
 """
 function in(a::Generic.RationalFunctionFieldElem{T}, R::KInftyRing{T}) where T <: FieldElement
   if parent(a) != function_field(R)
@@ -223,7 +221,7 @@ function divides(a::KInftyElem{T}, b::KInftyElem{T}, checked::Bool = true) where
 end
 
 @doc raw"""
-     divexact(a::KInftyElem{T}, b::KInftyElem{T}, checked::Bool = true)  where {T <: nf_elem}
+     divexact(a::KInftyElem{T}, b::KInftyElem{T}, checked::Bool = true)  where {T <: AbsSimpleNumFieldElem}
 Returns element 'c' of given localization such that $a = bc$ if such element
 exists. If `checked = false` the corresponding element of the rational function
 field is returned and it is not checked whether it is an element of the given
@@ -384,7 +382,7 @@ function RandomExtensions.make(S::KInftyRing, vs...)
   if length(vs) == 1 && elem_type(R) == Random.gentype(vs[1])
     RandomExtensions.Make(S, vs[1]) # forward to default Make constructor
   else
-    make(S, make(R, vs...))
+    RandomExtensions.Make(S, make(R, vs...))
   end
 end
 
@@ -482,7 +480,7 @@ function residue_field(K::KInftyRing{T}, a::KInftyElem{T}) where {T <: FieldElem
   F = base_ring(K.K)
   @assert degree(a) == -1
   #TODO: can be optimized, see blurb of euc. div. above
-  return F, MapFromFunc(x -> leading_coefficient(numerator(mod(x, a))), y-> K(y), K, F)
+  return F, MapFromFunc(K, F, x -> leading_coefficient(numerator(mod(x, a))), y-> K(y))
 end
 #TODO: residue_ring is probably "just" poly of deg < n, think about it
 

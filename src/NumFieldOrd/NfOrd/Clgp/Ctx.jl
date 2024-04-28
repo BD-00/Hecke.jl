@@ -4,6 +4,37 @@
 #
 ################################################################################
 
+function Base.deepcopy_internal(FB::NfFactorBase, dict::IdDict)
+  c = NfFactorBase()
+  c.fb = Dict(x => deepcopy(y) for (x, y) in FB.fb) # should be shallow
+  c.size = FB.size
+  c.fb_int = Base.deepcopy_internal(FB.fb_int, dict)
+  c.ideals = [deepcopy(p) for p in FB.ideals]  # Not shallow,
+                                               # otherwise the ideals reference each other
+  c.rw = copy(FB.rw)
+  c.mx = FB.mx
+  return c
+end
+
+function Base.deepcopy_internal(FB::FactorBase{T}, dict::IdDict) where {T}
+  return FactorBase(FB.base)
+end
+
+function Base.deepcopy_internal(FBS::FactorBaseSingleP{T}, dict::IdDict) where {T}
+  lp = [(e, deepcopy(P)) for (e, P) in FBS.lp]
+  if T === zzModPolyRingElem
+    return FactorBaseSingleP(Int(FBS.P), lp)
+  else
+    @assert T === ZZModPolyRingElem
+    return FactorBaseSingleP(FBS.P, lp)
+  end
+end
+#mutable struct FactorBaseSingleP{T}
+#  P::ZZRingElem
+#  pt::FactorBase{T}
+#  lp::Vector{Tuple{Int,AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}}}
+#  lf::Vector{T}
+
 function show(io::IO, c::ClassGrpCtx)
   println(io, "Ctx for class group of ", order(c.FB.ideals[1]))
   println(io, "Factorbase with ", length(c.FB.ideals), " ideals of norm up to ", norm(c.FB.ideals[1]))
@@ -30,8 +61,8 @@ function class_group_init(FB::NfFactorBase, T::DataType = SMat{ZZRingElem, ZZRin
   clg.last = 0
 
   clg.M = ModuleCtx_fmpz(length(FB.ideals))
-  clg.R_gen = Vector{nf_elem}()
-  clg.R_rel = Vector{nf_elem}()
+  clg.R_gen = Vector{AbsSimpleNumFieldElem}()
+  clg.R_rel = Vector{AbsSimpleNumFieldElem}()
 
   clg.c = conjugates_init(nf(O).pol)
   add_rels && for I in clg.FB.ideals
@@ -64,22 +95,29 @@ function class_group_init(FB::NfFactorBase, T::DataType = SMat{ZZRingElem, ZZRin
   l = lll(t)
   clg.val_base = l
 
+  #if the galois group is small enough and the field large
+  #then the split-norm-ctx is (much) better
+  #the galois group size should, asymptotically, be
+  #number of primes divided by totally split ones
+  #lets accept this.
+  ordG = length(collect(PrimesSet(ZZ(1), maximum(FB.fb_int.base)))) / length([x[1] for x = FB.fb if length(x[2].lp) == degree(O)])
+
   if use_aut
     au = automorphism_list(nf(O), copy = false)
     clg.aut_grp = class_group_add_auto(clg, au)
     clg.normCtx = NormCtx(O, div(nbits(discriminant(O)), 2) + 20,
-                                                     length(au) == degree(O))
+        length(au) == degree(O) || ordG < 4*degree(O))
   else
-    clg.normCtx = NormCtx(O, div(nbits(discriminant(O)), 2) + 20, false)
+    clg.normCtx = NormCtx(O, div(nbits(discriminant(O)), 2) + 20, ordG < 4*degree(O))
   end
 
   return clg
 end
 
-function class_group_init(O::NfOrd, B::Int; min_size::Int = 20, add_rels::Bool = true,
+function class_group_init(O::AbsSimpleNumFieldOrder, B::Int; min_size::Int = 20, add_rels::Bool = true,
                           use_aut::Bool = false,
                           complete::Bool = true, degree_limit::Int = 0, T::DataType = SMat{ZZRingElem, ZZRingElem_Array_Mod.ZZRingElem_Array})
-  @vprint :ClassGroup 2 "Computing factor base ...\n"
+  @vprintln :ClassGroup 2 "Computing factor base ..."
 
   @assert B > 0
 
@@ -90,14 +128,14 @@ function class_group_init(O::NfOrd, B::Int; min_size::Int = 20, add_rels::Bool =
       break
     end
     B *= 2
-    @vprint :ClassGroup 2 "Increasing bound to $B ...\n"
+    @vprintln :ClassGroup 2 "Increasing bound to $B ..."
   end
-  @vprint :ClassGroup 2 " done\n"
+  @vprintln :ClassGroup 2 " done"
   return class_group_init(FB, T, add_rels = add_rels, use_aut = use_aut)
 end
 
 function _get_autos_from_ctx(ctx::ClassGrpCtx)
-  return ctx.aut_grp::Vector{Tuple{NfToNfMor, Perm{Int}}}
+  return ctx.aut_grp::Vector{Tuple{morphism_type(AbsSimpleNumField, AbsSimpleNumField), Perm{Int}}}
 end
 
 ################################################################################

@@ -5,7 +5,7 @@
 #
 ######################################################################
 
-struct QmodnZ <: GrpAb
+mutable struct QmodnZ <: GrpAb
   trivialmodulus::Bool
   n::ZZRingElem
   d::ZZRingElem
@@ -37,7 +37,7 @@ struct QmodnZ <: GrpAb
   end
 end
 
-const QmodnZID = Dict{Tuple{Bool, ZZRingElem, ZZRingElem}, QmodnZ}()
+const QmodnZID = AbstractAlgebra.CacheDictType{Tuple{Bool, ZZRingElem, ZZRingElem}, QmodnZ}()
 
 function show(io::IO, G::QmodnZ)
   if G.trivialmodulus
@@ -83,8 +83,16 @@ end
 
 iszero(x::QmodnZElem) = iszero(x.elt)
 
+function -(a::QmodnZElem)
+  return QmodnZElem(a.parent, -a.elt)
+end
+
 function +(a::QmodnZElem, b::QmodnZElem)
   return QmodnZElem(a.parent, a.elt + b.elt)
+end
+
+function -(a::QmodnZElem, b::QmodnZElem)
+  return QmodnZElem(a.parent, a.elt - b.elt)
 end
 
 function *(a::ZZRingElem, b::QmodnZElem)
@@ -95,12 +103,12 @@ function *(a::Integer, b::QmodnZElem)
   return QmodnZElem(b.parent, a*b.elt)
 end
 
-function divexact(a::QmodnZElem, b::ZZRingElem)
+function divexact(a::QmodnZElem, b::ZZRingElem; check::Bool=true)
   iszero(b) && throw(DivideError())
   return QmodnZElem(a.parent, a.elt // b)
 end
 
-function divexact(a::QmodnZElem, b::Integer)
+function divexact(a::QmodnZElem, b::Integer; check::Bool=true)
   iszero(b) && throw(DivideError())
   return QmodnZElem(a.parent, a.elt // b)
 end
@@ -170,11 +178,11 @@ lift(a::QmodnZElem) = a.elt
 ################################################################################
 
 
-mutable struct GrpAbFinGenToQmodnZ <: Map{GrpAbFinGen, QmodnZ,
+mutable struct GrpAbFinGenToQmodnZ <: Map{FinGenAbGroup, QmodnZ,
                                             HeckeMap, GrpAbFinGenToQmodnZ}
-  header::MapHeader{GrpAbFinGen, QmodnZ}
+  header::MapHeader{FinGenAbGroup, QmodnZ}
 
-  function GrpAbFinGenToQmodnZ(G::GrpAbFinGen, QZ::QmodnZ, image)
+  function GrpAbFinGenToQmodnZ(G::FinGenAbGroup, QZ::QmodnZ, image)
     z = new()
     z.header = MapHeader(G, QZ, image)
     return z
@@ -187,7 +195,7 @@ function kernel(mp::GrpAbFinGenToQmodnZ)
   n = exponent(G)
   C = abelian_group(ZZRingElem[n])
   gensG = gens(G)
-  imgs = Vector{GrpAbFinGenElem}()
+  imgs = Vector{FinGenAbGroupElem}()
   if QmodnZ.trivialmodulus
     for x in gensG
       imgx = lift(mp(x))
@@ -201,28 +209,28 @@ end
 
 #TODO: technically, dual Z could be Q/Z ...
 @doc raw"""
-    dual(G::GrpAbFinGen) -> GrpAbFinGen, Map
+    dual(G::FinGenAbGroup) -> FinGenAbGroup, Map
 
 Computes the dual group, i.e. $hom(G, Q/Z)$ as an
 abstract group. The map can be used to obtain actual homomorphisms.
 It assumes that the group is finite.
 """
-function dual(G::GrpAbFinGen)
+function dual(G::FinGenAbGroup)
   T, mT = torsion_subgroup(G)
   u = root_of_one(QmodnZ, exponent(T))
   return dual(G, u)
 end
 
-function dual(G::GrpAbFinGen, u::QmodnZElem)
+function dual(G::FinGenAbGroup, u::QmodnZElem)
   o = order(u)
   H = abelian_group(ZZRingElem[o])
   QZ = parent(u)
   R, phi = hom(G, H)
-  R::GrpAbFinGen
-  ex = MapFromFunc(x -> x[1]*u, y -> H(ZZRingElem[numerator(y.elt) * div(o, denominator(y.elt))]), H, parent(u))
+  R::FinGenAbGroup
+  ex = MapFromFunc(H, parent(u), x -> x[1]*u, y -> H(ZZRingElem[numerator(y.elt) * div(o, denominator(y.elt))]))
   local mu
   let phi = phi, G = G, QZ = QZ, u = u
-    function mu(r::GrpAbFinGenElem)
+    function mu(r::FinGenAbGroupElem)
       f = phi(r)
       return GrpAbFinGenToQmodnZ(G, QZ, x -> f(x)[1]*u)
     end
@@ -231,16 +239,16 @@ function dual(G::GrpAbFinGen, u::QmodnZElem)
   local nu
   let ex = ex, phi = phi
     function nu(f::Map)
-      g = GrpAbFinGenMap(f*inv(ex))
+      g = FinGenAbGroupHom(f*inv(ex))
       return preimage(phi, g)
     end
   end
-  return R, MapFromFunc(mu, nu, R, MapParent(G, parent(u), "homomorphisms"))
+  return R, MapFromFunc(R, MapParent(G, parent(u), "homomorphisms"), mu, nu)
 end
 
 parent(f::GrpAbFinGenToQmodnZ) = MapParent(domain(f), codomain(f), "homomorphisms")
 
-function restrict(f::GrpAbFinGenToQmodnZ, U::GrpAbFinGen)
+function restrict(f::GrpAbFinGenToQmodnZ, U::FinGenAbGroup)
   G = domain(f)
   fl, mU = is_subgroup(U, G)
   @assert fl
@@ -254,7 +262,7 @@ end
 #
 #TODO: figure out how to do this properly, ie. how this should interact
 #      with the other cohomology
-function H2_G_QmodZ(G::GrpAbFinGen)
+function H2_G_QmodZ(G::FinGenAbGroup)
   s, ms = snf(G)
   e = elementary_divisors(s)
   @assert ngens(s) == length(e)
@@ -267,7 +275,7 @@ function H2_G_QmodZ(G::GrpAbFinGen)
   return abelian_group(r)
 end
 
-function H2_G_QmodZ_restriction(G::GrpAbFinGen, U::Vector{GrpAbFinGen})
+function H2_G_QmodZ_restriction(G::FinGenAbGroup, U::Vector{FinGenAbGroup})
   S, mS = snf(G)
   e = elementary_divisors(S)
   @assert ngens(S) == length(e)
@@ -284,7 +292,7 @@ function H2_G_QmodZ_restriction(G::GrpAbFinGen, U::Vector{GrpAbFinGen})
     sigma should be unique if g, h run through the generattors
 
     Let chi in Dual(H)  and U < G a subgrooup
-    Dual(G) -> Dual(U) is the composition: U->G 
+    Dual(G) -> Dual(U) is the composition: U->G
   =#
   #function chi(sigma) #in H return the cocycle
   #  return (g, h) -> mD(sigma)(H([g[i]*h[j] - g[j]*h[i] for i=1:length(e) for j=i+1:length(e)]))

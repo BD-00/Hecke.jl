@@ -1,6 +1,4 @@
-#export: degree_relative, random_elem, one_root, norm_equation
-
-degree(L::Hecke.LocalField, K::Union{FlintQadicField, Hecke.LocalField}) = divexact(absolute_degree(L), absolute_degree(K))
+degree(L::Hecke.LocalField, K::Union{QadicField, Hecke.LocalField}) = divexact(absolute_degree(L), absolute_degree(K))
 
 function degree(L::FinField, k::FinField)
   @assert characteristic(L) == characteristic(k)
@@ -16,7 +14,7 @@ end
 # BAD
 ##############################################
 
-function random_elem(L::Union{FlintQadicField, Hecke.LocalField})
+function random_elem(L::Union{QadicField, Hecke.LocalField})
    b = basis(L)
    n = degree(L)
    r = [rand(1:5*n) for i in 1:n]   # Choose small coordinates
@@ -26,18 +24,18 @@ end
 
 ########### any_root computes a single root in the finite field extensions####
 
-import Nemo:any_root
-function any_root(f::Union{fpPolyRingElem, fqPolyRepPolyRingElem}, F::Union{fqPolyRepField, Hecke.RelFinField})
-   g = polynomial(F, [coeff(f,i) for i = 0:degree(f) ] )
+import Nemo: any_root
+function any_root(F::Union{fqPolyRepField, Hecke.RelFinField, FqField}, f::PolyRingElem)
+   g = change_base_ring(F, f; cached = false)
    return any_root(g)
 end
 
-function roots(f::Union{fpPolyRingElem, fqPolyRepPolyRingElem}, F::Union{fqPolyRepField, Hecke.RelFinField})
+function roots(F::Union{fqPolyRepField, Hecke.RelFinField}, f::Union{fpPolyRingElem, fqPolyRepPolyRingElem})
    g = polynomial(F, [coeff(f,i) for i = 0:degree(f) ] )
    return roots(g)
 end
 
-function any_root(f::Hecke.AbstractAlgebra.Generic.Poly, F::Hecke.RelFinField)
+function any_root(F::Hecke.RelFinField, f::Hecke.AbstractAlgebra.Generic.Poly)
    g = polynomial(F, [coeff(f,i) for i = 0:degree(f)])
    fac = factor(g)
    if length(fac) == 1
@@ -48,7 +46,7 @@ function any_root(f::Hecke.AbstractAlgebra.Generic.Poly, F::Hecke.RelFinField)
    return -coeff(r,0)
 end
 
-function trace_equation(F::Union{FlintQadicField, Hecke.LocalField}, a::Union{Hecke.LocalFieldElem, padic, qadic})
+function trace_equation(F::Union{QadicField, Hecke.LocalField}, a::Union{Hecke.LocalFieldElem, PadicFieldElem, QadicFieldElem})
   A = random_elem(F)
   K = parent(a)
   while iszero(trace(A, K)) || valuation(trace(A, K)) > 0
@@ -58,11 +56,11 @@ function trace_equation(F::Union{FlintQadicField, Hecke.LocalField}, a::Union{He
   return A*F(a) #F(a) here and above due to missing promote rule
 end
 
-function is_norm(F::Union{FlintQadicField, Hecke.LocalField{padic, Hecke.UnramifiedLocalField}}, a::padic)
+function is_norm(F::Union{QadicField, Hecke.LocalField{PadicFieldElem, Hecke.UnramifiedLocalField}}, a::PadicFieldElem)
   return valuation(a) % degree(F) == 0
 end
 
-function norm_equation(F::Union{FlintQadicField, Hecke.LocalField{padic, Hecke.UnramifiedLocalField}}, a::padic)
+function norm_equation(F::Union{QadicField, Hecke.LocalField{PadicFieldElem, Hecke.UnramifiedLocalField}}, a::PadicFieldElem)
   v = valuation(a)
   if v % degree(F) != 0
     error("no solution, wrong valuation")
@@ -81,27 +79,14 @@ function norm_equation(F::Union{FlintQadicField, Hecke.LocalField{padic, Hecke.U
   return A*T
 end
 
-function Nemo.basis(k::Nemo.fpField)
-  return [k(1)]
-end
-
-function Nemo.basis(k::Nemo.fpField, l::Nemo.fpField)
-  @assert k == l
-  return [k(1)]
-end
-
-function Nemo.basis(K::fqPolyRepField, k::Nemo.fpField)
-  @assert characteristic(K) == characteristic(k)
-  return basis(K)
-end
-
 function Nemo.basis(K::FinField, k::FinField)
   b = basis(K)
-  K = base_ring(K)
+  K = base_field(K)
   while absolute_degree(K) > absolute_degree(k)
     b = [x*y for x = basis(K) for y = b]
-    K = base_ring(K)
+    K = base_field(K)
   end
+  @show K, k
   if K != k
     error("subfield not in tower")
   end
@@ -112,13 +97,13 @@ end
 #Thm 2.2
 #Thm 2.3 and the recognition is missing.
 #Plan for the NEQ: compute norms of gens
-#   find combinations that solve up to low precision 
-#   use exp/log for the hight bit...
+#   find combinations that solve up to low precision
+#   use exp/log for the height bit...
 #alternatively just use the lin. alg
 # 1+p^k/1+p^l, * = p^k/p^l, + for k<l<=2k ...
 
-h2_is_iso(::FlintQadicField) = true
-h2_is_iso(::FlintPadicField) = true
+h2_is_iso(::QadicField) = true
+h2_is_iso(::PadicField) = true
 function h2_is_iso(K::Hecke.LocalField)
   p = prime(K)
   e = absolute_ramification_index(K)
@@ -134,7 +119,7 @@ function h2_is_iso(K::Hecke.LocalField)
   return length(roots(f)) == 0
 end
 
-function one_unit_group_gens(K::Union{FlintQadicField, Hecke.LocalField})
+function one_unit_group_gens(K::Union{QadicField, Hecke.LocalField})
   p = prime(K)
   e = absolute_ramification_index(K)
   f = absolute_inertia_degree(K)
@@ -145,24 +130,15 @@ function one_unit_group_gens(K::Union{FlintQadicField, Hecke.LocalField})
   end
 end
 
-function root(a::FinFieldElem, n::ZZRingElem)
-  return root(a, Int(n))
-end
-function root(a::FinFieldElem, n::Integer)
-  k = parent(a)
-  kt, t = polynomial_ring(k, "t", cached = false)
-  r = roots(t^n-a)
-  return r[1]
-end
 
-function _unit_group_gens_case2(K::Union{FlintQadicField, Hecke.LocalField})
+function _unit_group_gens_case2(K::Union{QadicField, Hecke.LocalField})
   p = prime(K)
   e = absolute_ramification_index(K)
   f = absolute_inertia_degree(K)
 
   k, mk = residue_field(K)
   @assert absolute_degree(k) == f
-  omega = basis(k, prime_field(k))
+  omega = absolute_basis(k)
   @assert isone(omega[1]) #this has to change...
   mu_0 = valuation(e, p)+1
   e_0 = divexact(e, (p-1)*p^(mu_0-1))
@@ -207,7 +183,7 @@ function _unit_group_gens_case2(K::Union{FlintQadicField, Hecke.LocalField})
   return gens
 end
 
-function _unit_group_gens_case1(K::Union{FlintQadicField, Hecke.LocalField})
+function _unit_group_gens_case1(K::Union{QadicField, Hecke.LocalField})
   p = prime(K)
   e = absolute_ramification_index(K)
   f = absolute_inertia_degree(K)
@@ -215,34 +191,33 @@ function _unit_group_gens_case1(K::Union{FlintQadicField, Hecke.LocalField})
   k, mk = residue_field(K)
   @assert absolute_degree(k) == f
 
-  b = [preimage(mk, x) for x = basis(k, prime_field(k))]
+  b = [preimage(mk, x) for x = absolute_basis(k)]
   F_K = [ lambda for lambda = 1:ceil(Int, p*e//(p-1))-1 if lambda % p != 0]
   @assert length(F_K) == e
 
   pi = uniformizer(K)
   one = K(1)
-  
+
   return [ one+x*pi^l for x = b for l = F_K]
 end
 
-function coordinates(a::Union{qadic, LocalFieldElem}, k)
+function coordinates(a::Union{QadicFieldElem, LocalFieldElem}, k)
   c = [coeff(a, i) for i=0:degree(parent(a))-1]
   while absolute_degree(parent(c[1])) > absolute_degree(k)
-    c = vcat([[coeff(x, i) for i=0:(degree(parent(c[1]))-1)] for x = c]...)
+    c = reduce(vcat, [[coeff(x, i) for i=0:(degree(parent(c[1]))-1)] for x = c])
   end
   if parent(c[1]) != k
-    if isa(parent(c[1]), FlintQadicField) && degree(parent(c[1])) ==1
+    if isa(parent(c[1]), QadicField) && degree(parent(c[1])) ==1
       return [coeff(x, 0) for x = c]
     end
     error("bad tower")
   end
   return c
 end
-coordinates(a::padic, ::FlintPadicField) = [a]
-prime_field(k::FlintPadicField) = k
-lift(a::Hecke.QadicRingElem{FlintPadicField, padic}) = lift(a.x)
+coordinates(a::PadicFieldElem, ::PadicField) = [a]
+lift(a::Hecke.QadicRingElem{PadicField, PadicFieldElem}) = lift(a.x)
 
-function setprecision!(A::Generic.MatSpaceElem{Hecke.QadicRingElem{FlintPadicField, padic}}, n::Int)
+function setprecision!(A::Generic.MatSpaceElem{Hecke.QadicRingElem{PadicField, PadicFieldElem}}, n::Int)
   for i=1:nrows(A)
     for j=1:ncols(A)
       setprecision!(A[i,j], n)
@@ -251,7 +226,7 @@ function setprecision!(A::Generic.MatSpaceElem{Hecke.QadicRingElem{FlintPadicFie
 end
 
 function solve_1_units(a::Vector{T}, b::T) where T
-  #assumes that T is a local field element - they don't have a 
+  #assumes that T is a local field element - they don't have a
   #common abstract type
   #
   #tries to write b as a power product of elements in a
@@ -270,7 +245,7 @@ function solve_1_units(a::Vector{T}, b::T) where T
   #plan:
   # (1+p^k/1+p^l, *) = (p^k/p^l, +) for k<=l<=2k
   #so we start with k=1, l=2 to find the exponents mod p
-  #remove this from b 
+  #remove this from b
   #try to find the next part (mod p^2), ...
   #
   e = absolute_ramification_index(K)
@@ -296,19 +271,19 @@ function solve_1_units(a::Vector{T}, b::T) where T
     last_val = e*valuation(cur_b-one)
 #    @show expo_mult
     @assert e*valuation(cur_b-one) >= l
-    @assert all(x->e*valuation(x-one) >= l, cur_a)
+    @assert all(x->isone(x) || e*valuation(x-one) >= l, cur_a)
 
     A = abelian_group([p^max(0, ceil(Int, (l-v)//e)) for v = val_offset])
     h = hom(free_abelian_group(length(cur_a)), A, [A([lift(ZZ, x) for x =  absolute_coordinates(divexact(y-one, pi^l))]) for y = cur_a])
     lhs = A([lift(ZZ, x) for x = absolute_coordinates(divexact(cur_b -one, pi^l))])
-    fl, s = haspreimage(h, lhs)
+    fl, s = has_preimage_with_preimage(h, lhs)
     _k, _mk = kernel(h)
     #if kernel has HNF, the next step is cheaper...
     _mk.map = hnf(_mk.map)
     #to find a nice preimage
     reduce_mod_hnf_ur!(s.coeff, _mk.map)
 #    @show s
-    # to verify that this is a "legal" operation... the hom constructor 
+    # to verify that this is a "legal" operation... the hom constructor
     # will verify that this is legal
     # hom(domain(_mk), codomain(_mk), [_mk(x) for x = gens(domain(_mk))])
 
@@ -324,10 +299,10 @@ function solve_1_units(a::Vector{T}, b::T) where T
     end
 
     expo += s.coeff * expo_mult
-    expo_mult = vcat([_mk(x).coeff for x = gens(_k)]...)*expo_mult
+    expo_mult = reduce(vcat, [_mk(x).coeff for x = gens(_k)])*expo_mult
     cur_a = [prod(cur_a[i]^_mk(x)[i] for i=1:length(cur_a)) for x = gens(_k)]
 #    @show [e*valuation(x-1) for x = cur_a]
- 
+
     cur_b = divexact(b^pow_b, prod(a[i]^expo[i] for i=1:length(a)))
     if iszero(cur_b-one) || e*valuation(cur_b-one) >= k
       break
@@ -346,21 +321,21 @@ function solve_1_units(a::Vector{T}, b::T) where T
   return [expo[1, i] for i=1:length(cur_a)], pow_b
 end
 
-function is_norm(K::Hecke.LocalField, b::Union{qadic,padic,Hecke.LocalFieldElem})
+function is_norm(K::Hecke.LocalField, b::Union{QadicFieldElem,PadicFieldElem,Hecke.LocalFieldElem})
   return _norm_equation(K, b, test_only = true)::Bool
 end
 
-function norm_equation(K::Hecke.LocalField, b::Union{qadic,padic,Hecke.LocalFieldElem})
+function norm_equation(K::Hecke.LocalField, b::Union{QadicFieldElem,PadicFieldElem,Hecke.LocalFieldElem})
   return _norm_equation(K, b, test_only = false)::elem_type(K)
 end
 
-function _norm_equation(K:: Hecke.LocalField, b::Union{qadic,padic,Hecke.LocalFieldElem}; test_only::Bool)
+function _norm_equation(K:: Hecke.LocalField, b::Union{QadicFieldElem,PadicFieldElem,Hecke.LocalFieldElem}; test_only::Bool)
   if iszero(b)
     test_only && return true
     return zero(K)
   end
   if ramification_index(K, parent(b)) == 1
-    if test_only 
+    if test_only
       return Int(valuation(b)*absolute_ramification_index(K)) % degree(K, parent(b)) == 0
     end
     return norm_equation_unramified(K, b)
@@ -404,7 +379,7 @@ function _norm_equation(K:: Hecke.LocalField, b::Union{qadic,padic,Hecke.LocalFi
   c = setprecision(prod(g[i]^s[i] for i=1:length(s)), precision(b)*e)
 
   so *= c
-  b  *= inv(norm(c)) 
+  b  *= inv(norm(c))
   @assert valuation(b-1) > 1//(p-1)
   # Last step: norm/trace..
   bt = log(b)
@@ -425,7 +400,7 @@ function test_neq(L, n::Int = 5)
 end
 
 =#
-    
+
 
 
 
@@ -436,17 +411,18 @@ end
 Find an element `x` in `F` such that the norm from `F` down to the parent of
 `b` is exactly `b`.
 """
-function norm_equation(F::Union{fqPolyRepField, Hecke.RelFinField}, b::Union{fpFieldElem, fqPolyRepFieldElem})
+function norm_equation(F::Union{fqPolyRepField, Hecke.RelFinField, FqField}, b::Union{fpFieldElem, fqPolyRepFieldElem, FqFieldElem})
    if iszero(b)
       return zero(F)
    end
    k = parent(b)
-   n = degree(F,k)
-   f = polynomial(k,vcat([b],[rand(k) for i = 1:n-1],[1]))
+   n = degree(F, k)
+   kt, = polynomial_ring(k, "t", cached = false)
+   f = kt(vcat([b],[rand(k) for i = 1:n-1],[one(k)]))
    while !is_irreducible(f)
-      f = polynomial(k,vcat([b],[rand(k) for i = 1:n-1],[1]))
+     f = kt(vcat([b],[rand(k) for i = 1:n-1],[one(k)]))
    end
-   return (-1)^(n)*any_root(f,F)
+   return (-1)^(n)*any_root(F, f)
 end
 
 function basis(K::RelFinField)
@@ -455,10 +431,6 @@ function basis(K::RelFinField)
     push!(b, b[end]*gen(K))
   end
   return b
-end
-
-function base_field(K::fqPolyRepField)
-  return GF(Int(characteristic(K)))
 end
 
 absolute_frobenius_matrix(K::fqPolyRepField, d::Int = 1) = frobenius_matrix(K, d)
@@ -474,7 +446,14 @@ end
 absolute_representation_matrix(a::fqPolyRepField) = representation_matrix(a)
 absolute_representation_matrix(a::fpFieldElem) = matrix(parent(a), 1, 1, [a])
 
-function absolute_representation_matrix(a::RelFinFieldElem)
+function absolute_frobenius_matrix(a::FqField, d::Int = 1)
+  b = absolute_basis(a)
+  b = [absolute_frobenius(x, d) for x = b]
+  return matrix([absolute_coordinates(x) for x = b])
+end
+
+
+function absolute_representation_matrix(a::Union{RelFinFieldElem, FqFieldElem})
   b = a .* absolute_basis(parent(a))
   return matrix([absolute_coordinates(x) for x = b])
 end
@@ -519,8 +498,8 @@ function frobenius_equation(d::Int, c::FinFieldElem)
    p = characteristic(F)
    #F is a GF(p) vector space and x->x^(p^d)-cx is a linear map
    M = absolute_frobenius_matrix(F, d) - absolute_representation_matrix(c)
-   r, k = kernel(M, side = :left)
-   @assert r > 0
+   k = kernel(M, side = :left)
+   @assert nrows(k) > 0
    return dot(absolute_basis(F), k[1, :])
 end
 
@@ -532,8 +511,8 @@ function frobenius_equation(X::ArtinSchreierSolveCtx, c::FinFieldElem)
    p = characteristic(F)
    #F is a GF(p) vector space and x->x^(p^d)-cx is a linear map
    M = X.frob_mat - absolute_representation_matrix(c)
-   r, k = kernel(M, side = :left)
-   @assert r > 0
+   k = kernel(M, side = :left)
+   @assert nrows(k) > 0
    return dot(X.basis, k[1, :])
 end
 
@@ -550,7 +529,7 @@ function artin_schreier_equation(d::Int, c::FinFieldElem)
    M = absolute_frobenius_matrix(F, d)
    M = M-identity_matrix(base_ring(M), nrows(M))
    b = matrix(base_ring(M), 1, ncols(M), absolute_coordinates(c))
-   s = solve_left(M, b)
+   s = solve(M, b; side = :left)
    return dot(absolute_basis(F), s)
 end
 
@@ -561,11 +540,11 @@ function artin_schreier_equation(X::ArtinSchreierSolveCtx, c::FinFieldElem)
    M = X.frob_mat
    M = M-identity_matrix(base_ring(M), nrows(M))
    b = matrix(base_ring(M), 1, ncols(M), absolute_coordinates(c))
-   s = solve_left(M, b)
+   s = solve(M, b, side = :left)
    return dot(X.basis, s)
 end
 
-function frobenius(E::Hecke.LocalField, F::Union{Hecke.LocalField, FlintPadicField, FlintQadicField})
+function frobenius(E::Hecke.LocalField, F::Union{Hecke.LocalField, PadicField, QadicField})
   #stupid approach... if E/F is unramified, then lifting of one root
   #should be enough,
   a = automorphism_list(E, F)
@@ -584,16 +563,16 @@ struct MapEvalCtx
   domain::Ring
   codomain::Ring
 
-  map::Generic.MatSpaceElem{padic}
+  map::Generic.MatSpaceElem{PadicFieldElem}
 
   function MapEvalCtx(M::LocalFieldMor)
-    mat = matrix(prime_field(domain(M)), 
+    mat = matrix(prime_field(domain(M)),
                  absolute_degree(domain(M)),
                  absolute_degree(codomain(M)),
-                 vcat([absolute_coordinates(M(x)) 
-                      for x = absolute_basis(domain(M))]...))
+                 reduce(vcat, [absolute_coordinates(M(x))
+                      for x = absolute_basis(domain(M))]))
 
-    return new(domain(M), codomain(M), mat)                  
+    return new(domain(M), codomain(M), mat)
   end
 end
 
@@ -611,14 +590,14 @@ solve, hopefully,
     x^phi//x = c
     for phi the frobenius of parent(c) over F
 """
-function frobenius_equation(c::Hecke.LocalFieldElem, F::Union{FlintPadicField, FlintQadicField, Hecke.LocalField}; frobenius = false)
+function frobenius_equation(c::Hecke.LocalFieldElem, F::Union{PadicField, QadicField, Hecke.LocalField}; frobenius = false)
   E = parent(c)
   #solves using Lagrange resolvent
   #problem: we'd like to have a unit solution (no precision loss when
   #inverting), but the resolvent tends to have valuation (small primes)
   #possibilities:
   # - start with negative valuation to get a solution of val 0
-  # - live with the valuation and use frobenius_equation2 to 
+  # - live with the valuation and use frobenius_equation2 to
   #   add precision at the end
   # - start with elem of val 0, then generically, the valuation of the
   #   resolvent should be the valuation of the abs. degree
@@ -659,12 +638,12 @@ function frobenius_equation(c::Hecke.LocalFieldElem, F::Union{FlintPadicField, F
       iszero(a) && continue
       va = valuation(a)
       va == 0 && return inv(a)
-      @show va, v_deg
-      if va <= v_deg 
+      # @show va, v_deg
+      if va <= v_deg
         denominator(va) == 1 && return inv(divexact(a, prime(E)^Int(va)))
-        @show :shit
+        # @show :shit
       end
-        
+
 #      return frobenius_equation2(c, F, frobenius = fr, start = inv(a))
       cnt += 1
       if cnt > 5
@@ -676,7 +655,7 @@ end
 
 #solve the same as above, but pi-adic digit by pi-adic digit, thus
 #slow for large precision
-function frobenius_equation2(c::Hecke.LocalFieldElem, F::Union{FlintPadicField, FlintQadicField, Hecke.LocalField}; frobenius = false, start::Union{Nothing, Hecke.LocalFieldElem} = nothing)
+function frobenius_equation2(c::Hecke.LocalFieldElem, F::Union{PadicField, QadicField, Hecke.LocalField}; frobenius = false, start::Union{Nothing, Hecke.LocalFieldElem} = nothing)
   E = parent(c)
   pr = precision(c)
   K, mK = residue_field(E)
@@ -742,7 +721,7 @@ end
 
 """
     gens(L::FinField, l::FinField)
- 
+
 Return l-algebra generators for L, l must be a direct subfield of L
 """
 function gens(L::FinField, l::FinField)
@@ -763,26 +742,15 @@ end
 #  want local class for (K/k)_p, but the completions of k and K do not
 #  know of each other. In current example C:Q_p = 20, but C:c = 5, so
 #  4x faster if restricted automorphisms are used.
-function local_fundamental_class_serre(L::Hecke.LocalField, K::FlintPadicField)
+function local_fundamental_class_serre(L::Hecke.LocalField, K::PadicField)
   return local_fundamental_class_serre(hom(K, L))
 end
 
-function local_fundamental_class_serre(L::Hecke.LocalField, K::Union{Hecke.LocalField, FlintQadicField})
+function local_fundamental_class_serre(L::Hecke.LocalField, K::Union{Hecke.LocalField, QadicField})
   return local_fundamental_class_serre(hom(K, L, L(gen(K))))
 end
 
-function gens(k::FlintPadicField, K::FlintPadicField)
-  return [k(1)]
-end
 
-function gen(k::Nemo.fpField)
-  return k(1)
-end
-
-function defining_polynomial(k::Nemo.fpField)
-  kx, x = polynomial_ring(k, cached = false)
-  return x-k(1)
-end
 
 function local_fundamental_class_serre(mKL::LocalFieldMor)
   K = domain(mKL)
@@ -804,18 +772,18 @@ function local_fundamental_class_serre(mKL::LocalFieldMor)
   @assert norm(v) == u
   pi = v*uniformizer(L)
   pi_inv = inv(pi)
-  
+
   #if (like here) L is Eisenstein over unram, then the automorphisms are easier
   global last_mKL = mKL
   if ramification_index(L) == degree(L) && e > 1#so we're ramified
     #thus Gal(E/base_field(L)) = Gal(L/base_field(L)) x unram of base_field
     bL = base_field(L)
-    E2, _ = unramified_extension(map_coefficients(x->bL(coeff(x, 0)), defining_polynomial(E)))
-    G2 = automorphism_list(E2, prime_field(E2)) 
+    E2, _ = unramified_extension(map_coefficients(x->bL(coeff(x, 0)), defining_polynomial(E), cached = false))
+    G2 = automorphism_list(E2, prime_field(E2))
     GG = morphism_type(E)[]
     for e = G2
       ime = e(gen(E2))
-      imeE = E(map_coefficients(L, ime.data))
+      imeE = E(map_coefficients(L, ime.data, cached = false))
       res_e = coeff(e(E2(gen(bL))), 0)
       for g = G
         res_g = coeff(g(L(gen(bL))), 0)
@@ -830,11 +798,12 @@ function local_fundamental_class_serre(mKL::LocalFieldMor)
     GG = automorphism_list(E, prime_field(E))
     gK = map(E, gK)
     GG = [g for g = GG if map(g, gK) == gK]
-  end 
+  end
 
   rE, mE = residue_field(E)
   rL, mL = residue_field(L)
   rK, mK = residue_field(K)
+  # how is this supposed to work?
   mrKL = hom(rK, rL, mL(mKL(preimage(mK, gen(rK)))))
   q = order(rK)
 
@@ -852,7 +821,7 @@ function local_fundamental_class_serre(mKL::LocalFieldMor)
   end
 
   fr = MapEvalCtx(frobenius(E, L))
- 
+
   z = findall(isequal([mE(fr(preimage(mE, x))) for x = gens(rE, prime_field(rE))]), power_frob_E)
   @assert length(z) == 1
 #  @assert z[1] == d+1  #for d == 1 wrong
@@ -960,7 +929,7 @@ k2 = Hecke.generic_completion(k, l2[1][1])  #S(3)(6)
   return beta, action, G_mul, mul, sigma_hat
 end
 #############################################################################
-#   The following "norm_equation_unramified" solves the norm equations only 
+#   The following "norm_equation_unramified" solves the norm equations only
 #   in unramified extensions
 # Ali PhD, Algorithm 4
 #############################################################################
@@ -1004,7 +973,7 @@ function norm_equation_unramified(L::Hecke.LocalField, b::Hecke.LocalFieldElem)
    if iszero(b//nc-1)
      return c*f_nm
    end
-   
+
    n = ee*valuation((b//nc)-1)
    while prec_b >= n+1 #  "solve till precision n-1"
       z = ((b//nc)-1)*piK^-ZZ(n)
@@ -1049,7 +1018,7 @@ function one_unit_group(K::LocalField)
   if length(gens) == absolute_degree(K)
     o = map(_order_1_unit, gens)
     G = abelian_group([minimum(o) for x = gens])
-    from_G = function (g::GrpAbFinGenElem)
+    from_G = function (g::FinGenAbGroupElem)
       return prod(gens[i]^g[i] for i=1:length(gens))
     end
     to_G = function (a::LocalFieldElem)
@@ -1063,7 +1032,7 @@ function one_unit_group(K::LocalField)
     rel, po = solve_1_units(gens[1:end-1], gens[end])
     push!(rel, -po)
     h, t = hnf_with_transform(matrix(ZZ, length(gens), 1, rel))
-    while h[1,1] > 20 
+    while h[1,1] > 20
       #=
       Eisenstein extension with defining polynomial x^2 + (2^1 + 2^2 + 2^3 + 2^4 + 2^5 + 2^6 + 2^7 + 2^8 + 2^9 + 2^10 + 2^11 + 2^12 + 2^13 + 2^14 + 2^15 + 2^16 + 2^17 + 2^18 + 2^19 + 2^20 + 2^21 + 2^22 + 2^23 + 2^24 + 2^25 + 2^26 + 2^27 + 2^28 + 2^29 + 2^30 + 2^31 + O(2^32))*x + 2^1 + O(2^32) over Unramified extension of 2-adic numbers of degree 1
 
@@ -1071,7 +1040,7 @@ function one_unit_group(K::LocalField)
       solve_1_units -> rework as rels_1_units
       completion of x^2+1 at 2
       =#
-      @show :permuting, h[1,1]
+      # @show :permuting, h[1,1]
       i = rand(1:length(gens)-1)
       gens[end], gens[i] = gens[i], gens[end]
       rel, po = solve_1_units(gens[1:end-1], gens[end])
@@ -1094,11 +1063,11 @@ function one_unit_group(K::LocalField)
     while length(tor) < h[1,1]
       push!(tor, setprecision(tor[end]*tor[2], pr))
     end
-   
+
     ord = map(_order_1_unit, gens[2:end])
     ord = vcat(h[1,1], [minimum(ord) for x = bas[2:end]])
     G = abelian_group(ord)
-    from_G = function (g::GrpAbFinGenElem)
+    from_G = function (g::FinGenAbGroupElem)
       return prod(bas[i]^g[i] for i=1:length(gens))
     end
     to_G = function (a::LocalFieldElem) #still uncertain
@@ -1110,16 +1079,16 @@ function one_unit_group(K::LocalField)
       @assert z !== nothing
       if p != 1
         b = a*bas[1]^(z-1)
-        s, p = solve_1_units(bas[2:end], b) 
+        s, p = solve_1_units(bas[2:end], b)
         @assert p == 1
       end
       ex = vcat([-z+1], s)
       x = (prod(bas[i]^ex[i] for i=1:length(bas))*inv(a))
-        @assert isone(x) || iszero(x-1) || (@show valuation(x-1); e*valuation(x-1) >= precision(a))
+        @assert isone(x) || iszero(x-1) || (#=@show valuation(x-1);=# e*valuation(x-1) >= precision(a))
       return G(ex)
     end
   end
-  return G, MapFromFunc(from_G, to_G, G, K)
+  return G, MapFromFunc(G, K, from_G, to_G)
 end
 
 function teichmuller(a::LocalFieldElem)
@@ -1148,7 +1117,7 @@ function unit_group(K::LocalField)
   U, mU = one_unit_group(K)
   k, mk = residue_field(K)
   u, mu = unit_group(k)
-  
+
   #group is Z x u x U ...
 
   Z = abelian_group([0])
@@ -1158,7 +1127,7 @@ function unit_group(K::LocalField)
   gk = teichmuller(gk)
   @assert order(u[1]) == order(u)
 
-  from_G = function(g::GrpAbFinGenElem)
+  from_G = function(g::FinGenAbGroupElem)
     return uniformizer(K)^g[1] * gk^pro[2](g)[1] * mU(pro[3](g))
   end
 
@@ -1172,7 +1141,7 @@ function unit_group(K::LocalField)
     return inj[1](v*Z[1]) + inj[2](preimage(mu, r)) + inj[3](preimage(mU, x))
   end
 
-  return G, MapFromFunc(from_G, to_G, G, K)
+  return G, MapFromFunc(G, K, from_G, to_G)
 end
 
 #=
@@ -1181,12 +1150,12 @@ function unit_group(R::QadicRing)
   U, mU = one_unit_group(K)
   k, mk = residue_field(K)
   u, mu = unit_group(k)
-  
+
   #group is u * U ...
 
   G, pro, inj = direct_product(u, U, task = :both)
 
-  from_G = function(g::GrpAbFinGenElem)
+  from_G = function(g::FinGenAbGroupElem)
     return preimage(mk, mu(pro[1](g))) * mU(pro[2](g))
   end
 
@@ -1196,7 +1165,7 @@ function unit_group(R::QadicRing)
     return inj[1](preimage(mu, r)) + inj[2](preimage(mU, x))
   end
 
-  return G, MapFromFunc(from_G, to_G, G, K)
+  return G, MapFromFunc(G, K, from_G, to_G)
 end
 
 =#

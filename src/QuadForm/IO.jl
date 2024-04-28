@@ -144,19 +144,19 @@ end
 function to_magma(io::IO, L::HermLat; target = "L")
   E = nf(base_ring(L))
   K = base_field(E)
-  println(io, "Qx<x> := polynomial_ring(Rationals());")
+  println(io, "Qx<x> := PolynomialRing(Rationals());")
   f = defining_polynomial(K)
   pol = replace(string(f), "//" => "/")
   pol = replace(pol, string(var(parent(f))) => "x")
   println(io, "f := ", pol, ";")
-  println(io, "K<a> := number_field(f : DoLinearExtension);")
-  println(io, "Kt<t> := polynomial_ring(K);")
+  println(io, "K<a> := NumberField(f : DoLinearExtension);")
+  println(io, "Kt<t> := PolynomialRing(K);")
   f = defining_polynomial(E)
   pol = replace(string(f), string(var(parent(f))) => "t")
   pol = replace(pol, string(var(K)) => "a")
   pol = replace(pol, "//" => "/")
   println(io, "g := ", pol, ";")
-  println(io, "E<b> := number_field(g : DoLinearExtension);")
+  println(io, "E<b> := NumberField(g : DoLinearExtension);")
   F = gram_matrix(ambient_space(L))
   Fst = "[" * split(string([F[i, j] for i in 1:nrows(F) for j in 1:ncols(F)]), '[')[2]
   println(io, "F := Matrix(E, ", nrows(F), ", ", ncols(F), ", ", Fst, ");")
@@ -185,12 +185,12 @@ end
 
 function to_magma(io::IO, L::QuadLat; target = "L")
   K = nf(base_ring(L))
-  println(io, "Qx<x> := polynomial_ring(Rationals());")
+  println(io, "Qx<x> := PolynomialRing(Rationals());")
   f = absolute_minpoly(gen(K))
   pol = replace(string(f), "//" => "/")
   pol = replace(pol, string(var(parent(f))) => "x")
   println(io, "f := ", pol, ";")
-  println(io, "K<a> := number_field(f : DoLinearExtension);")
+  println(io, "K<a> := NumberField(f : DoLinearExtension);")
   F = gram_matrix(ambient_space(L))
   Fst = "[" * split(string([F[i, j] for i in 1:nrows(F) for j in 1:ncols(F)]), '[')[2]
   Fst = replace(Fst, string(var(K)) => "a")
@@ -218,7 +218,7 @@ function to_magma(io::IO, L::QuadLat; target = "L")
   println(io, "$target := LatticeModule(M, F);")
 end
 
-function var(E::NfRel)
+function var(E::RelSimpleNumField)
   return E.S
 end
 
@@ -228,17 +228,17 @@ end
 #
 ################################################################################
 
-function to_hecke(io::IO, L::ZLat; target = "L", skip_field = false)
+function to_hecke(io::IO, L::ZZLat; target = "L", skip_field = false)
   B = basis_matrix(L)
   G = gram_matrix(ambient_space(L))
   Bst = "[" * split(string([B[i, j] for i in 1:nrows(B) for j in 1:ncols(B)]), '[')[2]
   Gst = "[" * split(string([G[i, j] for i in 1:nrows(G) for j in 1:ncols(G)]), '[')[2]
   println(io, "B = matrix(FlintQQ, ", nrows(B), ", ", ncols(B), " ,", Bst, ");")
   println(io, "G = matrix(FlintQQ, ", nrows(G), ", ", ncols(G), " ,", Gst, ");")
-  println(io, target, " = ", "Zlattice(B, gram = G);")
+  println(io, target, " = ", "integer_lattice(B, gram = G);")
 end
 
-function to_magma(io::IO, L::ZLat; target = "L")
+function to_magma(io::IO, L::ZZLat; target = "L")
   B = basis_matrix(L)
   G = gram_matrix(ambient_space(L))
   Bst = "[" * split(string([B[i, j] for i in 1:nrows(B) for j in 1:ncols(B)]), '[')[2]
@@ -260,7 +260,7 @@ function to_sage_string(L::AbstractLat; target = "L")
   return String(take!(b))
 end
 
-function to_sage(io::IO, L::ZLat; target = "L")
+function to_sage(io::IO, L::ZZLat; target = "L")
   B = basis_matrix(L)
   G = gram_matrix(ambient_space(L))
   Bst = "[" * split(string([B[i, j] for i in 1:nrows(B) for j in 1:ncols(B)]), '[')[2]

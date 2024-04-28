@@ -1,17 +1,4 @@
-@doc raw"""
-    lift(a::padic) -> ZZRingElem
-
-Returns the positive canonical representative in $\mathbb{Z}$. $a$ needs
-to be integral.
-"""
-function lift(a::padic)
-  b = ZZRingElem()
-  R = parent(a)
-  ccall((:padic_get_fmpz, libflint), Nothing, (Ref{ZZRingElem}, Ref{padic}, Ref{FlintPadicField}), b, a, R)
-  return b
-end
-
-function _lift(a::padic)
+function _lift(a::PadicFieldElem)
   R = parent(a)
   v = valuation(a)
   if v >= 0
@@ -22,21 +9,12 @@ function _lift(a::padic)
   end
 end
 
-function Base.setprecision(f::Generic.Poly{padic}, N::Int)
-  g = parent(f)()
-  fit!(g, length(f))
-  for i=1:length(f)
-    g.coeffs[i] = setprecision!(f.coeffs[i], N)
+function _coerce(Qp::PadicField, x::PadicFieldElem)
+  @assert prime(Qp) == prime(parent(x))
+  if precision(x) < precision(Qp)
+    error("Precision of field ($(precision(Qp)) larger than precision of element ($(precision(x)))")
   end
-  set_length!(g, normalise(g, length(f)))
-  return g
-end
-
-function setprecision!(f::Generic.Poly{padic}, N::Int)
-  for i=1:length(f)
-    f.coeffs[i] = setprecision!(f.coeffs[i], N)
-  end
-  return f
+  return Qp(_lift(x))
 end
 
 """
@@ -54,7 +32,7 @@ function my_log_one_minus_inner(x::ZZRingElem, pr::Int, v::Int, p)
   return -x*my_eval(map(i->QQFieldElem(1, i), 1:N), QQFieldElem(x))
 end
 
-function my_log_one_minus(x::padic)
+function my_log_one_minus(x::PadicFieldElem)
   v = valuation(x)
   lg = parent(x)(0)
   le = 1
@@ -76,7 +54,7 @@ function my_log_one_minus(x::padic)
 
 end
 
-function my_log_one_minus_inner(x::Generic.ResidueRingElem{QQPolyRingElem}, pr::Int, v::Int, p)
+function my_log_one_minus_inner(x::EuclideanRingResidueRingElem{QQPolyRingElem}, pr::Int, v::Int, p)
   #need N s.th. Nv-log_p(N) >= pr
   #as a function of N, this has a min at log(p)/v
   #the N needs to > pr/v + s.th. small
@@ -89,7 +67,7 @@ function my_log_one_minus_inner(x::Generic.ResidueRingElem{QQPolyRingElem}, pr::
   return -x*my_eval(map(i->R(QQFieldElem(1, i)), 1:N), x)
 end
 
-function my_log_one_minus(x::qadic)
+function my_log_one_minus(x::QadicFieldElem)
   v = valuation(x)
   lg = parent(x)(0)
   le = 1
@@ -98,7 +76,7 @@ function my_log_one_minus(x::qadic)
   pp = prime(parent(x))^2
   X = 1-x
   R, _ = polynomial_ring(QQ, cached = false)
-  S = residue_ring(R, map_coefficients(x->QQ(lift(x)), defining_polynomial(parent(x)), parent = R))
+  S, _ = residue_ring(R, map_coefficients(x->QQ(lift(x)), defining_polynomial(parent(x)), parent = R))
   while true
     Y = 1-X
     y = S(R([lift(coeff(Y, i)) % pp for i=0:length(Y)]))

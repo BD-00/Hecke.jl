@@ -38,7 +38,7 @@ function is_kummer_extension(K::SimpleNumField)
   return true
 end
 
-function is_kummer_extension(K::AnticNumberField)
+function is_kummer_extension(K::AbsSimpleNumField)
   if degree(K) != 2
     return false
   end
@@ -61,7 +61,7 @@ extension of $K$ with the defining polynomial $x^n - a$.
 
 ```jldoctest
 julia> radical_extension(5, QQ(2), "a")
-(Number field over Rational Field with defining polynomial x^5 - 2, a)
+(Number field of degree 5 over QQ, a)
 ```
 """
 function radical_extension(n::Int, a::NumFieldElem, s::String = "_\$";
@@ -99,7 +99,7 @@ julia> Qx, x = QQ["x"];
 julia> K, a = number_field(x^2 - 2, "a");
 
 julia> basis(K)
-2-element Vector{nf_elem}:
+2-element Vector{AbsSimpleNumFieldElem}:
  1
  a
 ```
@@ -112,17 +112,15 @@ basis(::SimpleNumField)
 #
 ################################################################################
 
-export defining_polynomial
-
 @doc raw"""
-    defining_polynomial(L::SimpleNumField) -> PolyElem
+    defining_polynomial(L::SimpleNumField) -> PolyRingElem
 
 Given a simple number field $L/K$, constructed as $L = K[x]/(f)$, this function
 returns $f$.
 """
 defining_polynomial(::SimpleNumField)
 
-defining_polynomial(K::NfRel) = K.pol
+defining_polynomial(K::RelSimpleNumField) = K.pol
 
 ################################################################################
 #
@@ -156,17 +154,13 @@ degree of $L$.
 """
 absolute_discriminant(::SimpleNumField)
 
-function absolute_discriminant(K::AnticNumberField)
+function absolute_discriminant(K::AbsSimpleNumField)
   return discriminant(K)
 end
 
-function absolute_discriminant(K::NfRel)
+function absolute_discriminant(K::RelSimpleNumField)
   d = norm(discriminant(K)) * absolute_discriminant(base_field(K))^degree(K)
   return d
-end
-
-function discriminant(K::QQField)
-  return one(K)
 end
 
 ################################################################################
@@ -198,8 +192,6 @@ Return `true` and an isomorphism from $K$ to $L$ if $K$ and $L$ are isomorphic.
 Otherwise the function returns `false` and a morphism mapping everything to $0$.
 """
 is_isomorphic_with_map(::SimpleNumField, ::SimpleNumField)
-
-export is_isomorphic_with_map
 
 ################################################################################
 #

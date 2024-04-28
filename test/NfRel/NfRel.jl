@@ -1,4 +1,4 @@
-@testset "NfRel" begin
+@testset "RelSimpleNumField" begin
   @testset "is_subfield" begin
     Qx, x = FlintQQ["x"]
     f = x^2 + 12x - 92
@@ -67,9 +67,9 @@
 
     m = make(L, 1:3)
     for x in (rand(L, 1:3), rand(rng, L, 1:3), rand(m), rand(rng, m))
-      @test x isa Hecke.NfRelElem{nf_elem}
+      @test x isa Hecke.RelSimpleNumFieldElem{AbsSimpleNumFieldElem}
     end
-    @test rand(m, 3) isa Vector{Hecke.NfRelElem{nf_elem}}
+    @test rand(m, 3) isa Vector{Hecke.RelSimpleNumFieldElem{AbsSimpleNumFieldElem}}
     @test reproducible(m)
     @test reproducible(L, 1:3)
   end
@@ -109,5 +109,26 @@
       x = gen(R)
       @test chip == sum([x^i for i=0:p-1])
     end
+  end
+
+  @testset "coercion" begin
+    K, a = Hecke.rationals_as_number_field()
+    Kt, t = K["t"]
+    L, b = number_field(t - 1, "b")
+    Lt, t = L["t"]
+    M, o = number_field(t^3 + 2, "o")
+    @test QQ(2*b^0) == 2*one(QQ)
+    @test QQ(2*o^0) == 2*one(QQ)
+    @test_throws ArgumentError QQ(o)
+    @test is_rational(2*b^0)
+    @test is_rational(2*o^0)
+    @test !is_rational(o)
+
+    Qx, x = QQ["x"]
+    K, r = number_field(x^3 - 3x^2 - 4x + 8, "r")
+    Ky, y = K["y"]
+    L, = number_field(y^2 - (2-r^2)//2, "q")
+    @test !(@inferred is_rational(L(r)))
+    @test_throws ErrorException QQ(L(r))
   end
 end

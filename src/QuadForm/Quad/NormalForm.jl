@@ -58,7 +58,7 @@ function _ispadic_normal_form_odd(G, p)
 
   o = identity_matrix(QQ, 1)
 
-  F,  = FiniteField(p, 1, cached = false)
+  F,  = finite_field(p, 1, cached = false)
 
   for i in 1:length(blocks)
     if all(==(o), blocks[i])
@@ -202,7 +202,7 @@ function _padic_normal_form(G::QQMatrix, p::ZZRingElem; prec::Int = -1, partial:
   end
 
   modu = p^prec
-  R = residue_ring(FlintZZ, modu, cached = false)
+  R = residue_ring(FlintZZ, modu, cached = false)[1]
   Gmod = map(q -> R(invmod(denominator(q), modu) * numerator(q)), G) # this will probably fail
   D = deepcopy(Gmod)
 
@@ -725,7 +725,7 @@ function _jordan_2_adic(G)
   # transformation matrix
   B = identity_matrix(base_ring(G), n)
 
-  # indices of the diagonal entrys which are already used
+  # indices of the diagonal entries which are already used
   cnt = 1
   local minval::Union{Int,PosInf}
   while cnt <= n
@@ -741,8 +741,8 @@ function _jordan_2_adic(G)
         swap_rows!(D, cnt, piv1)
         swap_cols!(D, cnt, piv1)
       end
-      # we are already orthgonal to the part with i < cnt
-      # now make the rest orthgonal too
+      # we are already orthogonal to the part with i < cnt
+      # now make the rest orthogonal too
       for i in cnt+1:n
         if !iszero(D[i, cnt])
           c = divexact(D[i, cnt], D[cnt, cnt])
@@ -836,9 +836,10 @@ function _min_nonsquare(p)
   Rx, x = polynomial_ring(GF(p, cached = false), "x", cached = false)
   for i in 1:p
     if length(factor(x^2 - i)) == 1
-      return i
+      return Int(i)
     end
   end
+  error("this can't be reached")
 end
 
 function _issquare(d::Nemo.ZZModRingElem, p::ZZRingElem)
@@ -850,7 +851,7 @@ end
 
 function _issquare(d::zzModRingElem, p)
   f = ZZ(modulus(parent(d)))
-  R = residue_ring(FlintZZ, f, cached = false)
+  R = residue_ring(FlintZZ, f, cached = false)[1]
   g = R(d)
   return _issquare(g, ZZ(p))
 end
@@ -874,7 +875,7 @@ end
 #
 #    INPUT:
 #
-#    - ``G`` -- a symmetric matrix over `\ZZ_p` in jordan form --
+#    - ``G`` -- a symmetric matrix over `\ZZ_p` in Jordan form --
 #      the output of :meth:`p_adic_normal_form` or :meth:`_jordan_2_adic`
 #    - ``normal_odd`` -- bool (default: True) if true and `p` is odd,
 #      compute a normal form.
@@ -941,8 +942,8 @@ function _normalize(G, p, normal_odd = true)
           j = pop!(non_squares)
           trafo = _normalize_odd_twobytwo(D[[i, j], [i, j]], p)
           _BB = trafo * B[[i, j], :]
-          B[i, :] = _BB[1, :]
-          B[j, :] = _BB[2, :]
+          B[i:i, :] = _BB[1:1, :]
+          B[j:j, :] = _BB[2:2, :]
           #B[[i, j], :] = trafo * B[[i, j], :]
           D[i, i] = 1
           D[j, j] = 1
@@ -1035,32 +1036,6 @@ end
 #    from sage.rings.all import polynomial_ring
 #    from sage.modules.free_module_element import vector
 
-function roots(f::ZZModPolyRingElem, p::ZZRingElem, e::Int)
-  F = Fac{ZZRingElem}()
-  F.unit = one(ZZRingElem)
-  F[p] = e
-  return roots(f, F)
-end
-function roots(f::ZZModPolyRingElem, fac::Fac{ZZRingElem})
-  res = Nemo.fmpz_mod_poly_factor(base_ring(f))
-  _fac = Nemo.fmpz_factor()
-  for (p, e) in fac
-    ccall((:_fmpz_factor_append, libflint), Cvoid, (Ref{Nemo.fmpz_factor}, Ref{ZZRingElem}, UInt), _fac, p, UInt(e))
-  end
-  ccall((:fmpz_mod_poly_roots_factored, libflint), Cvoid, (Ref{Nemo.fmpz_mod_poly_factor}, Ref{ZZModPolyRingElem}, Cint, Ref{Nemo.fmpz_factor}, Ref{Nemo.fmpz_mod_ctx_struct}), res, f, 1, _fac, base_ring(f).ninv)
-  _res = Tuple{Nemo.ZZModRingElem, Int}[]
-  for i in 1:res.num
-    g = parent(f)()
-    ccall((:fmpz_mod_poly_factor_get_fmpz_mod_poly, libflint), Nothing,
-          (Ref{Nemo.ZZModPolyRingElem}, Ref{Nemo.fmpz_mod_poly_factor}, Int,
-           Ref{Nemo.fmpz_mod_ctx_struct}),
-          g, res, i - 1, base_ring(f).ninv)
-    e = unsafe_load(res.exp, i)
-    push!(_res, (-coeff(g, 0), e))
-  end
-  return _res
-end
-
 function _normalize_twobytwo(G, p)
   # p = ZZRingElem(2)
 
@@ -1073,7 +1048,7 @@ function _normalize_twobytwo(G, p)
     error("Not a valid 2 x 2 block.")
   end
   scale = p^(_val(G[1, 2], p))
-  D = matrix(R, 2, 2, [divexact(d, R(scale)) for d in G]) # G is symmetric
+  D = map_entries(d -> divexact(d, R(scale)), G) # G is symmetric
   # now D is of the form
   # [2a b ]
   # [b  2c]

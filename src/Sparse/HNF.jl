@@ -19,7 +19,7 @@ function reduce(A::SMat{zzModRingElem}, g::SRow{zzModRingElem})
 end
 
 function _reduce_field(A::SMat{T}, g::SRow{T}) where {T}
-  @hassert :HNF 1  isupper_triangular(A)
+  @hassert :HNF 1  is_upper_triangular(A)
   #assumes A is upper triangular, reduces g modulo A
   # supposed to be a field...
   if A.r == A.c
@@ -56,7 +56,7 @@ Given an upper triangular matrix $A$ over a field and a sparse row $g$, this
 function reduces $g$ modulo $A$.
 """
 function reduce(A::SMat{T}, g::SRow{T}) where {T}
-  @hassert :HNF 1  isupper_triangular(A)
+  @hassert :HNF 1  is_upper_triangular(A)
   #assumes A is upper triangular, reduces g modulo A
   #until the 1st (pivot) change in A
   new_g = false
@@ -119,7 +119,7 @@ integer $m$, this function reduces $g$ modulo $A$ and returns $g$
 modulo $m$ with respect to the symmetric residue system.
 """
 function reduce(A::SMat{T}, g::SRow{T}, m::T) where {T}
-  @hassert :HNF 1  isupper_triangular(A)
+  @hassert :HNF 1  is_upper_triangular(A)
   #assumes A is upper triangular, reduces g modulo A
   g = deepcopy(g)
   mod_sym!(g, m)
@@ -170,20 +170,7 @@ function reduce(A::SMat{T}, g::SRow{T}, m::T) where {T}
   return g
 end
 
-function mod_sym(a::T, b::T) where {T}
-  return mod(a, b)
-end
-function mod_sym!(a::T, b::T) where {T}
-  return mod!(a, b)
-end
 
-function mod_sym!(a::ZZRingElem, b::ZZRingElem)
-  mod!(a, a, b)
-  if a>div(b, 2)
-    sub!(a, a, b)
-  end
-  return a
-end
 
 ################################################################################
 #
@@ -205,7 +192,7 @@ function saturate(A::SMat{ZZRingElem})
   Hti = transpose(hnf(transpose(A)))
   Hti = sub(Hti , 1:nrows(Hti), 1:nrows(Hti))
   Hti = transpose(Hti)
-  S, s = solve_ut(Hti, transpose(A))
+  S, s = _solve_ut(Hti, transpose(A))
   @assert isone(s)
   SS = transpose(S)
   return SS
@@ -225,7 +212,7 @@ for all $j > 1$. It is assumed that $A$ is upper triangular.
 If such an index does not exist, find the smallest index larger.
 """
 function find_row_starting_with(A::SMat, p::Int)
-#  @hassert :HNF 1  isupper_triangular(A)
+#  @hassert :HNF 1  is_upper_triangular(A)
   start = 0
   stop = nrows(A)+1
   while start < stop - 1
@@ -241,12 +228,9 @@ function find_row_starting_with(A::SMat, p::Int)
   return stop
 end
 
-# If trafo is set to Val{true}, then additionally an Array of transformations
+# If with_transform is set to true, then additionally an Array of transformations
 # is returned.
-function reduce_up(A::SMat{T}, piv::Vector{Int},
-                                  trafo::Type{Val{N}} = Val{false}) where {N, T}
-
-  with_transform = (trafo == Val{true})
+function reduce_up(A::SMat{T}, piv::Vector{Int}, with_transform_val::Val{with_transform} = Val(false)) where {T, with_transform}
   if with_transform
     trafos = SparseTrafoElem{T, dense_matrix_type(T)}[]
   end
@@ -257,7 +241,7 @@ function reduce_up(A::SMat{T}, piv::Vector{Int},
   for red=p-1:-1:1
     # the last argument should be the smallest pivot larger then pos[1]
     if with_transform
-      A[red], new_trafos = reduce_right(A, A[red], max(A[red].pos[1]+1, piv[1]), trafo)
+      A[red], new_trafos = reduce_right(A, A[red], max(A[red].pos[1]+1, piv[1]), with_transform_val)
       for t in new_trafos
         t.j = red
       end
@@ -273,21 +257,18 @@ end
 # is returned.
 @doc raw"""
     reduce_full(A::SMat{ZZRingElem}, g::SRow{ZZRingElem},
-                          trafo = Val{false}) -> SRow{ZZRingElem}, Vector{Int}
+                          with_transform = Val(false)) -> SRow{ZZRingElem}, Vector{Int}
 
 Reduces $g$ modulo $A$ and assumes that $A$ is upper triangular.
 
 The second return value is the array of pivot elements of $A$ that changed.
 
-If `trafo` is set to `Val{true}`, then additionally an array of transformations
+If `with_transform` is set to `Val(true)`, then additionally an array of transformations
 is returned.
 """
-function reduce_full(A::SMat{T}, g::SRow{T}, trafo::Type{Val{N}} = Val{false}) where {N, T}
-#  @hassert :HNF 1  isupper_triangular(A)
+function reduce_full(A::SMat{T}, g::SRow{T}, with_transform_val::Val{with_transform} = Val(false)) where {T, with_transform}
+#  @hassert :HNF 1  is_upper_triangular(A)
   #assumes A is upper triangular, reduces g modulo A
-
-  with_transform = (trafo == Val{true})
-  no_trafo = (trafo == Val{false})
 
   if with_transform
     trafos = SparseTrafoElem{T, dense_matrix_type(T)}[]
@@ -321,7 +302,7 @@ function reduce_full(A::SMat{T}, g::SRow{T}, trafo::Type{Val{N}} = Val{false}) w
 
       _g = g
       if with_transform
-        g, new_trafos  = reduce_right(A, g, 1, trafo)
+        g, new_trafos  = reduce_right(A, g, 1, with_transform_val)
         append!(trafos, new_trafos)
       else
         g = reduce_right(A, g)
@@ -360,7 +341,7 @@ function reduce_full(A::SMat{T}, g::SRow{T}, trafo::Type{Val{N}} = Val{false}) w
       @hassert :HNF 1  length(g)==0 || g.pos[1] > A[j].pos[1]
       push!(piv, A[j].pos[1])
       if with_transform
-        A[j], new_trafos = reduce_right(A, A[j], A[j].pos[1]+1, trafo)
+        A[j], new_trafos = reduce_right(A, A[j], A[j].pos[1]+1, with_transform_val)
         # We are updating the jth row
         # Have to adjust the transformations
         for t in new_trafos
@@ -369,7 +350,7 @@ function reduce_full(A::SMat{T}, g::SRow{T}, trafo::Type{Val{N}} = Val{false}) w
         # Now append
         append!(trafos, new_trafos)
       else
-        A[j] = reduce_right(A, A[j], A[j].pos[1]+1, trafo)
+        A[j] = reduce_right(A, A[j], A[j].pos[1]+1, with_transform_val)
       end
 
       if A.r == A.c
@@ -392,7 +373,7 @@ function reduce_full(A::SMat{T}, g::SRow{T}, trafo::Type{Val{N}} = Val{false}) w
     new_g = false
   end
   if with_transform
-    g, new_trafos = reduce_right(A, g, 1, trafo)
+    g, new_trafos = reduce_right(A, g, 1, with_transform_val)
     append!(trafos, new_trafos)
   else
     g = reduce_right(A, g)
@@ -405,9 +386,7 @@ function reduce_full(A::SMat{T}, g::SRow{T}, trafo::Type{Val{N}} = Val{false}) w
   with_transform ? (return g, piv, trafos) : (return g, piv)
 end
 
-function reduce_right(A::SMat{T}, b::SRow{T},
-                      start::Int = 1, trafo::Type{Val{N}} = Val{false}) where {N, T}
-  with_transform = (trafo == Val{true})
+function reduce_right(A::SMat{T}, b::SRow{T}, start::Int = 1, ::Val{with_transform} = Val(false)) where {T, with_transform}
   with_transform ? trafos = [] : nothing
   new = true
   if length(b.pos) == 0
@@ -464,13 +443,12 @@ end
 Given a matrix $A$ in HNF, extend this to get the HNF of the concatenation
 with $b$.
 """
-function hnf_extend!(A::SMat{T}, b::SMat{T}, trafo::Type{Val{N}} = Val{false}; truncate::Bool = false, offset::Int = 0) where {N, T}
+function hnf_extend!(A::SMat{T}, b::SMat{T}, with_transform_val::Val{with_transform} = Val(false); truncate::Bool = false, offset::Int = 0) where {T, with_transform}
   rA = nrows(A)
-  @vprint :HNF 1 "Extending HNF by:\n"
+  @vprintln :HNF 1 "Extending HNF by:"
   @vprint :HNF 1 b
   @vprint :HNF 1 "density $(density(A)) $(density(b))"
 
-  with_transform = (trafo == Val{true})
   with_transform ? trafos = SparseTrafoElem{T, dense_matrix_type(T)}[] : nothing
 
   A_start_rows = nrows(A)  # for the offset stuff
@@ -478,7 +456,7 @@ function hnf_extend!(A::SMat{T}, b::SMat{T}, trafo::Type{Val{N}} = Val{false}; t
   nc = 0
   for i=b
     if with_transform
-      q, w, new_trafos = reduce_full(A, i, trafo)
+      q, w, new_trafos = reduce_full(A, i, with_transform_val)
       append!(trafos, new_trafos)
     else
       q, w = reduce_full(A, i)
@@ -512,7 +490,7 @@ function hnf_extend!(A::SMat{T}, b::SMat{T}, trafo::Type{Val{N}} = Val{false}; t
     end
     if length(w) > 0
       if with_transform
-        new_trafos = reduce_up(A, w, trafo)
+        new_trafos = reduce_up(A, w, with_transform_val)
         append!(trafos, new_trafos)
       else
         reduce_up(A, w)
@@ -522,7 +500,7 @@ function hnf_extend!(A::SMat{T}, b::SMat{T}, trafo::Type{Val{N}} = Val{false}; t
       if nc % 10 == 0
         println("Now at $nc rows of $(nrows(b)), HNF so far $(nrows(A)) rows")
         println("Current density: $(density(A))")
-        @vprint :HNF 2 "and size of largest entry: $(nbits(maximum(abs, A))) bits $(sum(nbits, A))\n"
+        @vprintln :HNF 2 "and size of largest entry: $(nbits(maximum(abs, A))) bits $(sum(nbits, A))"
         @vtime :HNF 1 Base.GC.gc(false)
       end
     end
@@ -550,12 +528,11 @@ end
 
 Compute the Hermite normal form of $A$ using the Kannan-Bachem algorithm.
 """
-function hnf_kannan_bachem(A::SMat{T}, trafo::Type{Val{N}} = Val{false}; truncate::Bool = false) where {N, T}
-  @vprint :HNF 1 "Starting Kannan Bachem HNF on:\n"
+function hnf_kannan_bachem(A::SMat{T}, with_transform_val::Val{with_transform} = Val(false); truncate::Bool = false) where {T, with_transform}
+  @vprintln :HNF 1 "Starting Kannan Bachem HNF on:"
   @vprint :HNF 1 A
-  @vprint :HNF 1 " with density $(density(A)); truncating $truncate\n"
+  @vprintln :HNF 1 " with density $(density(A)); truncating $truncate"
 
-  with_transform = (trafo == Val{true})
   with_transform ? trafos = SparseTrafoElem{T, dense_matrix_type(T)}[] : nothing
 
   B = sparse_matrix(base_ring(A))
@@ -563,7 +540,7 @@ function hnf_kannan_bachem(A::SMat{T}, trafo::Type{Val{N}} = Val{false}; truncat
   nc = 0
   for i=A
     if with_transform
-      q, w, new_trafos = reduce_full(B, i, trafo)
+      q, w, new_trafos = reduce_full(B, i, with_transform_val)
       append!(trafos, new_trafos)
     else
       q, w = reduce_full(B, i)
@@ -597,7 +574,7 @@ function hnf_kannan_bachem(A::SMat{T}, trafo::Type{Val{N}} = Val{false}; truncat
     end
     if length(w) > 0
       if with_transform
-        new_trafos = reduce_up(B, w, trafo)
+        new_trafos = reduce_up(B, w, with_transform_val)
         append!(trafos, new_trafos)
       else
         reduce_up(B, w)
@@ -631,7 +608,7 @@ end
 Return the upper right Hermite normal form of $A$.
 """
 function hnf(A::SMat{ZZRingElem}; truncate::Bool = false)
-  return hnf_kannan_bachem(A, truncate = truncate)
+  return hnf_kannan_bachem(A; truncate = truncate)
 end
 
 @doc raw"""

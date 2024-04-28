@@ -24,9 +24,9 @@ function denominator(x::FakeFmpqMat; copy::Bool = true)
   end
 end
 
-nrows(x::FakeFmpqMat) = nrows(x.num)
+number_of_rows(x::FakeFmpqMat) = number_of_rows(x.num)
 
-ncols(x::FakeFmpqMat) = ncols(x.num)
+number_of_columns(x::FakeFmpqMat) = number_of_columns(x.num)
 
 function simplify_content!(x::FakeFmpqMat)
   c = content(x.num)
@@ -224,12 +224,6 @@ function QQMatrix(x::FakeFmpqMat)
   return z
 end
 
-function QQMatrix(x::ZZMatrix)
-  z = zero_matrix(FlintQQ, nrows(x), ncols(x))
-  ccall((:fmpq_mat_set_fmpz_mat, libflint), Nothing, (Ref{QQMatrix}, Ref{ZZMatrix}), z, x)
-  return z
-end
-
 function _fmpq_mat_to_fmpz_mat_den(x::QQMatrix)
   z = zero_matrix(FlintZZ, nrows(x), ncols(x))
   d = ZZRingElem()
@@ -285,7 +279,7 @@ end
 function hnf_modular_eldiv(x::FakeFmpqMat, g::ZZRingElem; shape = :lowerleft, cutoff::Bool = false)
   h = _hnf_modular_eldiv(x.num, g, shape)
   if cutoff
-    # Since we are modular, we are in the full rank situation 
+    # Since we are modular, we are in the full rank situation
     n = nrows(x)
     m = ncols(x)
     if shape === :lowerleft
@@ -300,7 +294,7 @@ end
 
 function hnf_modular_eldiv!(x::FakeFmpqMat, g::ZZRingElem; shape = :lowerleft, cutoff::Bool = false)
   h = hnf_modular_eldiv!(x.num, g, shape)
-  # Since we are modular, we are in the full rank situation 
+  # Since we are modular, we are in the full rank situation
   if cutoff
     n = nrows(x)
     m = ncols(x)
@@ -326,8 +320,8 @@ end
 #
 ################################################################################
 
-function sub(x::FakeFmpqMat, r::UnitRange{Int}, c::UnitRange{Int})
-  z = FakeFmpqMat(sub(x.num, r, c), x.den)
+function sub(x::FakeFmpqMat, r::AbstractUnitRange{Int}, c::AbstractUnitRange{Int})
+  z = FakeFmpqMat(sub(x.num, r, c), deepcopy(x.den))
   return z
 end
 

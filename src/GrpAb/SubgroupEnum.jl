@@ -33,15 +33,13 @@
 #
 ################################################################################
 
-export minimal_subgroups, psubgroups, index_p_subgroups, subgroups
-
 ################################################################################
 #
 #  Enumeration of subgroups of index p
 #
 ################################################################################
 
-function index_p_subgroups(A::GrpAbFinGen, p::Integer)
+function index_p_subgroups(A::FinGenAbGroup, p::Integer)
   return index_p_subgroups(A, ZZRingElem(p))
 end
 
@@ -53,9 +51,9 @@ mutable struct IndexPSubgroups{S, T}
   c::ZZMatrix
   mthd::T
 
-  function IndexPSubgroups{T}(A::GrpAbFinGen, p::ZZRingElem, mthd::T = sub) where {T}
+  function IndexPSubgroups{T}(A::FinGenAbGroup, p::ZZRingElem, mthd::T = sub) where {T}
     if order(A) % p != 0
-      r = new{Generic.IdentityMap{GrpAbFinGen}, T}()
+      r = new{Generic.IdentityMap{FinGenAbGroup}, T}()
       r.n = 0
       return r
     end
@@ -77,7 +75,7 @@ mutable struct IndexPSubgroups{S, T}
   end
 end
 
-function index_p_subgroups(A::GrpAbFinGen, p::IntegerUnion, mthd::T = sub) where {T}
+function index_p_subgroups(A::FinGenAbGroup, p::IntegerUnion, mthd::T = sub) where {T}
   q = ZZRingElem(p)
   @assert is_prime(q)
   I = IndexPSubgroups{T}(A, q, mthd)
@@ -110,7 +108,7 @@ function index_to_group(s::IndexPSubgroups, i::UInt)
     k += 1
   end
   c[s.st + j-1, s.st + j-1] = s.p
-  gen = [s.mp\(GrpAbFinGenElem(codomain(s.mp), sub(c, l:l, 1:ncols(c)))) for l=1:nrows(c)]
+  gen = [s.mp\(FinGenAbGroupElem(codomain(s.mp), sub(c, l:l, 1:ncols(c)))) for l=1:nrows(c)]
   return s.mthd(domain(s.mp), gen)
 end
 
@@ -142,7 +140,7 @@ end
 
 #=
 example:
- julia> sg = index_p_subgroups(GrpAbFinGen([3,3,3,3]), 3)
+ julia> sg = index_p_subgroups(FinGenAbGroup([3,3,3,3]), 3)
  julia> index_to_group(sg, UInt(6));
 =#
 
@@ -279,12 +277,6 @@ end
   return true
 end
 
-#(::Colon)(x::Int, y::Nothing) = 1:0
-
-Base.:(:)(x::Int, y::Nothing) = 1:0
-
-Base.:(:)(x::Int, y::ZZRingElem) = ZZRingElem(x):y
-
 function SigmaIteratorGivenY(s, x, y)
   t = something(findlast(!iszero, y), 0)
   SigmaIteratorGivenY(Iterators.filter(sigma -> _isvalid(s, t, x, y, sigma),
@@ -343,7 +335,7 @@ end
 function _cIteratorGivenSigma(s::Int, t::Int, x::Vector{Int},
                               y::Vector{Int}, p::IntegerUnion, sigma::Vector{Int})
   pp = Int(p)
-  tau = Nemo.inv!(perm(sigma))
+  tau = Vector{Int}(Nemo.inv!(perm(sigma)))
   indice, it = getintervals(t, s, x, y, pp, sigma, tau)
   return cIteratorGivenSigma{typeof(it)}(s, t, x, y, pp, sigma, tau, indice, it)
 end
@@ -460,12 +452,12 @@ end
 # Given a matrix M and a group G, this function constructs elements from
 # the columns of M. The indice allows to handle the case, where the
 # generators of G correspond to a permutation of the rows of M.
-function _matrix_to_elements(G::GrpAbFinGen, M::Matrix{Int},
+function _matrix_to_elements(G::FinGenAbGroup, M::Matrix{Int},
                              indice::Vector{Int} = collect(1:ngens(G)))
   numgenssub = size(M, 2)
   numgen = ngens(G)
   r = size(M, 1)
-  z = Array{GrpAbFinGenElem}(undef, numgenssub)
+  z = Array{FinGenAbGroupElem}(undef, numgenssub)
   v = zeros(Int, numgen)
   for i in 1:numgenssub
     for j in 1:r
@@ -482,7 +474,7 @@ end
 # Given a finitely generated p-group G in Smith normal form, and a type t,
 # this function returns an iterator, which iterates over generators of
 # subgroups of type t. If t = [-1], then there is no restriction on the type.
-function __psubgroups_gens(G::GrpAbFinGen, p::IntegerUnion,
+function __psubgroups_gens(G::FinGenAbGroup, p::IntegerUnion,
                            order, index, t::Vector{Int})
   @assert isfinite(G)
   @assert is_snf(G)
@@ -508,7 +500,7 @@ function __psubgroups_gens(G::GrpAbFinGen, p::IntegerUnion,
   return Gtype, indice
 end
 
-function __psubgroups_gens(G::GrpAbFinGen, p::IntegerUnion,
+function __psubgroups_gens(G::FinGenAbGroup, p::IntegerUnion,
                            order, index, types)
   @assert isfinite(G)
   @assert is_snf(G)
@@ -537,7 +529,7 @@ function __psubgroups_gens(G::GrpAbFinGen, p::IntegerUnion,
   return Gtype, indice
 end
 
-function __psubgroups_gens(G::GrpAbFinGen, p::IntegerUnion, order, index)
+function __psubgroups_gens(G::FinGenAbGroup, p::IntegerUnion, order, index)
   @assert isfinite(G)
   @assert is_snf(G)
   # The SNF can contain 1's and 0's
@@ -565,7 +557,7 @@ function __psubgroups_gens(G::GrpAbFinGen, p::IntegerUnion, order, index)
 end
 
 # Same as above but now for arbitrary p-groups
-function _psubgroups_gens(G::GrpAbFinGen, p, t, order, index)
+function _psubgroups_gens(G::FinGenAbGroup, p, t, order, index)
   if is_snf(G)
     if t == [-1]
       return __psubgroups_gens(G, p, order, index)
@@ -575,17 +567,17 @@ function _psubgroups_gens(G::GrpAbFinGen, p, t, order, index)
   else
     S, mS = snf(G)
     if t == [-1]
-      return ( map(x -> image(mS, x)::GrpAbFinGenElem, z)
+      return ( map(x -> image(mS, x)::FinGenAbGroupElem, z)
                for z in __psubgroups_gens(S, p, order, index))
     else
-      return ( map(x -> image(mS, x)::GrpAbFinGenElem, z)
+      return ( map(x -> image(mS, x)::FinGenAbGroupElem, z)
                for z in __psubgroups_gens(S, p, order, index, t))
     end
   end
 end
 
 
-function _psubgroups_gens_quotype(G::GrpAbFinGen, p, t, order, index)
+function _psubgroups_gens_quotype(G::FinGenAbGroup, p, t, order, index)
   if is_snf(G)
     x = Tuple{Int, Int}[ (valuation(G.snf[i], p), i)
                        for i in 1:length(G.snf) if G.snf[i] > 1]
@@ -597,7 +589,7 @@ function _psubgroups_gens_quotype(G::GrpAbFinGen, p, t, order, index)
     return __psubgroups_gens(G, p, order, index, filtered_types)
   else
     S, mS = snf(G)
-    return ( map(x -> image(mS, x)::GrpAbFinGenElem, z)
+    return ( map(x -> image(mS, x)::FinGenAbGroupElem, z)
              for z in _psubgroups_gens_quotype(S, p, t, order, index))
   end
 end
@@ -608,16 +600,20 @@ function _ptype(G, p)
                        for i in 1:length(Gsnf.snf) if Gsnf.snf[i] > 1]
   reverse!(x)
   t = findlast(!iszero, x)
-  return x[1:t]
+  if t === nothing
+    return x[1:0]
+  else
+    return x[1:t]
+  end
 end
 
 # Same as above but now allow a function to be applied to the output
-function _psubgroups(G::GrpAbFinGen, p::IntegerUnion; subtype = [-1],
+function _psubgroups(G::FinGenAbGroup, p::IntegerUnion; subtype = [-1],
                                                               quotype = [-1],
                                                               order = -1,
                                                               index = -1,
                                                               fun = sub)
-  P, mP = psylow_subgroup(G, p, false)
+  P, mP = sylow_subgroup(G, p, false)
 
   if quotype != [-1]
     return ( fun(G, map(mP, z))
@@ -630,7 +626,7 @@ end
 
 # We use a custom type for the iterator to have pretty printing.
 mutable struct pSubgroupIterator{F, T, E}
-  G::GrpAbFinGen
+  G::FinGenAbGroup
   p::ZZRingElem
   subtype::Vector{Int}
   quotype::Vector{Int}
@@ -674,7 +670,7 @@ function Base.show(io::IO, I::pSubgroupIterator)
   end
 end
 
-function pSubgroupIterator(G::GrpAbFinGen, p::IntegerUnion;
+function pSubgroupIterator(G::FinGenAbGroup, p::IntegerUnion;
                                            subtype::Vector{Int} = [-1],
                                            quotype::Vector{Int} = [-1],
                                            index::Union{ZZRingElem, Int} = -1,
@@ -687,7 +683,7 @@ function pSubgroupIterator(G::GrpAbFinGen, p::IntegerUnion;
                            fun = fun, index = index, order = order)
   end
 
-  E = Core.Compiler.return_type(fun, Tuple{GrpAbFinGen, Vector{GrpAbFinGenElem}})
+  E = Core.Compiler.return_type(fun, Tuple{FinGenAbGroup, Vector{FinGenAbGroupElem}})
 
   z = pSubgroupIterator{typeof(fun), typeof(it), E}(G, ZZRingElem(p), subtype, [-1],
                                                     ZZRingElem(index), ZZRingElem(order), fun, it)
@@ -695,7 +691,7 @@ function pSubgroupIterator(G::GrpAbFinGen, p::IntegerUnion;
 end
 
 @doc raw"""
-    psubgroups(g::GrpAbFinGen, p::Integer;
+    psubgroups(g::FinGenAbGroup, p::Integer;
                subtype = :all,
                quotype = :all,
                index = -1,
@@ -704,7 +700,7 @@ end
 Return an iterator for the subgroups of $G$ of the specific form. Note that
 `subtype` (and `quotype`) is the type of the subgroup as an abelian $p$-group.
 """
-function psubgroups(G::GrpAbFinGen, p::IntegerUnion; subtype = :all,
+function psubgroups(G::FinGenAbGroup, p::IntegerUnion; subtype = :all,
                                                              quotype = :all,
                                                              index =  -1,
                                                              order = -1,
@@ -757,7 +753,7 @@ Base.IteratorSize(::Type{pSubgroupIterator{F, T, E}}) where {F, T, E} = Base.Siz
 ################################################################################
 
 mutable struct SubgroupIterator{F, T, E}
-  G::GrpAbFinGen
+  G::FinGenAbGroup
   subtype::Vector{Int}
   quotype::Vector{Int}
   index::ZZRingElem
@@ -806,7 +802,7 @@ Base.IteratorSize(::Type{SubgroupIterator{F, T, E}}) where {F, T, E} = Base.Size
 
 Base.eltype(::Type{SubgroupIterator{F, T, E}}) where {F, T, E} = E
 
-function _subgroups_gens(G::GrpAbFinGen, subtype::Vector{S} = [-1],
+function _subgroups_gens(G::FinGenAbGroup, subtype::Vector{S} = [-1],
                          quotype = [-1], suborder = -1,
                          subindex = -1) where S <: IntegerUnion
   primes = ZZRingElem[]
@@ -825,7 +821,7 @@ function _subgroups_gens(G::GrpAbFinGen, subtype::Vector{S} = [-1],
       filter!( z -> z > 0, ptype)
       sort!(ptype, rev = true)
       T = psubgroups(G, Int(p), quotype = ptype, fun = (g, m) -> sub(g, m, false))
-      genss = ( GrpAbFinGenElem[ t[2](x) for x in gens(t[1]) ] for t in T )
+      genss = ( FinGenAbGroupElem[ t[2](x) for x in gens(t[1]) ] for t in T )
       push!(pgens, genss)
     end
   elseif subtype != [-1]
@@ -846,7 +842,7 @@ function _subgroups_gens(G::GrpAbFinGen, subtype::Vector{S} = [-1],
       filter!( z -> z > 0, ptype)
       sort!(ptype, rev = true)
       T = psubgroups(G, Int(p), subtype = ptype, fun = (g, m) -> sub(g, m, false))
-      genss = ( GrpAbFinGenElem[ t[2](x) for x in gens(t[1]) ] for t in T )
+      genss = ( FinGenAbGroupElem[ t[2](x) for x in gens(t[1]) ] for t in T )
       push!(pgens, genss)
     end
   elseif suborder != -1 || subindex != -1
@@ -860,14 +856,14 @@ function _subgroups_gens(G::GrpAbFinGen, subtype::Vector{S} = [-1],
     for (p, e) in fac
       orderatp = p^e
       T = psubgroups(G, Int(p), order = orderatp, fun = (g, m) -> sub(g, m, false))
-      genss = ( GrpAbFinGenElem[ t[2](x) for x in gens(t[1]) ] for t in T )
+      genss = ( FinGenAbGroupElem[ t[2](x) for x in gens(t[1]) ] for t in T )
       push!(pgens, genss)
     end
   else
     fac = factor(order(G))
     for (p, e) in fac
       T = psubgroups(G, Int(p), fun = (g, m) -> sub(g, m, false))
-      genss = ( GrpAbFinGenElem[ t[2](x) for x in gens(t[1]) ] for t in T )
+      genss = ( FinGenAbGroupElem[ t[2](x) for x in gens(t[1]) ] for t in T )
       push!(pgens, genss)
     end
   end
@@ -877,13 +873,13 @@ function _subgroups_gens(G::GrpAbFinGen, subtype::Vector{S} = [-1],
 end
 
 # Same as above but now allow a function to be applied to the output
-function _subgroups(G::GrpAbFinGen; subtype = [-1], quotype = [-1], order = -1,
+function _subgroups(G::FinGenAbGroup; subtype = [-1], quotype = [-1], order = -1,
                                     index = -1, fun = sub)
-  return ( fun(G, convert(Vector{GrpAbFinGenElem}, z)) for z in _subgroups_gens(G, subtype, quotype, order, index))
+  return ( fun(G, convert(Vector{FinGenAbGroupElem}, z)) for z in _subgroups_gens(G, subtype, quotype, order, index))
 end
 
 
-function SubgroupIterator(G::GrpAbFinGen; subtype::Vector{Int} = [-1],
+function SubgroupIterator(G::FinGenAbGroup; subtype::Vector{Int} = [-1],
                                           quotype::Vector{Int} = [-1],
                                           index::Union{ZZRingElem, Int} = -1,
                                           order::Union{ZZRingElem, Int} = -1,
@@ -896,7 +892,7 @@ function SubgroupIterator(G::GrpAbFinGen; subtype::Vector{Int} = [-1],
                        fun = fun, index = index, order = order)
   end
 
-  E = Core.Compiler.return_type(fun, Tuple{GrpAbFinGen, Vector{GrpAbFinGenElem}})
+  E = Core.Compiler.return_type(fun, Tuple{FinGenAbGroup, Vector{FinGenAbGroupElem}})
 
   z = SubgroupIterator{typeof(fun), typeof(it), E}(G, subtype, quotype,
                                                    ZZRingElem(index), ZZRingElem(order),
@@ -905,7 +901,7 @@ function SubgroupIterator(G::GrpAbFinGen; subtype::Vector{Int} = [-1],
 end
 
 @doc raw"""
-    subgroups(g::GrpAbFinGen;
+    subgroups(g::FinGenAbGroup;
               subtype = :all ,
               quotype = :all,
               index = -1,
@@ -913,7 +909,7 @@ end
 
 Return an iterator for the subgroups of $G$ of the specific form.
 """
-function subgroups(G::GrpAbFinGen; subtype = :all,
+function subgroups(G::FinGenAbGroup; subtype = :all,
                                    quotype = :all,
                                    index =  -1,
                                    order = -1,
@@ -958,15 +954,15 @@ end
 ################################################################################
 
 @doc doc"""
-    minimal_subgroups(G::GrpAbFinGen) -> Vector{Tuple{GrpAbFinGen, Map}}
+    minimal_subgroups(G::FinGenAbGroup) -> Vector{Tuple{FinGenAbGroup, Map}}
 
 Return the minimal subgroups of $G$.
 """
-function minimal_subgroups(G::GrpAbFinGen, add_to_lattice::Bool = false)
+function minimal_subgroups(G::FinGenAbGroup, add_to_lattice::Bool = false)
   @req isfinite(G) "Group must be finite"
   o = order(G)
   l = prime_divisors(o)
-  res = Vector{Tuple{GrpAbFinGen, GrpAbFinGenMap}}()
+  res = Vector{Tuple{FinGenAbGroup, FinGenAbGroupHom}}()
   for p in l
     append!(res, psubgroups(G, p, order = p, fun = (x, m) -> sub(x, m, add_to_lattice)))
   end

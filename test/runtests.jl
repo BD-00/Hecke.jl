@@ -1,4 +1,8 @@
-using Hecke, Test, Dates, Printf, Documenter
+using Hecke
+using Test
+using Hecke.Dates
+using Hecke.Printf
+using Documenter
 
 DEFAULT_NPROCS = 4
 
@@ -12,6 +16,12 @@ y = joinpath(Hecke.pkgdir, "test", "$x.jl")
 #  Analyze the arguments
 #
 ################################################################################
+
+if "threads" in ARGS || get(ENV, "HECKE_TEST_THREADS", "false") in ["1", "true"]
+  @info "Running only threading tests with $(Threads.nthreads()): threads.jl"
+  include("threads.jl")
+  exit()
+end
 
 # Is short?
 short_test = false
@@ -71,24 +81,18 @@ end
 isparallel = false
 n_procs = 0
 
-fl = get(ENV, "HECKE_TEST_PARALLEL", "false")
-if fl != "false"
-  isparallel = true
-  n_procs = parse(Int, fl)
-else
-  for a in ARGS
-    r = match(r"j([0-9])*", a)
-    if r === nothing
-      continue
+for a in ARGS
+  r = match(r"j([0-9])*", a)
+  if r === nothing
+    continue
+  else
+    global isparallel = true
+    if r.captures[1] === nothing
+      global n_procs = DEFAULT_NPROCS
     else
-      global isparallel = true
-      if r.captures[1] === nothing
-        global n_procs = DEFAULT_NPROCS
-      else
-        global n_procs = parse(Int, r.captures[1])
-      end
-      @assert n_procs > 0 "Number of processes ($(n_procs)) must be > 0"
+      global n_procs = parse(Int, r.captures[1])
     end
+    @assert n_procs > 0 "Number of processes ($(n_procs)) must be > 0"
   end
 end
 
@@ -106,16 +110,18 @@ fl = get(ENV, "CI", "false")
 
 if fl === "true"
   @info "Running on CI"
+  @info "Sys.CPU_THREADS: $(Sys.CPU_THREADS)"
 end
 
-if fl === "true" && !no_parallel && !Sys.iswindows()
+if fl === "true" && !no_parallel && !Sys.iswindows() && VERSION < v"1.11"
+  @info "On CI, !no_parallel and not Windows"
   isparallel = true
   # CPU_THREADS reports number of logical cores (including hyperthreading)
-  # So be pessimistic and divide by 2 on Linux (less memory?)
-  n_procs = div(Sys.CPU_THREADS, Sys.islinux() ? 2 : 1)
+  # So be pessimistic and divide by 2
+  n_procs = max(ceil(Int, Sys.CPU_THREADS/2), 1)
   if Sys.islinux()
     # there is not enough memory to support >= 2 jobs
-    isparallel = false
+    # isparallel = false
   end
 end
 
@@ -128,7 +134,7 @@ end
 
 # Now collect the tests we want to run
 
-const test_exclude = ["setup.jl", "runtests.jl", "parallel.jl", "testdefs.jl", "FieldFactory.jl"]
+const test_exclude = ["setup.jl", "runtests.jl", "parallel.jl", "testdefs.jl", "Aqua.jl", "FieldFactory.jl", "threads.jl"]
 
 test_directory = joinpath(@__DIR__)
 
@@ -145,7 +151,7 @@ for t in readdir(test_directory)
     continue
   end
 
-  if startswith(t, '.')
+  if startswith(t, '.') || endswith(t, ".toml")
     continue
   end
 
@@ -203,6 +209,7 @@ if isparallel
     end
   end
   tests = newtests
+  Hecke.Random.shuffle!(tests)
 end
 
 test_path(test) = joinpath(@__DIR__, test)
@@ -248,6 +255,8 @@ function print_res_recursively(testset, cur_level, max_level)
   end
 end
 
+#include("Aqua.jl")
+
 if short_test
   include("setup.jl")
   # Short tests are always running on one machine
@@ -292,11 +301,11 @@ else
   end
 
   # Run the doctests
-  if v"1.8.0" <= VERSION < v"1.9.0"
-    @info "Running doctests (Julia version is 1.6)"
+  if v"1.10-" <= VERSION < v"1.11-"
+    @info "Running doctests (Julia version is 1.10)"
     DocMeta.setdocmeta!(Hecke, :DocTestSetup, :(using Hecke); recursive = true)
     doctest(Hecke)
   else
-    @info "Not running doctests (Julia version must be 1.8)"
+    @info "Not running doctests (Julia version must be 1.10)"
   end
 end

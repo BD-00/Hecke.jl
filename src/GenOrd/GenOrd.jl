@@ -1,9 +1,9 @@
 # Support for generic maximal orders over any PID
-# 
+#
 #   final result:
 #     integral_closure(R, F)
 #     where R is "any" PID and F a finite extension of some quotient field of R
-# 
+#
 #   R needs to support
 #    - euclidean (hnf, pseudo_inv, gcd, lcm, mod, div, divrem)
 #    - factorisation
@@ -13,16 +13,14 @@
 #      (all Localisations of Z have QQ as quotient field,
 #      Q[x], Z[x] and Localisation(Q(x), degree) use Q(t))
 #    - is_domain_type
-# 
+#
 # Seems to work for
-# -  R = ZZ, F = AnticNumberField
-# -  R = Loc{ZZRingElem}, F = AnticNumberField
-# 
+# -  R = ZZ, F = AbsSimpleNumField
+# -  R = LocalizedEuclideanRing{ZZRingElem}, F = AbsSimpleNumField
+#
 # -  R = k[x], F = FunctionField (for k = QQ, F_q)
 # -  R = localization(k(x), degree), F = FunctionField
 # -  R = Z[x], F = FunctionField/ QQ(t)
-
-export integral_closure, extension_field
 
 import AbstractAlgebra: expressify
 
@@ -46,13 +44,9 @@ function elem_type(::Type{GenOrd{S, T}}) where {S, T}
   return GenOrdElem{elem_type(S), elem_type(T)}
 end
 
-elem_type(::O) where {O <: GenOrd} = elem_type(O)
-
 function parent_type(::Type{GenOrdElem{S, T}}) where {S, T}
   return GenOrd{parent_type(S), parent_type(T)}
 end
-
-parent_type(::OE) where {OE <: GenOrdElem} = parent_type(OE)
 
 # prepare for algebras, which are not domains
 is_domain_type(::Type{GenOrdElem{S, T}}) where {S, T} = is_domain_type(S)
@@ -235,7 +229,7 @@ end
 ################################################################################
 
 function Base.hash(a::GenOrdElem, h::UInt)
-  b = 0x52da43cd011aacd1%UInt 
+  b = 0x52da43cd011aacd1%UInt
   return xor(b, hash(data(a), h))
 end
 
@@ -254,7 +248,7 @@ end
 
 ################################################################################
 #
-#  Parent check  
+#  Parent check
 #
 ################################################################################
 
@@ -430,12 +424,12 @@ function Hecke.integral_split(a::Generic.FunctionFieldElem, O::GenOrd)
   return O(base_ring(parent(a))(d)*a, check = false), d
 end
 
-function Hecke.integral_split(a::nf_elem, O::GenOrd)
+function Hecke.integral_split(a::AbsSimpleNumFieldElem, O::GenOrd)
   d = integral_split(coordinates(a, O), base_ring(O))[2]
   return O(d.data*a, check =false), d #evil, but no legal way found
 end
 
-function Hecke.integral_split(a::nf_elem, O::GenOrd{<: Any, ZZRing})
+function Hecke.integral_split(a::AbsSimpleNumFieldElem, O::GenOrd{<: Any, ZZRing})
   d = integral_split(coordinates(a, O), base_ring(O))[2]
   return O(d*a, check = false), d #evil, but no legal way found
 end
@@ -464,7 +458,7 @@ end
 
 function powermod(a::GenOrdElem, n::ZZRingElem, p::RingElem)
   c = one(parent(a))
-  for i = BitsMod.bits(n)
+  for i = bits(n)
     c *= c
     if i
       c *= a
@@ -482,11 +476,11 @@ end
 
 function ring_of_multipliers(O::GenOrd, I::MatElem{T}, p::T, is_prime::Bool = false) where {T}
   #TODO: modular big hnf, peu-a-peu, not all in one
-  @vprint :NfOrd 2 "ring of multipliers module $p (is_prime: $is_prime) of ideal with basis matrix $I\n"
+  @vprintln :AbsNumFieldOrder 2 "ring of multipliers module $p (is_prime: $is_prime) of ideal with basis matrix $I"
   II, d = pseudo_inv(I)
   @assert II*I == d
 
-  m = hcat([divexact(representation_matrix(O(vec(collect(I[i, :]))))*II, d) for i=1:nrows(I)]...)
+  m = reduce(hcat, [divexact(representation_matrix(O(vec(collect(I[i, :]))))*II, d) for i=1:nrows(I)])
   m = transpose(m)
   if is_prime
     x = residue_field(parent(p), p)
@@ -494,7 +488,7 @@ function ring_of_multipliers(O::GenOrd, I::MatElem{T}, p::T, is_prime::Bool = fa
       R, mR = x
     else
       R = x
-      mR = MapFromFunc(x->R(x), x->lift(x), parent(p), R)
+      mR = MapFromFunc(parent(p), R, x->R(x), x->lift(x))
     end
     ref = x->rref(x)[2]
   else
@@ -503,10 +497,10 @@ function ring_of_multipliers(O::GenOrd, I::MatElem{T}, p::T, is_prime::Bool = fa
       R, mR = x
     else
       R = x
-      mR = MapFromFunc(x->R(x), x->lift(x), parent(p), R)
+      mR = MapFromFunc(parent(p), R, x->R(x), x->lift(x))
     end
 #    R = parent(p)
-#    mR = MapFromFunc(x->x, x->x, R, R)
+#    mR = MapFromFunc(R, R, x->x, x->x)
     ref = hnf
   end
   m = map_entries(mR, m)
@@ -522,7 +516,7 @@ function ring_of_multipliers(O::GenOrd, I::MatElem{T}, p::T, is_prime::Bool = fa
 #  H = hnf(map_entries(x->preimage(mR, x), mm))
   H = hnf_modular(map_entries(x->preimage(mR, x), mm), p, is_prime)
 
-  @vtime :NfOrd 2 Hi, d = pseudo_inv(H)
+  @vtime :AbsNumFieldOrder 2 Hi, d = pseudo_inv(H)
 
   O = GenOrd(O, transpose(Hi), d, check = false)
   return O
@@ -530,11 +524,11 @@ end
 
 function ring_of_multipliers(O::GenOrd, I::MatElem)
   #TODO: modular big hnf, peu-a-peu, not all in one
-  @vprint :NfOrd 2 "ring of multipliers of ideal with basis matrix $I\n"
+  @vprintln :AbsNumFieldOrder 2 "ring of multipliers of ideal with basis matrix $I"
   II, d = pseudo_inv(I)
   @assert II*I == d
 
-  m = hcat([divexact(representation_matrix(O(vec(collect(I[i, :]))))*II, d) for i=1:nrows(I)]...)
+  m = reduce(hcat, [divexact(representation_matrix(O(vec(collect(I[i, :]))))*II, d) for i=1:nrows(I)])
   m = transpose(m)
   n = degree(O)
   mm = hnf(m[1:n, 1:n])
@@ -544,7 +538,7 @@ function ring_of_multipliers(O::GenOrd, I::MatElem)
   end
   H = mm
 
-  @vtime :NfOrd 2 Hi, d = pseudo_inv(H)
+  @vtime :AbsNumFieldOrder 2 Hi, d = pseudo_inv(H)
 
   O = GenOrd(O, transpose(Hi), d, check = false)
   return O
@@ -590,7 +584,7 @@ end
 ################################################################################
 
 function Hecke.pmaximal_overorder(O::GenOrd, p::RingElem, is_prime::Bool = false)
-  @vprint :NfOrd 1 "computing a $p-maximal orderorder\n"
+  @vprintln :AbsNumFieldOrder 1 "computing a $p-maximal orderorder"
 
   t = residue_field(parent(p), p)
 
@@ -598,17 +592,17 @@ function Hecke.pmaximal_overorder(O::GenOrd, p::RingElem, is_prime::Bool = false
     R, mR = t
   else
     R = t
-    mR = MapFromFunc(x->R(x), y->lift(y), parent(p), R)
+    mR = MapFromFunc(parent(p), R, x->R(x), y->lift(y))
   end
 #  @assert characteristic(F) == 0 || (isfinite(F) && characteristic(F) > degree(O))
   if characteristic(R) == 0 || characteristic(R) > degree(O)
-    @vprint :NfOrd 1 "using trace-radical for $p\n"
+    @vprintln :AbsNumFieldOrder 1 "using trace-radical for $p"
     rad = radical_basis_trace
   elseif isa(R, Generic.RationalFunctionField)
-    @vprint :NfOrd 1 "non-perfect case for radical for $p\n"
+    @vprintln :AbsNumFieldOrder 1 "non-perfect case for radical for $p"
     rad = radical_basis_power_non_perfect
   else
-    @vprint :NfOrd 1 "using radical-by-power for $p\n"
+    @vprintln :AbsNumFieldOrder 1 "using radical-by-power for $p"
     rad = radical_basis_power
   end
   while true #TODO: check the discriminant to maybe skip the last iteration
@@ -651,14 +645,14 @@ julia> k, a = quadratic_field(12);
 julia> integral_closure(ZZ, k)
 
 Maximal order of Real quadratic field defined by x^2 - 12
-with basis nf_elem[1, 1//2*sqrt(12)]
+with basis AbsSimpleNumFieldElem[1, 1//2*sqrt(12)]
 ```
 """
-function integral_closure(::ZZRing, F::AnticNumberField)
+function integral_closure(::ZZRing, F::AbsSimpleNumField)
   return Hecke.maximal_order(F)
 end
 
-function integral_closure(S::Loc{ZZRingElem}, F::AnticNumberField)
+function integral_closure(S::LocalizedEuclideanRing{ZZRingElem}, F::AbsSimpleNumField)
   return _integral_closure(S, F)
 end
 
@@ -704,11 +698,11 @@ end
 ################################################################################
 
 function Hecke.maximal_order(O::GenOrd)
-  @vprint :NfOrd 1 "starting maximal order...\n"
+  @vprintln :AbsNumFieldOrder 1 "starting maximal order..."
   S = base_ring(O)
   d = discriminant(O)
-  @vprint :NfOrd 2 "factoring the discriminant...\n"
-  @vtime :NfOrd 2 ld = factor(d)
+  @vprintln :AbsNumFieldOrder 2 "factoring the discriminant..."
+  @vtime :AbsNumFieldOrder 2 ld = factor(d)
   local Op
   first = true
   for (p,k) = ld.fac
@@ -759,13 +753,13 @@ function Hecke.basis(O::GenOrd, F::Generic.FunctionField)
   return map(F, basis(O))
 end
 
-function (K::AnticNumberField)(b::GenOrdElem)
+function (K::AbsSimpleNumField)(b::GenOrdElem)
   O = parent(b)
   @assert O.F == K
   return b.data
 end
 
-function Hecke.basis(O::GenOrd, F::AnticNumberField)
+function Hecke.basis(O::GenOrd, F::AbsSimpleNumField)
   return map(F, basis(O))
 end
 
@@ -785,7 +779,7 @@ function radical_basis_power(O::GenOrd, p::RingElem)
     F, mF = t
   else
     F = t
-    mF = MapFromFunc(x->F(x), y->lift(y), parent(p), F)
+    mF = MapFromFunc(parent(p), F, x->F(x), y->lift(y))
   end
 #  @assert characteristic(F) == 0 || (isfinite(F) && characteristic(F) > degree(O))
   q = characteristic(F)
@@ -802,9 +796,9 @@ function radical_basis_power(O::GenOrd, p::RingElem)
       m[j,i] = mF(O.R(c[j]))
     end
   end
-  k, B = kernel(m)
+  B = kernel(m; side = :right)
 
-  M2 = transpose(B[:, 1:k])
+  M2 = transpose(B)
   M2 = map_entries(x->preimage(mF, x), M2)
   M3 = Hecke.hnf_modular(M2, p, true)
   return M3 #[O(vec(collect((M3[i, :])))) for i=1:degree(O)]
@@ -819,12 +813,12 @@ function radical_basis_trace(O::GenOrd, p::RingElem)
     R, mR = t
   else
     R = t
-    mR = MapFromFunc(x->R(x), y->lift(y), parent(p), R)
+    mR = MapFromFunc(parent(p), R, x->R(x), y->lift(y))
   end
 
   TT = map_entries(mR, T)
-  k, B = kernel(TT)
-  M2 = transpose(map_entries(x->preimage(mR, x), B[:, 1:k]))
+  B = kernel(TT; side = :right)
+  M2 = transpose(map_entries(x->preimage(mR, x), B))
   M3 = Hecke.hnf_modular(M2, p, true)
   return M3 #[O(vec(collect((M3[i, :])))) for i=1:degree(O)]
 end
@@ -836,7 +830,7 @@ function radical_basis_power_non_perfect(O::GenOrd, p::RingElem)
     F, mF = t
   else
     F = t
-    mF = MapFromFunc(x->F(x), y->lift(y), parent(p), F)
+    mF = MapFromFunc(parent(p), F, x->F(x), y->lift(y))
   end
   @assert isa(F, Generic.RationalFunctionField) && characteristic(F) != 0
   q = characteristic(F)
@@ -882,9 +876,9 @@ function radical_basis_power_non_perfect(O::GenOrd, p::RingElem)
       end
     end
   end
-  k, B = kernel(m)
+  B = kernel(m; side = :right)
 
-  M2 = transpose(B[:, 1:k])
+  M2 = transpose(B)
   M2 = map_entries(x->preimage(mF, x), M2)
   M3 = Hecke.hnf_modular(M2, p, true)
   return return M3 #[O(vec(collect((M3[i, :])))) for i=1:degree(O)]
@@ -920,7 +914,7 @@ function different(O::GenOrd)
 end
 
 @doc raw"""
-    codifferent(R::NfAbsOrd) -> NfOrdIdl
+    codifferent(R::AbsNumFieldOrder) -> AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}
 
 The codifferent ideal of $R$, i.e. the trace-dual of $R$.
 """

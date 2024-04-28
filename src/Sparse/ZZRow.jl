@@ -249,7 +249,7 @@ function sparse_row(R::ZZRing, A::Vector{Tuple{Int64, ZZRingElem}}; sort::Bool =
   return SRow(R, l, a)
 end
 
-function sparse_row(R::ZZRing, pos::Vector{Int64}, val::Vector{ZZRingElem}; sort::Bool = true)
+function sparse_row(R::ZZRing, pos::Vector{Int64}, val::AbstractVector{ZZRingElem}; sort::Bool = true)
   if sort
     p = sortperm(pos)
     pos = pos[p]
@@ -325,7 +325,7 @@ function add_scaled_row!(Ai::SRow{ZZRingElem}, Aj::SRow{ZZRingElem}, c::ZZRingEl
   sr = add_scaled_row(Ai, Aj, c, sr)
   @assert _t === sr
   swap!(Aj, sr)
-  return sr
+  return Aj
 end
 
 function sparse_row(M::ZZMatrix)
@@ -350,13 +350,6 @@ function get_tmp(A::SMat{ZZRingElem})
   return SRow(ZZ, Int[], ZZRingElem_Array())
 end
 
-function mul!(a::ZZRingElem, b::ZZRingElem, c::Ptr{Int})
-  ccall((:fmpz_mul, Nemo.libflint), Cvoid, (Ref{ZZRingElem}, Ref{ZZRingElem}, Ptr{Int}), a, b, c)
-end
-
-function add!(a::ZZRingElem, b::ZZRingElem, c::Ptr{Int})
-  ccall((:fmpz_add, Nemo.libflint), Cvoid, (Ref{ZZRingElem}, Ref{ZZRingElem}, Ptr{Int}), a, b, c)
-end
 
 function transform_row(Ai::SRow{ZZRingElem}, Aj::SRow{ZZRingElem}, a::ZZRingElem, b::ZZRingElem, c::ZZRingElem, d::ZZRingElem, sr::SRow{ZZRingElem}, tr::SRow{ZZRingElem}) 
   empty!(sr)

@@ -48,7 +48,7 @@ end
 
   # creation
 
-  @test_throws ArgumentError AlgAss(QQ, map(QQ, reshape([1 2 1 2; 1 2 1 2], 2, 2, 2)))
+  @test_throws ArgumentError associative_algebra(QQ, map(QQ, reshape([1 2 1 2; 1 2 1 2], 2, 2, 2)))
 
   @testset "Change of ring" begin
 
@@ -57,7 +57,7 @@ end
     f = x^3 - 2
     K, a = number_field(f, "a")
 
-    A = AlgAss(MatrixAlgebra(K, 2))
+    A = StructureConstantAlgebra(matrix_ring(K, 2))
     B, BtoA = Hecke.restrict_scalars(A, FlintQQ)
     @test base_ring(B) == FlintQQ
     @test dim(B) == dim(A)*degree(K)
@@ -76,7 +76,7 @@ end
     L, b = number_field(g, "b")
     KtoL = hom(K, L, -2//45*b^7 + 7//9*b^4 + 109//45*b)
 
-    A = AlgAss(MatrixAlgebra(L, 2))
+    A = StructureConstantAlgebra(matrix_ring(L, 2))
     B, BtoA = Hecke.restrict_scalars(A, KtoL)
 
     @test base_ring(B) == K
@@ -86,9 +86,9 @@ end
 
     # Restrict from F_q to F_p
     Fp = GF(7)
-    Fq, a = FiniteField(7, 3, "a")
+    Fq, a = finite_field(7, 3, "a")
 
-    A = AlgAss(MatrixAlgebra(Fq, 2))
+    A = StructureConstantAlgebra(matrix_ring(Fq, 2))
     B, BtoA = Hecke.restrict_scalars(A, Fp)
     @test base_ring(B) == Fp
     @test dim(B) == dim(A)*degree(K)
@@ -106,10 +106,10 @@ end
     # Extend from F_p^m to F_p^n
     Fqx, x = Fq["x"]
     f = x^2 + 5x + 2
-    A = AlgAss(f)
+    A = associative_algebra(f)
     B, BtoA = Hecke._as_algebra_over_center(A)
     @test characteristic(base_ring(B)) == characteristic(Fq)
-    @test degree(base_ring(B)) == degree(f)*degree(Fq)
+    @test absolute_degree(base_ring(B)) == degree(f)*degree(Fq)
     @test dim(B) == 1
 
     test_alg_morphism_char_p(B, A, BtoA)
@@ -124,7 +124,7 @@ end
     mt[2, 1, 2] = Fp(1)
     mt[2, 2, 1] = Fp(1)
     mt[2, 2, 2] = Fp(1)
-    A = AlgAss(Fp, mt)
+    A = associative_algebra(Fp, mt)
     B, BtoA = Hecke._as_algebra_over_center(A)
     @test characteristic(base_ring(B)) == characteristic(Fp)
     @test degree(base_ring(B)) == dim(A)
@@ -132,6 +132,12 @@ end
 
     test_alg_morphism_char_p(B, A, BtoA)
 
+    # zero algebra
+
+    A = associative_algebra(QQ, Array{QQFieldElem}(undef, 0, 0, 0))
+    @test dim(A) == 0
+    A = associative_algebra(QQ, Array{QQFieldElem}(undef, 0, 0, 0), QQFieldElem[])
+    @test dim(A) == 0
   end
 
   # n = dim(A)^2 = dim(B)^2
@@ -168,16 +174,16 @@ end
 
   @testset "Matrix Algebra" begin
     Fp = GF(7)
-    Fq, a = FiniteField(7, 2, "a")
+    Fq, a = finite_field(7, 2, "a")
 
-    A = AlgAss(MatrixAlgebra(Fq, 3))
+    A = StructureConstantAlgebra(matrix_ring(Fq, 3))
     B, AtoB = Hecke._as_matrix_algebra(A)
     @test dim(B) == dim(A)
 
     test_mat_alg_morphism(AtoB, 3)
 
     G = SymmetricGroup(4)
-    A = AlgAss(AlgGrp(Fp, G))[1]
+    A = StructureConstantAlgebra(GroupAlgebra(Fp, G))[1]
     Adec = Hecke.decompose(A)
 
     i = 2
@@ -207,23 +213,25 @@ end
     G = small_group(8, 4)
     Qx, x = polynomial_ring(FlintQQ, "x")
     K, a = number_field(x - 1, "a")
-    A = Hecke.AlgGrp(K, G)
+    A = Hecke.GroupAlgebra(K, G)
     H = first(c[1] for c in Hecke.decompose(A) if dim(c[1]) == 4)
     P = infinite_places(K)[1]
     @test !is_split(H, P)
 
     K, a = number_field(x - 1, "a")
-    A = Hecke.AlgGrp(K, G)
+    A = Hecke.GroupAlgebra(K, G)
     H = first(c[1] for c in Hecke.decompose(A) if dim(c[1]) == 1)
     P = infinite_places(K)[1]
     @test is_split(H, P)
 
     K, a = number_field(x^2 - 2, "a")
     HH = Hecke.quaternion_algebra2(2, 3)
-    A = AlgAss(K, map(K, HH.mult_table))
+    A = associative_algebra(K, map(K, HH.mult_table))
     Ps = real_places(K)
     @test is_split(A, Ps[1])
     @test is_split(A, Ps[2])
   end
 
+  A = zero_algebra(QQ)
+  @test_throws ArgumentError direct_product(typeof(A)[])
 end

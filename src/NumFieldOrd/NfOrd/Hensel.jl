@@ -1,6 +1,6 @@
 ################################################################################
 #
-#  NfOrd/Hensel.jl : Hensel lifting for simple absolute number fields
+#  AbsSimpleNumFieldOrder/Hensel.jl : Hensel lifting for simple absolute number fields
 #
 # This file is part of Hecke.
 #
@@ -72,26 +72,6 @@ function lift(R::zzModPolyRing, a::fqPolyRepFieldElem)
   return f
 end
 
-function (Zx::ZZPolyRing)(a::nf_elem)
-  b = Zx()
-  @assert denominator(a) == 1
-  if degree(parent(a)) == 1
-    # If the number field is linear, then a.elem_length is not properly
-    # initialized, that is, it could be anything.
-    setcoeff!(b, 0, numerator(coeff(a, 0)))
-  elseif degree(parent(a)) == 2
-    # ... or quadratic, then a.elem_length is not properly
-    # initialized, that is, it could be anything.
-    setcoeff!(b, 0, numerator(coeff(a, 0)))
-    setcoeff!(b, 1, numerator(coeff(a, 1)))
-  else
-    for i=0:a.elem_length
-      setcoeff!(b, i, numerator(coeff(a, i)))
-    end
-  end
-  return b
-end
-
 ################################################################################
 #
 #  Root computation via Hensel lifting
@@ -102,20 +82,20 @@ end
 # ispure means that f = X^deg(f) + coeff(f, 0)
 # is_normal means that if there are either no or all roots
 
-function _roots_hensel(f::Generic.Poly{nf_elem};
+function _roots_hensel(f::Generic.Poly{AbsSimpleNumFieldElem};
                        max_roots::Int = degree(f),
                        ispure::Bool = false,
                        is_normal::Bool = false,
                        root_bound::Vector{ZZRingElem} = ZZRingElem[])
   # f must be squarefree
   # I should check that
-  K::AnticNumberField = base_ring(f)
+  K::AbsSimpleNumField = base_ring(f)
 
   if iszero(constant_coefficient(f))
-    rs = nf_elem[zero(K)]
+    rs = AbsSimpleNumFieldElem[zero(K)]
     f = div(f, gen(parent(f)))
   else
-    rs = nf_elem[]
+    rs = AbsSimpleNumFieldElem[]
   end
 
   if length(rs) >= max_roots
@@ -166,7 +146,7 @@ function _roots_hensel(f::Generic.Poly{nf_elem};
       continue
     end
 
-    Rp = Nemo.GF(p, cached=false)
+    Rp = Nemo.Native.GF(p, cached=false)
     Rpt, t = polynomial_ring(Rp, "t", cached=false)
     gp = Rpt(K.pol)
     if degree(gp) < degree(K) || iszero(discriminant(gp))
@@ -177,7 +157,7 @@ function _roots_hensel(f::Generic.Poly{nf_elem};
     lp = factor(gp).fac
 
     #set up the mod p data:
-    #need FiniteField as I need to factor (roots)
+    #need finite_field as I need to factor (roots)
     # I want to find a residue field with less roots
     for gp_factor in keys(lp)
       deg_p = degree(gp_factor)
@@ -231,7 +211,7 @@ function _roots_hensel(f::Generic.Poly{nf_elem};
     end
   end
 
-  @vprint :Saturate 1 "using prime $good_p of degree $deg_p\n"
+  @vprintln :Saturate 1 "using prime $good_p of degree $deg_p"
 
   # compute the lifting exponent a la Friedrich-Fieker
 
@@ -243,13 +223,13 @@ function _roots_hensel(f::Generic.Poly{nf_elem};
   gsa = derivative(K.pol)(gen(K))
   if !is_defining_polynomial_nice(K)
     E = any_order(K)
-    gsa = K(discriminant(E)) * det(numerator(basis_matrix(E, copy= false)))
+    gsa = K(discriminant(E)) * det(numerator(basis_matrix(FakeFmpqMat, E, copy= false)))
   end
   gsa_con = conjugates_arb(gsa, 32)
 
   if length(root_bound) > 0
     @assert length(root_bound) == r1 + r2
-    bound_root = Vector{arb}(undef, r1 + r2)
+    bound_root = Vector{ArbFieldElem}(undef, r1 + r2)
     for i in 1:(r1 + r2)
       bound_root[i] = root_bound[i] * abs(gsa_con[i])
     end
@@ -258,25 +238,25 @@ function _roots_hensel(f::Generic.Poly{nf_elem};
     R = parent(conj[1])
     a_con = [R(abs_upper_bound(ZZRingElem, abs(e))) for e in conj]
 
-    bound_root = Vector{arb}(undef, r1 + r2)
+    bound_root = Vector{ArbFieldElem}(undef, r1 + r2)
 
     for i in 1:r1+r2
       bound_root[i] = root(abs(a_con[i]), degree(f)) * abs(gsa_con[i])
     end
   else
-    bound_root = Vector{arb}(undef, r1 + r2)
+    bound_root = Vector{ArbFieldElem}(undef, r1 + r2)
 
     CC = AcbField(64, cached = false)
     CCt, t = polynomial_ring(CC, "t", cached=false)
-    conjugates_of_coeffs = Vector{acb}[ conjugates_arb(c, 32) for c in coeffs_f ]
+    conjugates_of_coeffs = Vector{AcbFieldElem}[ conjugates_arb(c, 32) for c in coeffs_f ]
 
     for i in 1:r1+r2
-      g = CCt(acb[ conjugates_of_coeffs[j + 1][i] for j in 0:degree(f) ])
+      g = CCt(AcbFieldElem[ conjugates_of_coeffs[j + 1][i] for j in 0:degree(f) ])
       bound_root[i] = roots_upper_bound(g) * abs(gsa_con[i])
     end
   end
   ss = _lifting_expo(good_p, good_deg_p, K, bound_root)
-  @vprint :Saturate 1 "using a lifting bound of $ss\n"
+  @vprintln :Saturate 1 "using a lifting bound of $ss"
   rts = _hensel(f, factor_of_g, good_fp, Int(ss), max_roots = max_roots - length(rs), ispure = ispure)
   return vcat(rs, rts)
 end
@@ -315,11 +295,11 @@ end
 #= not used
 function _get_LLL_basis(Mold, Miold, dold, p, pr, i, gg)
   n = nrows(Mold)
-  ctx = lll_ctx(0.5, 0.51)
+  ctx = LLLContext(0.5, 0.51)
   modu = ZZRingElem(p)^25
   for j = (pr[i-1]+25):25:pr[i]
     pp = ZZRingElem(p)^j
-    Q = residue_ring(FlintZZ, pp, cached=false)
+    Q = residue_ring(FlintZZ, pp, cached=false)[1]
     Qt, t = polynomial_ring(Q, "t", cached=false)
     pgg = Qt(gg)
     M = _get_basis(pp, n, pgg, Qt)
@@ -339,7 +319,7 @@ function _get_LLL_basis(Mold, Miold, dold, p, pr, i, gg)
   if !iszero(mod(pr[i]-pr[i-1], 25))
     modu = ZZRingElem(p)^mod(pr[i]-pr[i-1], 25)
     pp = ZZRingElem(p)^pr[i]
-    Q = residue_ring(FlintZZ, pp, cached=false)
+    Q = residue_ring(FlintZZ, pp, cached=false)[1]
     Qt, t = polynomial_ring(Q, "t", cached=false)
     pgg = Qt(gg)
     M = _get_basis(pp, n, pgg, Qt)
@@ -360,7 +340,7 @@ function _get_LLL_basis(Mold, Miold, dold, p, pr, i, gg)
 end
 =#
 
-function _hensel(f::Generic.Poly{nf_elem},
+function _hensel(f::Generic.Poly{AbsSimpleNumFieldElem},
                  fac_pol_mod_p::fpPolyRingElem,
                  fp::fqPolyRepPolyRingElem, k::Int;
                  max_roots::Int = degree(f),
@@ -384,18 +364,18 @@ function _hensel(f::Generic.Poly{nf_elem},
     _p = Int(characteristic(base_ring(fac_pol_mod_p)))
     if haskey(_cache, _p)
       _cache_p = _cache[_p]
-      @vprint :Saturate 4 "Hitting the cache for the prime $(_p)\n"
+      @vprintln :Saturate 4 "Hitting the cache for the prime $(_p)"
       fac_pol_mod_p.parent = parent(first(keys(_cache_p)))
       if haskey(_cache_p, fac_pol_mod_p)
-        @vprint :Saturate 1 "  Hitting the cache for the prime ideal\n"
+        @vprintln :Saturate 1 "  Hitting the cache for the prime ideal"
         _cache_lll = _cache_p[fac_pol_mod_p]
       else
-        @vprint :Saturate 1 "  Not hitting the cache for the prime ideal\n"
+        @vprintln :Saturate 1 "  Not hitting the cache for the prime ideal"
         _cache_lll = Dict()
         _cache_p[fac_pol_mod_p] = _cache_lll
       end
     else
-      @vprint :Saturate 4 "No hitting the cache for the prime $(_p)\n"
+      @vprintln :Saturate 4 "No hitting the cache for the prime $(_p)"
       _cache_p = Dict()
       _cache_lll = Dict()
       _cache_p[fac_pol_mod_p] = _cache_lll
@@ -445,7 +425,7 @@ function _hensel(f::Generic.Poly{nf_elem},
   #later we'll get the HNF matrix for selected powers as well
 
   #set up the mod p data:
-  #need FiniteField as I need to factor (roots)
+  #need finite_field as I need to factor (roots)
 
   rt = roots(fp)
 
@@ -480,15 +460,15 @@ function _hensel(f::Generic.Poly{nf_elem},
     E = any_order(K)
     den = ZX(discriminant(E))
     iden = QQFieldElem(1, discriminant(E))
-    sc = abs(det(numerator(basis_matrix(E))))
+    sc = abs(det(numerator(basis_matrix(FakeFmpqMat, E))))
   end
 
-  @vprint :Saturate 1 "using a denominator estimate of $den\n"
+  @vprintln :Saturate 1 "using a denominator estimate of $den"
 
   ##for the result, to check for stabilising
 
-  res = nf_elem[zero(K) for x = RT]
-  rs = nf_elem[]
+  res = AbsSimpleNumFieldElem[zero(K) for x = RT]
+  rs = AbsSimpleNumFieldElem[]
 
   #we'll be working in (Z/p^k)[t]/gg
 
@@ -516,11 +496,11 @@ function _hensel(f::Generic.Poly{nf_elem},
   local Mi::ZZMatrix
   local d::ZZRingElem
 
-  @vprint :Saturate 1 "Maximum number of steps: $(length(pr))\n"
+  @vprintln :Saturate 1 "Maximum number of steps: $(length(pr))"
   for i=2:length(pr)
-    @vprint :Saturate 1 "Step number $i\n"
+    @vprintln :Saturate 1 "Step number $i"
     pp = ZZRingElem(p)^pr[i]
-    Q = residue_ring(FlintZZ, pp, cached=false)
+    Q = residue_ring(FlintZZ, pp, cached=false)[1]
     Qt, t = polynomial_ring(Q, "t", cached=false)
 
     #possibly this should be done with max precision and then adjusted down
@@ -534,7 +514,7 @@ function _hensel(f::Generic.Poly{nf_elem},
 
     pgg = Qt(gg) #we'll do the reductions by hand - possibly not optimal
 
-    ctx_lll = lll_ctx(0.3, 0.51)
+    ctx_lll = LLLContext(0.3, 0.51)
     if caching && haskey(_cache_lll, pr[i])
       M, Mi, d = _cache_lll[pr[i]]::Tuple{ZZMatrix, ZZMatrix, ZZRingElem}
     elseif is_defining_polynomial_nice(K) && i > 10
@@ -544,7 +524,7 @@ function _hensel(f::Generic.Poly{nf_elem},
       dold = d
       pr_intermediate = pr[i-1] + div(pr[i] - pr[i-1], 2)
       ppint = ZZRingElem(p)^pr_intermediate
-      Qint = residue_ring(FlintZZ, ppint, cached = false)
+      Qint = residue_ring(FlintZZ, ppint, cached = false)[1]
       Qintt = polynomial_ring(Qint, "t", cached = false)[1]
       pggQint = Qintt(gg)
       Mint = _get_basis(ppint, n, pggQint, Qintt)
@@ -555,7 +535,7 @@ function _hensel(f::Generic.Poly{nf_elem},
       @vtime :Saturate 1 lll!(Mint, ctx_lll)
       @vtime :Saturate 1 lll!(Mint)
       mul!(Mint, Mint, Mold)
-      @vtime :Saturate 1 lll!(Mint, lll_ctx(0.6, 0.51))
+      @vtime :Saturate 1 lll!(Mint, LLLContext(0.6, 0.51))
       @vtime :Saturate 1 lll!(Mint)
       Miold, dold = pseudo_inv(Mint)
       Mold = Mint
@@ -567,7 +547,7 @@ function _hensel(f::Generic.Poly{nf_elem},
       @vtime :Saturate 1 lll!(M, ctx_lll)
       @vtime :Saturate 1 lll!(M)
       mul!(M, M, Mold)
-      @vtime :Saturate 1 lll!(M, lll_ctx(0.6, 0.51))
+      @vtime :Saturate 1 lll!(M, LLLContext(0.6, 0.51))
       @vtime :Saturate 1 lll!(M)
       Mi, d = pseudo_inv(M)
       if caching
@@ -588,7 +568,7 @@ function _hensel(f::Generic.Poly{nf_elem},
       @vtime :Saturate 1 lll!(M, ctx_lll)
       @vtime :Saturate 1 lll!(M)
       mul!(M, M, Mold)
-      @vtime :Saturate 1 lll!(M, lll_ctx(0.6, 0.51))
+      @vtime :Saturate 1 lll!(M, LLLContext(0.6, 0.51))
       @vtime :Saturate 1 lll!(M)
       Mi, d = pseudo_inv(M)
       if caching
@@ -675,7 +655,7 @@ function _hensel(f::Generic.Poly{nf_elem},
         # I lifted to the end and one root did not lift to a root of f
         # and f is normal. Then there are no roots.
         if i == length(pr) && is_normal
-          return nf_elem[]
+          return AbsSimpleNumFieldElem[]
         end
       else
         res[j] = zz
@@ -686,7 +666,7 @@ function _hensel(f::Generic.Poly{nf_elem},
   return rs
 end
 
-function _hensel(f::Generic.Poly{nf_elem}, p::Int, k::Int; max_roots::Int = degree(f))
+function _hensel(f::Generic.Poly{AbsSimpleNumFieldElem}, p::Int, k::Int; max_roots::Int = degree(f))
   # Let f be a polynomial over a number field K
   # This function expects
   # p = prime number
@@ -696,7 +676,7 @@ function _hensel(f::Generic.Poly{nf_elem}, p::Int, k::Int; max_roots::Int = degr
 
   K = base_ring(f)
   k = max(k, 2)
-  Rp = GF(p, cached=false)
+  Rp = Nemo.Native.GF(p, cached=false)
   Rpt, t = polynomial_ring(Rp, "t", cached=false)
   gp = Rpt(K.pol)
   lp = factor(gp).fac
@@ -721,8 +701,8 @@ end
 #
 ################################################################################
 
-function _lifting_expo(p::Int, deg_p::Int, K::AnticNumberField, bnd::Vector{arb})
-  # return _lifting_expo_using_logbound(p, deg_p, O, arb[log(a) for a in bnd])
+function _lifting_expo(p::Int, deg_p::Int, K::AbsSimpleNumField, bnd::Vector{ArbFieldElem})
+  # return _lifting_expo_using_logbound(p, deg_p, O, ArbFieldElem[log(a) for a in bnd])
   # compute the lifting exponent a la Friedrich-Fieker
   # bnd has upper bounds on |x^{(i)}| 1<= i <= r1+r2 as arbs
   # we're using a prime ideal above p of inertia degree deg_p
@@ -746,7 +726,7 @@ function _lifting_expo(p::Int, deg_p::Int, K::AnticNumberField, bnd::Vector{arb}
 
   boundt2 = max(bd, one(R))
 
-  t = basis_matrix(any_order(K))
+  t = basis_matrix(FakeFmpqMat, any_order(K))
   @assert denominator(t) == 1
   tt = numerator(t)
   tt *= transpose(tt)
@@ -770,8 +750,8 @@ function _lifting_expo(p::Int, deg_p::Int, K::AnticNumberField, bnd::Vector{arb}
   return ss
 end
 
-function _lifting_expo(p::Int, deg_p::Int, O::NfOrd, bnd::Vector{arb})
-  # return _lifting_expo_using_logbound(p, deg_p, O, arb[log(a) for a in bnd])
+function _lifting_expo(p::Int, deg_p::Int, O::AbsSimpleNumFieldOrder, bnd::Vector{ArbFieldElem})
+  # return _lifting_expo_using_logbound(p, deg_p, O, ArbFieldElem[log(a) for a in bnd])
   # compute the lifting exponent a la Friedrich-Fieker
   # bnd has upper bounds on |x^{(i)}| 1<= i <= r1+r2 as arbs
   # we're using a prime ideal above p of inertia degree deg_p
@@ -806,7 +786,7 @@ function _lifting_expo(p::Int, deg_p::Int, O::NfOrd, bnd::Vector{arb})
 end
 
 #identical to has_root - which one do we want?
-function is_power(a::NfOrdElem, n::Int)
+function is_power(a::AbsSimpleNumFieldOrderElem, n::Int)
   fl, r = is_power(nf(parent(a))(a), n, is_integral = true)
   return fl, parent(a)(r)
 end

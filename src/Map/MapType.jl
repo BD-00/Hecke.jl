@@ -30,8 +30,6 @@ function preimage_function(f::Map(HeckeMap))
   end
 end
 
-export Map
-
 mutable struct MapCache{D, C, De, Ce}
   lim::Int
 
@@ -104,11 +102,6 @@ function MapHeader(domain::D, codomain::C, image, preimage) where {D, C}
   return MapHeader{D, C}(domain, codomain, image, preimage)
 end
 
-
-function preimage(f::AbstractAlgebra.Generic.CompositeMap, a)
-  return preimage(f.map1, preimage(f.map2, a))
-end
-
 preimage_function(f) = a -> preimage(f, a)
 image_function(f) = a -> image(f, a)
 
@@ -141,7 +134,7 @@ end
 ###########################################################
 
 """
-    MapFromFunc(f, [g], D, C)
+    MapFromFunc(D, C, f, [g])
 
 Creates the map `D -> C, x -> f(x)` given the callable
 object `f`. If `g` is provided, it is assumed to satisfy
@@ -152,19 +145,28 @@ object `f`. If `g` is provided, it is assumed to satisfy
 ```jldoctest
 julia> F = GF(2);
 
-julia> f = MapFromFunc(x -> F(numerator(x)) * inv(F(denominator(x))), QQ, F)
-Map from
-Rational Field to Galois field with characteristic 2 defined by a julia-function
+julia> f = MapFromFunc(QQ, F, x -> F(numerator(x)) * inv(F(denominator(x))))
+Map defined by a julia-function
+  from rational field
+  to prime field of characteristic 2
 
 julia> f(QQ(1//3))
 1
 
-julia> f = MapFromFunc(x -> F(numerator(x)) * inv(F(denominator(x))), y -> QQ(lift(y)),  QQ, F)
-Map from
-Rational Field to Galois field with characteristic 2 defined by a julia-function with inverse
+julia> println(f)
+Map: QQ -> GF(2)
+
+julia> f = MapFromFunc(QQ, F, x -> F(numerator(x)) * inv(F(denominator(x))), y -> QQ(lift(ZZ, y)),)
+Map defined by a julia-function with inverse
+  from rational field
+  to prime field of characteristic 2
 
 julia> preimage(f, F(1))
 1
+
+julia> println(f)
+Map: QQ -> GF(2)
+
 ```
 """
 mutable struct MapFromFunc{R, T} <: Map{R, T, HeckeMap, MapFromFunc}
@@ -172,14 +174,14 @@ mutable struct MapFromFunc{R, T} <: Map{R, T, HeckeMap, MapFromFunc}
   f
   g
 
-  function MapFromFunc{R, T}(f, D::R, C::T) where {R, T}
+  function MapFromFunc{R, T}(D::R, C::T, f) where {R, T}
     n = new{R, T}()
     n.header = Hecke.MapHeader(D, C, f)
     n.f = f
     return n
   end
 
-  function MapFromFunc{R, T}(f, g, D::R, C::T) where {R, T}
+  function MapFromFunc{R, T}(D::R, C::T, f, g) where {R, T}
     n = new{R, T}()
     n.header = Hecke.MapHeader(D, C, f, g)
     n.f = f
@@ -192,46 +194,40 @@ function image(f::MapFromFunc, x)
   @req parent(x) === domain(f) "Element not in the domain"
   y = f.f(x)
   @req parent(y) === codomain(f) "Image not in the codomain"
-  return y
+  return y::elem_type(codomain(f))
 end
 
 function preimage(f::MapFromFunc, y)
   @req parent(y) === codomain(f) "Element not in the codomain"
   x = f.g(y)
   @req parent(x) === domain(f) "Preimage not in the domain"
-  return x
+  return x::elem_type(domain(f))
 end
 
-function Base.show(io::IO, M::MapFromFunc)
+function Base.show(io::IO, ::MIME"text/plain", M::MapFromFunc)
   @show_name(io, M)
-
-  io = IOContext(io, :compact => true)
-#  println(io, "Map from the $(M.f) julia-function")
-  println(io, "Map from")
-  show(io, domain(M))
-  print(io, " to ")
-  show(io, codomain(M))
-  print(io, " defined by a julia-function")
+  io = pretty(io)
+  print(io, "Map defined by a julia-function")
   if isdefined(M, :g)
-#    println(io, "with inverse by $(M.g)")
     print(io, " with inverse")
   end
+  println(io)
+  println(io, Indent(),"from ", Lowercase(), domain(M))
+  print(io, "to ", Lowercase(), codomain(M), Dedent())
 end
 
-function MapFromFunc(f, D, C)
-  return MapFromFunc{typeof(D), typeof(C)}(f, D, C)
+function MapFromFunc(D, C, f)
+  return MapFromFunc{typeof(D), typeof(C)}(D, C, f)
 end
 
-function MapFromFunc(f, g, D, C)
-  return MapFromFunc{typeof(D), typeof(C)}(f, g, D, C)
+function MapFromFunc(D, C, f, g)
+  return MapFromFunc{typeof(D), typeof(C)}(D, C, f, g)
 end
 
 function Base.inv(M::MapFromFunc)
   if isdefined(M, :g)
-     return MapFromFunc(M.g, M.f, codomain(M), domain(M))
+     return MapFromFunc(codomain(M), domain(M), M.g, M.f)
   else
-     return MapFromFunc(x->preimage(M, x), codomain(M), domain(M))
+     return MapFromFunc(codomain(M), domain(M), x->preimage(M, x))
   end
 end
-
-export MapFromFunc

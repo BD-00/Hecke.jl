@@ -3,7 +3,7 @@
   k, a = number_field(x - 1, "a")
   Z = maximal_order(k)
 
-  function doit(u::UnitRange, p::Int = 3)
+  function doit(u::AbstractUnitRange, p::Int = 3)
     cnt = 0
     for i in u
       I = ideal(Z, i)
@@ -187,7 +187,7 @@ end
   @test Hecke.has_quotient(r, [16])
   class_fields = []
   for s in ls;
-    C = ray_class_field(mr, s)::Hecke.ClassField{Hecke.MapRayClassGrp, GrpAbFinGenMap}
+    C = ray_class_field(mr, s)::Hecke.ClassField{Hecke.MapRayClassGrp, FinGenAbGroupHom}
     CC = number_field(C)
     if Hecke._is_conductor_minQQ(C, 16)
       push!(class_fields, CC)
@@ -327,4 +327,24 @@ end
   @test degree(t) == 4
   @test !is_normal(t)
   @test normal_closure(t) == S
+end
+
+@testset "Conductor fix" begin
+  flds = abelian_extensions(QQ, [2, 2], ZZ(4225), only_real = true)
+  @test length(flds) == 4
+end
+
+@testset "Kaiser-Lorenz" begin
+  Qx, x = QQ["x"]
+  f = x^6-x^5+x^4-2*x^3+x^2+1
+  k = splitting_field(f)
+  I = Hecke.lorenz_module(k, 12)
+  @test Hecke.is_consistent(I)
+end
+
+@testset "Enumerate by conductor" begin
+  l = abelian_extensions([3], collect(1:10^3); only_real = true)
+  @test length(l) == 159
+  l = abelian_extensions([2], collect(1:10^3))
+  @test length(l) == 607
 end

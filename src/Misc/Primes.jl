@@ -1,24 +1,3 @@
-export PrimesSet
-
-################################################################################
-#
-#  Missing is_prime functionality
-#
-################################################################################
-
-# Fallback
-function is_prime(x::Integer)
-  return is_prime(ZZRingElem(x))
-end
-
-function next_prime(x::BigInt, proved::Bool = true)
-  return BigInt(next_prime(ZZRingElem(x), proved))
-end
-
-function next_prime(x::T, proved::Bool = true) where {T <: Integer}
-  return T(next_prime(BigInt(x), proved))
-end
-
 ################################################################################
 #
 #  Primes iterator
@@ -41,7 +20,7 @@ mutable struct n_primes_struct
     n_primes_init!(r)
     finalizer(r) do r
       ccall((:n_primes_clear, Nemo.libflint), Cvoid, (Ref{n_primes_struct}, ), r)
-    end  
+    end
     return r
   end
 

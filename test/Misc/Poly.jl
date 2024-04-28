@@ -20,9 +20,9 @@
     local l
 
     while p < 4096
-      l = roots(f, ArbField(p, cached = false))
-      sgtpos = count(ispositive, l)
-      sgtneg = count(isnegative, l)
+      l = roots(ArbField(p, cached = false), f)
+      sgtpos = count(is_positive, l)
+      sgtneg = count(is_negative, l)
       sgtz = count(iszero, l)
       if sgtpos + sgtneg + sgtz != length(l)
         p *= 2
@@ -73,12 +73,12 @@
 end
 
 @testset "roots" begin
-  o = CyclotomicField(2)[1](1)
+  o = cyclotomic_field(2)[1](1)
   @test issetequal(roots(o, 2), [o, -o])
-  o = CyclotomicField(1)[1](1)
+  o = cyclotomic_field(1)[1](1)
   @test issetequal(roots(o, 2), [o, -o])
 
-  o, a = CyclotomicField(4)
+  o, a = cyclotomic_field(4)
   _, x = o["x"]
   @test length(roots(x^2-a^2//4)) == 2
 
@@ -103,7 +103,7 @@ end
   Qx, x = QQ["x"]
   @test @inferred is_squarefree(x)
   @test @inferred is_squarefree(2*x^0)
-  @test @inferred is_squarefree(0*x^0)
+  @test @inferred !is_squarefree(0*x^0)
   @test @inferred !is_squarefree(2*x^2)
   @test @inferred is_squarefree(x * (x + 1))
   @test @inferred !is_squarefree(x * (x + 1)^2)
@@ -111,16 +111,16 @@ end
   Zx, x = ZZ["x"]
   @test @inferred is_squarefree(x)
   @test @inferred is_squarefree(2*x^0)
-  @test @inferred is_squarefree(0*x^0)
+  @test @inferred !is_squarefree(0*x^0)
   @test @inferred !is_squarefree(2*x^2)
   @test @inferred is_squarefree(x * (x + 1))
   @test @inferred !is_squarefree(x * (x + 1)^2)
 
-  F, a = RationalFunctionField(GF(3), "a")
+  F, a = rational_function_field(GF(3), "a")
   Fx, x = F["x"]
   @test @inferred is_squarefree(x)
   @test @inferred is_squarefree(2*x^0)
-  @test @inferred is_squarefree(0*x^0)
+  @test @inferred !is_squarefree(0*x^0)
   @test @inferred !is_squarefree(2*x^2)
   @test @inferred is_squarefree(x^3 - a)
   @test @inferred is_squarefree(2*x)
@@ -130,7 +130,7 @@ end
 @testset "Cyclotomic polynomials" begin
   listp = Hecke.primes_up_to(50)
   for i in 1:20
-    Fp, _ = FiniteField(rand(listp), cached=false)
+    Fp, _ = finite_field(rand(listp), cached=false)
     Fpt, _ = polynomial_ring(Fp, "t", cached=false)
     chi = @inferred cyclotomic_polynomial(rand(1:100), Fpt)
     @test is_cyclotomic_polynomial(chi)
@@ -147,3 +147,86 @@ end
   f = x^8 + 319*x^7 + 1798*x^6 + 1177*x^5 + 1083*x^4 + 2070*x^3 + 2075*x^2 + 1937*x + 1896
   @test collect(Hecke.lazy_factor(f)) == [f]
 end
+
+@testset "isolating roots" begin
+  QQx, x = QQ[:x]
+  QQ1, _ = number_field(x-1)
+  P = only(infinite_places(QQ1))
+  QQ1y, y = QQ1[:y]
+  n = Hecke.n_positive_roots((y-1//10000)*(y-2//10000)*(y-100), Hecke.embedding(P))
+  @test n == 3
+end
+
+@testset "numerical roots" begin
+  QQx, x = QQ[:x]
+  f = x^3-2
+  r = roots(f)
+  @test length(r) == 0
+
+  r = roots(ArbField(100), f)
+  @test length(r) == 1
+  fa = factor(ArbField(100), f)
+  @test Set(map(degree, collect(keys(fa.fac)))) == Set([1,2])
+  r = roots(RealField(), f)
+  @test length(r) == 1
+  fa = factor(RealField(), f)
+  @test Set(map(degree, collect(keys(fa.fac)))) == Set([1,2])
+
+
+  r = roots(AcbField(100), f)
+  @test length(r) == 3
+  fa = factor(AcbField(100), f)
+  @test Set(map(degree, collect(keys(fa.fac)))) == Set([1])
+  r = roots(ComplexField(), f)
+  @test length(r) == 3
+  fa = factor(ComplexField(), f)
+  @test Set(map(degree, collect(keys(fa.fac)))) == Set([1])
+
+  ZZx, x = ZZ[:x]
+  f = x^3-2
+  r = roots(f)
+  @test length(r) == 0
+
+  r = roots(ArbField(100), f)
+  @test length(r) == 1
+  fa = factor(ArbField(100), f)
+  @test Set(map(degree, collect(keys(fa.fac)))) == Set([1,2])
+  r = roots(RealField(), f)
+  @test length(r) == 1
+  fa = factor(RealField(), f)
+  @test Set(map(degree, collect(keys(fa.fac)))) == Set([1,2])
+
+  r = roots(AcbField(100), f)
+  @test length(r) == 3
+  fa = factor(AcbField(100), f)
+  @test Set(map(degree, collect(keys(fa.fac)))) == Set([1])
+  r = roots(ComplexField(), f)
+  @test length(r) == 3
+  fa = factor(ComplexField(), f)
+  @test Set(map(degree, collect(keys(fa.fac)))) == Set([1])
+
+  r = roots(GF(5), f)
+  @test length(r) == 1
+
+  r = roots(GF(5, 2), f)
+  @test length(r) == 3
+
+  fa = factor(GF(5), f)
+  @test Set(map(degree, collect(keys(fa.fac)))) == Set([1,2])
+
+  fa = factor(6*x)
+  @test length(fa) == 3
+
+  fa = factor(QQ, 6*x)
+  @test length(fa) == 1
+
+  # 
+  let
+    K, = rationals_as_number_field()
+    Ky, y = K["y"]
+    f = y^4 - 46720785304//289510225*y^3 + 11506176//289510225*y^2 + 20030976//1412245*y - 2985984//289510225
+    @test Hecke.n_positive_roots(f, real_embeddings(K)[1]) == 3
+  end
+end
+
+

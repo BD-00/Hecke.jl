@@ -2,13 +2,13 @@
 ```@meta
 CurrentModule = Hecke
 DocTestSetup = quote
-    using Hecke
-  end
+  using Hecke
+end
 ```
 
 ## Creation of spaces
 
-```@docs
+```@docs; canonical=false
 quadratic_space(::NumField, ::Int)
 hermitian_space(::NumField, ::Int)
 quadratic_space(::NumField, ::MatElem)
@@ -21,7 +21,7 @@ following spaces for the rest of this section:
 
 ```@repl 2
 using Hecke # hide
-K, a = CyclotomicRealSubfield(7);
+K, a = cyclotomic_real_subfield(7);
 Kt, t = K["t"];
 E, b = number_field(t^2-a*t+1, "b");
 Q = quadratic_space(K, K[0 1; 1 0])
@@ -42,7 +42,7 @@ is similar to $K^{\times}/(K^{\times})^2$ in the quadratic case).
 The *discriminant* $\text{disc}(V, \Phi)$ of $(V, \Phi)$ is defined to be
 $(-1)^{(m(m-1)/2)}\text{det}(V, \Phi)$, where $m$ is the rank of $(V, \Phi)$.
 
-```@docs
+```@docs; canonical=false
 rank(::AbstractSpace)
 dim(::AbstractSpace)
 gram_matrix(::AbstractSpace)
@@ -59,7 +59,7 @@ space $H$:
 
 ```@repl 2
 using Hecke # hide
-K, a = CyclotomicRealSubfield(7);
+K, a = cyclotomic_real_subfield(7);
 Kt, t = K["t"];
 E, b = number_field(t^2-a*t+1, "b");
 H = hermitian_space(E, 3);
@@ -81,40 +81,41 @@ positive or all totally negative. In the former case, $V$ is said to be
 *positive definite*, while in the latter case it is *negative definite*.
 In all the other cases, we say that $V$ is *indefinite*.
 
-```@docs
+```@docs; canonical=false
 is_regular(::AbstractSpace)
 is_quadratic(::AbstractSpace)
-ishermitian(::AbstractSpace)
+is_hermitian(::AbstractSpace)
 is_positive_definite(::AbstractSpace)
 is_negative_definite(::AbstractSpace)
 is_definite(::AbstractSpace)
 ```
 
-Note that the `ishermitian` function tests whether the space is non-quadratic.
+Note that the `is_hermitian` function tests whether the space is non-quadratic.
 
 ### Examples
 
 ```@repl 2
 using Hecke # hide
-K, a = CyclotomicRealSubfield(7);
+K, a = cyclotomic_real_subfield(7);
 Kt, t = K["t"];
 E, b = number_field(t^2-a*t+1, "b");
 Q = quadratic_space(K, K[0 1; 1 0]);
 H = hermitian_space(E, 3);
 is_regular(Q), is_regular(H)
-is_quadratic(Q), ishermitian(H)
+is_quadratic(Q), is_hermitian(H)
 is_definite(Q), is_positive_definite(H)
 ```
 ---
 
 ## Inner products and diagonalization
 
-```@docs
+```@docs; canonical=false
 gram_matrix(::AbstractSpace{T}, ::MatElem{S}) where {S, T}
 gram_matrix(::AbstractSpace{T}, ::Vector{Vector{U}}) where {T, U}
 inner_product(::AbstractSpace, ::Vector, ::Vector)
 orthogonal_basis(::AbstractSpace)
 diagonal(::AbstractSpace)
+diagonal_with_transform(::AbstractSpace)
 restrict_scalars(::AbstractSpace, ::QQField, ::FieldElem)
 ```
 
@@ -122,14 +123,14 @@ restrict_scalars(::AbstractSpace, ::QQField, ::FieldElem)
 
 ```@repl 2
 using Hecke # hide
-K, a = CyclotomicRealSubfield(7);
+K, a = cyclotomic_real_subfield(7);
 Kt, t = K["t"];
 E, b = number_field(t^2-a*t+1, "b");
 Q = quadratic_space(K, K[0 1; 1 0]);
 H = hermitian_space(E, 3);
 gram_matrix(Q, K[1 1; 2 0])
 gram_matrix(H, E[1 0 0; 0 1 0; 0 0 1])
-inner_product(Q, [1, 1], [0, 2])
+inner_product(Q, K[1  1], K[0  2])
 orthogonal_basis(H)
 diagonal(Q), diagonal(H)
 ```
@@ -145,7 +146,7 @@ $f \colon V \to V'$ such that for all $x,y \in V$, one has
 An automorphism of spaces is called an *isometry* and a monomorphism is
 called an *embedding*.
 
-```@docs
+```@docs; canonical=false
 hasse_invariant(::QuadSpace, p)
 witt_invariant(::QuadSpace, p)
 is_isometric(::AbstractSpace, ::AbstractSpace)
@@ -159,7 +160,7 @@ of $O_K$ above $7$, one can get:
 
 ```@repl 2
 using Hecke # hide
-K, a = CyclotomicRealSubfield(7);
+K, a = cyclotomic_real_subfield(7);
 Q = quadratic_space(K, K[0 1; 1 0]);
 OK = maximal_order(K);
 p = prime_decomposition(OK, 7)[1][1];
@@ -184,7 +185,7 @@ locally with respect to the completions at some finite places. Note that in both
 quadratic and hermitian cases, completions are taken at finite places of the fixed
 field $K$.
 
-```@docs
+```@docs; canonical=false
 is_locally_represented_by(::AbstractSpace, ::AbstractSpace, p)
 is_represented_by(::AbstractSpace, ::AbstractSpace)
 ```
@@ -195,7 +196,7 @@ embed respectively locally or globally into $Q$ or $H$:
 
 ```@repl 2
 using Hecke # hide
-K, a = CyclotomicRealSubfield(7);
+K, a = cyclotomic_real_subfield(7);
 Kt, t = K["t"];
 E, b = number_field(t^2-a*t+1, "b");
 Q = quadratic_space(K, K[0 1; 1 0]);
@@ -218,10 +219,10 @@ usage, one of the following three methods can be called to obtain the direct
 sum of a finite collection of spaces. Note that the corresponding copies
 of the original spaces in the direct sum are pairwise orthogonal.
 
-```@docs
-direct_sum(x::Vector{AbstractSpace})
-direct_product(x::Vector{AbstractSpace})
-biproduct(x::Vector{AbstractSpace})
+```@docs; canonical=false
+direct_sum(::Vector{AbstractSpace})
+direct_product(::Vector{AbstractSpace})
+biproduct(::Vector{AbstractSpace})
 ```
 
 ### Example
@@ -232,12 +233,12 @@ E, b = cyclotomix_field_as_cm_extensions(7);
 H = hermitian_space(E, 3);
 H2 = hermitian_space(E, E[-1 0 0; 0 1 0; 0 0 -1]);
 H3, inj, proj = biproduct(H, H2)
-isone(compose(inj[1], proj[1]))
-iszero(compose(inj[1], proj[2]))
+is_one(matrix(compose(inj[1], proj[1])))
+is_zero(matrix(compose(inj[1], proj[2])))
 ```
 ## Orthogonality operations
 
-```@docs
+```@docs; canonical=false
 orthogonal_complement(::AbstractSpace, ::MatElem)
 orthogonal_projection(::AbstractSpace, ::MatElem)
 ```
@@ -246,7 +247,7 @@ orthogonal_projection(::AbstractSpace, ::MatElem)
 
 ```@repl 2
 using Hecke # hide
-K, a = CyclotomicRealSubfield(7);
+K, a = cyclotomic_real_subfield(7);
 Kt, t = K["t"];
 Q = quadratic_space(K, K[0 1; 1 0]);
 orthogonal_complement(Q, matrix(K, 1, 2, [1 0]))
@@ -260,14 +261,14 @@ there exists an element $x \in V_{\mathfrak p}$ such that
 $\Phi_{\mathfrak p}(x,x) = 0$, where $\Phi_{\mathfrak p}$ is the continuous
 extension of $\Phi$ to $V_{\mathfrak p} \times V_{\mathfrak p}$.
 
-```@docs
+```@docs; canonical=false
 is_isotropic(::AbstractSpace, p)
 ```
 ### Example
 
 ```@repl 2
 using Hecke # hide
-K, a = CyclotomicRealSubfield(7);
+K, a = cyclotomic_real_subfield(7);
 Kt, t = K["t"];
 E, b = number_field(t^2-a*t+1, "b");
 H = hermitian_space(E, 3);
@@ -282,18 +283,19 @@ is_isotropic(H, p)
 Let $(V, \Phi)$ be a space over $E/K$ and let $\mathfrak p$ be a prime ideal
 of $\mathcal O_K$. $V$ is said to be *hyperbolic* locally at $\mathfrak p$ if
 the completion $V_{\mathfrak p}$ of $V$ can be decomposed as an orthogonal sum
-of dimension 2 spaces with Gram matrices of the form
-$$\left(\begin{array}{cc} 0&1\\1&0 \end{array}\right)$$.
+of hyperbolic planes. The hyperbolic plane is the space $(H, \Psi)$ of rank 2
+over $E/K$ such that there exists a basis $e_1, e_2$ of $H$ such that
+$\Psi(e_1, e_1) = \Psi(e_2, e_2) = 0$ and $\Psi(e_1, e_2) = 1$.
 
-```@docs
-is_locally_hyperbolic(::HermSpace, ::NfOrdIdl)
+```@docs; canonical=false
+is_locally_hyperbolic(::HermSpace, ::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem})
 ```
 
 ### Example
 
 ```@repl 2
 using Hecke # hide
-K, a = CyclotomicRealSubfield(7);
+K, a = cyclotomic_real_subfield(7);
 Kt, t = K["t"];
 E, b = number_field(t^2-a*t+1, "b");
 H = hermitian_space(E, 3);
