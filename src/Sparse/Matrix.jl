@@ -23,22 +23,48 @@ parent(A::SMat) = SMatSpace(base_ring(A), A.r, A.c)
 base_ring(A::SMat{T}) where {T} = A.base_ring::parent_type(T)
 
 @doc raw"""
-    nrows(A::SMat) -> Int
+    number_of_rows(A::SMat) -> Int
 
 Return the number of rows of $A$.
 """
-function nrows(A::SMat)
+function number_of_rows(A::SMat)
   @assert A.r == length(A.rows)
   return A.r
 end
 
 @doc raw"""
-    ncols(A::SMat) -> Int
+    number_of_columns(A::SMat) -> Int
 
 Return the number of columns of $A$.
 """
-function ncols(A::SMat)
+function number_of_columns(A::SMat)
   return A.c
+end
+
+#used in HNF.jl:
+# sparse_row operations usually involve a temporary intermediate row
+# for large matrices, this kills the GC performance, so we allow
+# to store up to 10 sparse auxiliaries in the matrix..
+# usage:
+# sr = get_tmp(A)
+# add_scaled_row(..., sr)
+# release_tmp(A, sr)
+function get_tmp(A::SMat)
+  if isdefined(A, :tmp) && length(A.tmp) > 0
+    return pop!(A.tmp)
+  end
+  return sparse_row(base_ring(A))
+end
+
+function release_tmp(A::SMat{T}, s::SRow{T}) where T
+  return
+  if isdefined(A, :tmp)
+    if length(A.tmp) < 10
+      push!(A.tmp, s)
+    end
+  else
+    A.tmp = [s]
+  end
 end
 
 @doc raw"""

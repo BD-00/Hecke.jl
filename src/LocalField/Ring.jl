@@ -10,7 +10,7 @@ mutable struct QadicRing{S, T} <: Generic.Ring
   Q::S #The corresponding local field
   basis::Vector{T} #The OK-basis of the ring, where OK is
                    #the maximal order of the base field of Q
-  function QadicRing{S, T}(x::S) where {S <: Union{LocalField, FlintQadicField, FlintPadicField}, T}
+  function QadicRing{S, T}(x::S) where {S <: Union{LocalField, QadicField, PadicField}, T}
     z = new{S, T}()
     z.Q = x
     return z
@@ -22,18 +22,18 @@ function Base.show(io::IO, Q::QadicRing)
   println("Integers of ", Q.Q)
 end
 
-function MaximalOrder(Q::FlintQadicField)
-  return QadicRing{FlintQadicField, qadic}(Q)
+function MaximalOrder(Q::QadicField)
+  return QadicRing{QadicField, QadicFieldElem}(Q)
 end
 
-function MaximalOrder(Q::FlintPadicField)
-  return QadicRing{FlintPadicField, padic}(Q)
+function MaximalOrder(Q::PadicField)
+  return QadicRing{PadicField, PadicFieldElem}(Q)
 end
-#integers(Q::FlintQadicField) = ring_of_integers(Q)
+#integers(Q::QadicField) = ring_of_integers(Q)
 function MaximalOrder(Q::LocalField{S, T}) where {S, T <: Union{EisensteinLocalField, UnramifiedLocalField}}
   return QadicRing{LocalField{S, T}, LocalFieldElem{S, T}}(Q)
 end
-#integers(Q::FlintPadicField) = ring_of_integers(Q)
+#integers(Q::PadicField) = ring_of_integers(Q)
 
 mutable struct QadicRingElem{S, T} <: RingElem
   P::QadicRing{S, T}
@@ -91,7 +91,10 @@ parent_type(::Type{QadicRingElem{S, T}}) where {S, T} = QadicRing{S, T}
 zero(Q::QadicRing) = QadicRingElem(Q, Q.Q(0))
 one(Q::QadicRing) = QadicRingElem(Q, Q.Q(1))
 
-(Q::QadicRing{S, T})(a::T) where {S, T} = QadicRingElem(Q, a)
+function (Q::QadicRing{S, T})(a::T) where {S, T}
+  @assert parent(a) === Q.Q
+  QadicRingElem(Q, a)
+end
 (Q::QadicRing)(a::QadicRingElem) = QadicRingElem(a.P, a.x)
 (Q::QadicRing)(a::Integer) = QadicRingElem(Q, Q.Q(a))
 (Q::QadicRing)(a::ZZRingElem) = QadicRingElem(Q, Q.Q(a))
@@ -106,20 +109,20 @@ end
 
 (Q::QadicRing)() = QadicRingElem(Q, Q.Q())
 
-
-(Q::LocalField{S, T})(a::QadicRingElem{S, T}) where {S, T} = a.x
-(Q::FlintPadicField)(a::QadicRingElem{FlintPadicField, padic}) = a.x
-(Q::FlintQadicField)(a::QadicRingElem{FlintQadicField, qadic}) = a.x
-
+function (Q::Union{PadicField, QadicField, LocalField})(a::QadicRingElem)
+  if parent(a).Q !== Q
+    error("Parent mismatch")
+  end
+  return a.x
+end
 
 valuation(a::QadicRingElem) = valuation(a.x)
 is_unit(a::QadicRingElem) = !iszero(a) && valuation(a) == 0
-(Q::FlintQadicField)(a::padic) =  _map(Q, a) #TODO: do properly
+(Q::QadicField)(a::PadicFieldElem) =  _map(Q, a) #TODO: do properly
 
-
-
-function _map(Q::FlintQadicField, a::padic)
+function _map(Q::QadicField, a::PadicFieldElem)
   K = parent(a)
+  @assert prime(K) == prime(Q)
   v = valuation(a)
   if v >= 0
     q = Q(lift(a))
@@ -194,11 +197,21 @@ function setprecision!(a::QadicRingElem, n::Int)
   a.x = setprecision!(a.x, n)
 end
 
-function Base.setprecision(a::Generic.MatSpaceElem{QadicRingElem{qadic}}, n::Int)
+function Base.setprecision(a::Generic.MatSpaceElem{QadicRingElem{QadicFieldElem}}, n::Int)
   return map_entries(x -> setprecision(x, n), a)
 end
 
-coefficient_ring(Q::QadicRing) = integers(coefficient_ring(Q.Q))
+coefficient_ring(Q::QadicRing) = ring_of_integers(coefficient_ring(Q.Q))
 
+coefficient_ring(K::LocalField) = base_field(K)
 
+function absolute_coordinates(a::QadicRingElem)
+  v = absolute_coordinates(a.x)
+  Zp = ring_of_integers(prime_field(parent(a.x)))
+  return Zp.(v)
+end
 
+function absolute_coordinates(Zp::QadicRing, a::QadicRingElem)
+  v = absolute_coordinates(Zp.Q, a.x)
+  return Zp.(v)
+end

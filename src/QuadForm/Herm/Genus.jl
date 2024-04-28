@@ -90,14 +90,19 @@ over $\mathfrak p$.
 scale(G::HermLocalGenus, i::Int) = G.data[i][1]
 
 @doc raw"""
-    scale(g::HermLocalGenus) -> NfOrdFracIdl
+    scale(g::HermLocalGenus) -> AbsSimpleNumFieldOrderFractionalIdeal
 
 Given a local genus symbol `g` for hermitian lattices over $E/K$ at a prime
 $\mathfrak p$ of $\mathcal O_K$, return the scale of the Jordan block of minimum
 $\mathfrak P$-valuation, where $\mathfrak{P}$ is a prime ideal of $\mathcal O_E$
 lying over $\mathfrak p$.
 """
-scale(g::HermLocalGenus) = prime(g)^(scale(g, i))
+function scale(g::HermLocalGenus)
+  E = base_field(g)
+  OE = maximal_order(E)
+  P = prime_decomposition(OE, prime(g))[1][1]
+  return fractional_ideal(OE, P)^(scale(g, 1))
+end
 
 @doc raw"""
     scales(g::HermLocalGenus) -> Vector{Int}
@@ -218,25 +223,59 @@ function discriminant(G::HermLocalGenus)
   end
 end
 
-# this only works if it is ramified and dyadic
 @doc raw"""
     norm(g::HermLocalGenus, i::Int) -> Int
 
-Given a ramified dyadic local genus symbol `g` for hermitian lattices over $E/K$ at a
-prime ideal $\mathfrak p$ of $\mathcal O_K$, return the $\mathfrak p$-valuation of
-the norm of the `i`th Jordan block of `g`.
+Given a local genus symbol `g` for hermitian lattices over $E/K$ at a prime ideal
+$\mathfrak p$ of $\mathcal O_K$, return the $\mathfrak p$-valuation of the norm of
+the `i`th Jordan block of `g`.
 """
-norm(G::HermLocalGenus, i::Int) = begin @assert is_dyadic(G) && is_ramified(G); G.norm_val[i] end
+function norm(G::HermLocalGenus, i::Int)
+  if !is_ramified(G)
+    # In the unramified case, the Jordan block is
+    # diagonal so the norm and the scale agree. Moreover,
+    # the P-valuation of p is one, so we keep the same valuations
+    # too.
+    return scale(G, i)
+  elseif !is_dyadic(G)
+    # Two cases: either the scale valuation is odd and the Jordan
+    # block is a direct sum of subnormal planes. In this case, if j
+    # is the scale P-valuation, the norm p-valuation is (j+1)/2.
+    # Or the scale valuation is even, the Jordan block is diagonal so the
+    # scale and norm are the same: in that case though the P-valuation of
+    # p is two so we must divide the P-valuation of the scale by 2.
+    si = scale(G, i)
+    ni = div(si+1, 2)
+    return ni
+  else
+    # Already computed at the creation of the genus symbol.
+    return G.norm_val[i]
+  end
+end
 
-# this only works if it is ramified and dyadic
 @doc raw"""
     norms(g::HermLocalGenus) -> Vector{Int}
 
-Given a ramified dyadic local genus symbol `g` for hermitian lattices over $E/K$ at a
-prime ideal $\mathfrak p$ of $\mathcal O_K$, return the $\mathfrak p$-valuations of the
+Given a local genus symbol `g` for hermitian lattices over $E/K$ at a prime ideal
+$\mathfrak p$ of $\mathcal O_K$, return the $\mathfrak p$-valuations of the
 norms of the Jordan blocks of `g`.
 """
-norms(G::HermLocalGenus) = begin @assert is_dyadic(G) && is_ramified(G); G.norm_val end
+norms(G::HermLocalGenus) = map(i -> norm(G, i), 1:length(G))::Vector{Int}
+
+@doc raw"""
+    norm(g::HermLocalGenus) -> AbsSimpleNumFieldOrderFractionalIdeal
+
+Return the norm of `g`, i.e. the norm of any of its representatives.  
+
+Given a local genus symbol `g` of hermitian lattices over $E/K$ at a prime ideal
+$\mathfrak p$ of $\mathcal O_K$, it norm is computed as the norm of the Jordan block of minimum
+$\mathfrak p$-valuation.
+"""
+function norm(G::HermLocalGenus)
+  p = prime(G)
+  OK = order(p)
+  return fractional_ideal(OK, p)^(minimum(norms(G)))
+end
 
 @doc raw"""
     is_ramified(g::HermLocalGenus) -> Bool
@@ -289,7 +328,7 @@ Given a local genus symbol `g` for hermitian lattices over $E/K$, return `E`.
 base_field(G::HermLocalGenus) = G.E
 
 @doc raw"""
-    prime(g::HermLocalGenus) -> NfOrdIdl
+    prime(g::HermLocalGenus) -> AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}
 
 Given a local genus symbol `g` for hermitian lattices over $E/K$ at a prime ideal
 $\mathfrak p$ of $\mathcal O_K$, return $\mathfrak p$.
@@ -575,7 +614,7 @@ end
 ################################################################################
 
 @doc raw"""
-    genus(HermLat, E::NumField, p::NfOrdIdl, data::Vector; type::Symbol = :det,
+    genus(HermLat, E::NumField, p::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}, data::Vector; type::Symbol = :det,
 		                                           check::Bool = true)
                                                                  -> HermLocalGenus
 
@@ -851,7 +890,7 @@ end
 # TODO: better documentation
 
 @doc raw"""
-    genus(L::HermLat, p::NfOrdIdl) -> HermLocalGenus
+    genus(L::HermLat, p::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}) -> HermLocalGenus
 
 Return the local genus symbol `g` for hermitian lattices over $E/K$ of the completion
 of the hermitian lattice `L` at the prime ideal `p` of $\mathcal O_K$.
@@ -1193,7 +1232,7 @@ function show(io::IO, G::HermGenus)
   end
 end
 
-function _print_short(io::IO, a::arb)
+function _print_short(io::IO, a::ArbFieldElem)
   r = BigFloat(a)
   s = string(r)
   if length(s) >= 10
@@ -1204,7 +1243,7 @@ function _print_short(io::IO, a::arb)
   print(io, ss)
 end
 
-function _print_short(io::IO, a::acb)
+function _print_short(io::IO, a::AcbFieldElem)
   _print_short(io, real(a))
   if !iszero(imag(a))
     print(io, " + ")
@@ -1227,7 +1266,7 @@ Given a global genus symbol `G` for hermitian lattices over $E/K$, return `E`.
 base_field(G::HermGenus) = G.E
 
 @doc raw"""
-    primes(G::HermGenus) -> Vector{NfOrdIdl}
+    primes(G::HermGenus) -> Vector{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}}
 
 Given a global genus symbol `G` for hermitian lattices over $E/K$, return
 the list of prime ideals of $\mathcal O_K$ at which `G` has a local genus symbol.
@@ -1254,16 +1293,34 @@ Return the rank of any hermitian lattice with global genus symbol `G`.
 """
 rank(G::HermGenus) = G.rank
 
-# if G is defined over E/K, this returns the fractional ideal of K
-# obtained by multiplying p_i^s_i where the p_i's are the prime ideals
-# of the local symbols of G, and s_i's represent their respective
-# minimal scale valuation.
 function _scale(G::HermGenus)
   I = maximal_order(base_field(base_field(G)))
   for p in primes(G)
     s = minimum(scales(G[p]))
     I *= fractional_ideal(p)^s
   end
+  return I
+end
+
+@doc raw"""
+    scale(G::HermGenus) -> AbsSimpleNumFieldOrderFractionalIdeal
+
+Return the scale ideal of any hermitian lattice with global genus symbol `G`.
+"""
+function scale(G::HermGenus)
+  OE = maximal_order(base_field(G))
+  I = prod(scale(g) for g in G.LGS; init = fractional_ideal(OE, [elem_in_nf(OE(1))]))
+  return I
+end
+
+@doc raw"""
+    norm(G::HermGenus) -> AbsSimpleNumFieldOrderFractionalIdeal
+
+Return the norm ideal of any hermitian lattice with global genus symbol `G`.
+"""
+function norm(G::HermGenus)
+  OK = base_ring(maximal_order(base_field(G)))
+  I = prod(norm(g) for g in G.LGS; init = fractional_ideal(OK, [elem_in_nf(OK(1))]))
   return I
 end
 
@@ -1499,7 +1556,7 @@ end
 #
 ################################################################################
 
-function Base.getindex(G::HermGenus, P::NfOrdIdl)
+function Base.getindex(G::HermGenus, P::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem})
   @req is_prime(P) "Ideal must be prime"
   E = base_field(G)
   i = findfirst(isequal(P), G.primes)
@@ -1616,7 +1673,7 @@ end
 ################################################################################
 
 @doc raw"""
-    hermitian_local_genera(E::NumField, p::NfOrdIdl, rank::Int,
+    hermitian_local_genera(E::NumField, p::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}, rank::Int,
                            det_val::Int, min_scale::Int, max_scale::Int)
                                                       -> Vector{HermLocalGenus}
 
@@ -1760,9 +1817,9 @@ end
 @doc raw"""
     hermitian_genera(E::NumField, rank::Int,
                                   signatures::Dict{InfPlc, Int},
-                                  determinant::Union{Hecke.NfRelOrdIdl, Hecke.NfRelOrdFracIdl};
-                                  min_scale::Union{Hecke.NfRelOrdIdl, Hecke.NfRelOrdFracIdl} = is_integral(determinant) ? inv(1*order(determinant)) : determinant,
-                                  max_scale::Union{Hecke.NfRelOrdIdl, Hecke.NfRelOrdFracIdl} = is_integral(determinant) ? determinant : inv(1*order(determinant)))
+                                  determinant::Union{Hecke.RelNumFieldOrderIdeal, Hecke.RelNumFieldOrderFractionalIdeal};
+                                  min_scale::Union{Hecke.RelNumFieldOrderIdeal, Hecke.RelNumFieldOrderFractionalIdeal} = is_integral(determinant) ? inv(1*order(determinant)) : determinant,
+                                  max_scale::Union{Hecke.RelNumFieldOrderIdeal, Hecke.RelNumFieldOrderFractionalIdeal} = is_integral(determinant) ? determinant : inv(1*order(determinant)))
                                                                                                                  -> Vector{HermGenus}
 
 Return all global genus symbols for hermitian lattices over the algebra`E` with rank
@@ -1771,10 +1828,10 @@ class equal to `determinant`.
 
 If `max_scale == nothing`, it is set to be equal to `determinant`.
 """
-function hermitian_genera(E::Hecke.NfRel, rank::Int, signatures::Dict{<: InfPlc, Int},
-                          determinant::Union{Hecke.NfRelOrdIdl, Hecke.NfRelOrdFracIdl};
-                          min_scale::Union{Hecke.NfRelOrdIdl, Hecke.NfRelOrdFracIdl} = is_integral(determinant) ? 1*order(determinant) : determinant,
-                          max_scale::Union{Hecke.NfRelOrdIdl, Hecke.NfRelOrdFracIdl} = is_integral(determinant) ? determinant : 1*order(determinant))
+function hermitian_genera(E::Hecke.RelSimpleNumField, rank::Int, signatures::Dict{<: InfPlc, Int},
+                          determinant::Union{Hecke.RelNumFieldOrderIdeal, Hecke.RelNumFieldOrderFractionalIdeal};
+                          min_scale::Union{Hecke.RelNumFieldOrderIdeal, Hecke.RelNumFieldOrderFractionalIdeal} = is_integral(determinant) ? 1*order(determinant) : determinant,
+                          max_scale::Union{Hecke.RelNumFieldOrderIdeal, Hecke.RelNumFieldOrderFractionalIdeal} = is_integral(determinant) ? determinant : 1*order(determinant))
   @req rank >= 0 "Rank must be a non-negative integer"
   K = base_field(E)
   OE = maximal_order(E)

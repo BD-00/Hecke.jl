@@ -70,7 +70,7 @@ end
 
 mutable struct NFDBRecord{T}
   data::Dict{Symbol, Any}
-  K::AnticNumberField
+  K::AbsSimpleNumField
 
   function NFDBRecord{T}(data) where {T}
     z = new{T}()
@@ -123,7 +123,7 @@ function update_properties!(D::NFDB)
   return D
 end
 
-function NFDB(L::Vector{AnticNumberField}; compute = [])
+function NFDB(L::Vector{AbsSimpleNumField}; compute = [])
   res = NFDB{1}()
   for K in L
     D = _create_record(K, compute = compute)
@@ -186,7 +186,7 @@ const properties_comp = Dict(:id => (Int, x -> UInt(hash(x))),
                                                         end),
                               :is_normal => (Bool, x -> is_normal(x)),
                               :automorphism_group => (Tuple{Int, Int}, x -> find_small_group(automorphism_group(x)[1])[1]),
-                              :regulator => (arb, x -> regulator(maximal_order(x))),
+                              :regulator => (ArbFieldElem, x -> regulator(maximal_order(x))),
                               :lmfdb_label => (String, x -> ""),
                               :is_abelian => (Bool, x -> is_abelian(automorphism_group(x)[1])),
                               :non_simple => (Vector{QQPolyRingElem}, x -> non_simple_extension(x)),
@@ -354,7 +354,7 @@ function _get(K, s, x...)
   end
 end
 
-function _create_record(K::AnticNumberField; compute = [], keep_field = true)
+function _create_record(K::AbsSimpleNumField; compute = [], keep_field = true)
   f = defining_polynomial(K)
   data = Dict{Symbol, Any}()
   data[:poly] = f
@@ -427,7 +427,7 @@ _stringify(x::Tuple{Int, Int}) = string(x)
 
 _stringify(x) = string(x)
 
-_stringify(x::arb) = _string(x)
+_stringify(x::ArbFieldElem) = _string(x)
 
 function get_record(io::IO)
   data = Dict{Symbol, Any}()
@@ -757,7 +757,7 @@ function _parse(::Type{Perm{Int}}, io, start = Base.read(io, UInt8))
   return b, perm_from_string(String(take!(res)))
 end
 
-function _parse(::Type{arb}, io, start = Base.read(io, UInt8))
+function _parse(::Type{ArbFieldElem}, io, start = Base.read(io, UInt8))
   n = IOBuffer()
   b = start
   while !eof(io) && b == UInt8(' ')
@@ -785,7 +785,7 @@ function _parse(::Type{arb}, io, start = Base.read(io, UInt8))
   return b, RR(nu)
 end
 
-function _string(a::arb)
+function _string(a::ArbFieldElem)
   s = string(a)
   if s[1] != '['
     s = "[" * s * "]"
@@ -1036,7 +1036,7 @@ function Base.merge(D::Vector{NFDB{1}})
 end
 
 # should call update_properties! afterwards
-function unsafe_add!(DB::NFDB, K::AnticNumberField)
+function unsafe_add!(DB::NFDB, K::AbsSimpleNumField)
   D = _create_record(K, keep_field = false)
   push!(DB.fields, D)
   return D
@@ -1106,7 +1106,7 @@ names64 = [ "C64", "C8^2", "C8:C8", "C2^3:C8", "(C2*C4):C8", "D4:C8", "Q8:C8",
            "D10.C2^2", "C2^4*C4", "C2^3*D4", "C2^3*Q8", "C2^2*D4:C2",
            "C2*Q8:C2^2", "C2*C4.C2^3", "D4.C2^3", "C2^6" ]
 
-function has_obviously_relative_class_number_not_one(K::AnticNumberField, is_normal::Bool = true, maxdeg::Int = degree(K))
+function has_obviously_relative_class_number_not_one(K::AbsSimpleNumField, is_normal::Bool = true, maxdeg::Int = degree(K))
   if is_normal
     subs = subfields_normal(K)
   else
@@ -1156,30 +1156,163 @@ end
 #
 ################################################################################
 
-function _p_adic_regulator(K, p)
-  if !is_normal(K)
-    return _padic_regulator_non_normal(K, p)
+function _p_adic_regulator(K::AbsSimpleNumField, p::IntegerUnion)
+  return _p_adic_regulator_coates(K, p)
+end
+
+function _p_adic_regulator_coates(K::AbsSimpleNumField, p::IntegerUnion)
+  # Implementation due to Scheima Obeidi, 2024
+  degK = degree(K)
+  if degK == 1 # rationals
+    return zero(QQ)
   end
+  @req is_totally_real(K) "Field must be totally real"
+  OK = ring_of_integers(K)
+  dp = prime_ideals_over(OK, p)
+  U, mU = unit_group_fac_elem(OK)
+  rK = torsion_free_rank(U)
+  EK = [mU(U[j]) for j in 2:(rK + 1)]
+  push!(EK, FacElem(K(1+p))) # put 1+p in list with fundamental units
+  prec = degK + 20 # precision for working Qp
+  working_prec = prec + 20
+  # The precision management:
+  #
+  # prec = precision of Qp/Zp, this is where the determinant of the matrix
+  #        eventually resides. Might be zero, if prec < v(reg_p(K))
+  #
+  # working_prec = precision for the completion map (this does not guarentee
+  #                the precision of the output)
+  #
+  # There are some gotos, because we need to distinguish low prec and low
+  # working_prec.
+  while true
+    (prec > 2^12 || working_prec > 2^12) && error("Something wrong")
+    imK =[QadicRingElem{PadicField, PadicFieldElem}[] for i in 1:degK]
+    Qp = PadicField(p, prec, cached = false)
+    Zp = ring_of_integers(Qp)
+    dK = discriminant(OK)
+    r = maximum([ramification_index(P) for P in dp])
+    ims = [LocalFieldElem{QadicFieldElem, EisensteinLocalField}[] for i in 1:degK]
+    # Compute the logarithm of all elements under all embeddings
+    # We need a working precision independent of prec
+    while length(ims[rK + 1]) < length(dp) # while not everything is filled
+      empty!.(ims)
+      for j in 1:length(dp)
+        C, mC = completion(K, dp[j], working_prec)
+        for i in 1:(rK+1)
+          try
+            # the evaluation of the logarithm may fail, if the precision
+            # is not high enough
+            el = _evaluate_log_of_fac_elem(mC, dp[j], EK[i])
+            if is_zero(el)
+              @goto bad_working_prec
+            end
+            push!(ims[i], el)
+          catch e
+            if !(e isa ErrorException && e.msg == "precision too low")
+              rethrow()
+            end
+            @goto bad_working_prec
+          end
+        end
+      end
+    end
+
+    m = 0
+    mj = minimum(QQFieldElem[valuation(ims[i][j]) for i in 1:length(ims) for j in 1:length(dp)])
+    if mj >= 0
+      m = zero(QQ)
+    else
+      m = mj
+    end
+
+    for i in 1:(rK+1)
+      for j in 1:length(ims[i])
+        OC = ring_of_integers(parent(ims[i][j]))
+        try
+          w = absolute_coordinates(Zp, OC(ims[i][j]*p^(Int(-m*r)))) #coates
+          append!(imK[i], w)
+        catch e
+          if e isa ErrorException && startswith(e.msg, "Precision of field")
+            @goto bad_working_prec
+          else
+            rethrow(e)
+          end
+        end
+      end
+    end
+    X = matrix(Zp, imK)
+    dX = AbstractAlgebra.det_df(X)
+    if is_zero(dX)
+      @goto bad_prec
+    end
+    vp = valuation(AbstractAlgebra.det_df(X))
+    vp = vp +  m*r*degK + valuation(dK, p)//2 - 1
+    return vp
+
+    @label bad_prec
+    prec = 2 * prec
+    #@info "Increasing prec to $(prec)"
+    working_prec = max(working_prec, prec + 20)
+    continue
+
+    @label bad_working_prec
+    working_prec = 2 * working_prec
+    #@info "Increasing working_prec to $(working_prec)"
+    continue
+  end
+end
+
+function _p_adic_regulator_normal(K, p, fast::Bool = false)
   OK = maximal_order(K)
   P = prime_ideals_over(OK, p)[1]
   U, mU = unit_group_fac_elem(OK)
   A, mA = automorphism_group(K)
   @req order(A) == degree(K) "Field must be normal"
   @req is_totally_real(K) "Field must be totally real"
-  r = rank(U)
-  prec = 64
+  r = torsion_free_rank(U)
+  prec = degree(K) + 10
   _det = Hecke.AbstractAlgebra.det_df
   while true
     if prec > 2^15
       error("Precision >= 2^15, something is wrong")
     end
-    C, mC = completion(K, P, prec)
+    local C, mC
+    if fast
+      try
+        C, mC = completion_easy(K, P, prec)
+      catch e
+        if !(e isa ErrorException && e.msg == "cannot deal with difficult primes yet")
+          rethrow()
+        end
+        C, mC = completion(K, P, prec)
+      end
+    else
+      C, mC = completion(K, P, prec)
+    end
     Rmat = zero_matrix(C, r, r)
-    D = Dict{nf_elem, LocalFieldElem{qadic, EisensteinLocalField}}()
+    D = Dict{AbsSimpleNumFieldElem, elem_type(C)}()
+    good = true
     for i in 1:r
       for j in 1:r
-        Rmat[i, j] = _evaluate_log_of_fac_elem(mC, P, mA(A[i])(mU(U[j + 1])), D) # j + 1, because the fundamental units correspond to U[2],..,U[r + 1]
+        try
+          Rmat[i, j] = _evaluate_log_of_fac_elem(mC, P, mA(A[i])(mU(U[j + 1])), D) # j + 1, because the fundamental units correspond to U[2],..,U[r + 1]
+        catch e
+          @show "asds"
+          if !(e isa ErrorException && e.msg == "precision too low")
+            rethrow()
+          end
+          good = false
+          break
+        end
       end
+      if !good
+        break
+      end
+    end
+    if !good
+      prec = 2*prec
+      continue
     end
     z = _det(Rmat)
     if !is_zero(z)
@@ -1187,10 +1320,13 @@ function _p_adic_regulator(K, p)
     else
       prec = 2*prec
     end
+    if prec > 2^15
+      error("Something wrong")
+    end
   end
 end
 
-function _evaluate_log_of_fac_elem(mC, P, e::FacElem{nf_elem, AnticNumberField}, D = Dict{nf_elem, LocalFieldElem{qadic, EisensteinLocalField}}())
+function _evaluate_log_of_fac_elem(mC, P, e::FacElem{AbsSimpleNumFieldElem, AbsSimpleNumField}, D = Dict{AbsSimpleNumFieldElem, elem_type(codomain(mC))}())
   C = codomain(mC)
   K = base_ring(e)
   pi = K(uniformizer(P))
@@ -1205,14 +1341,21 @@ function _evaluate_log_of_fac_elem(mC, P, e::FacElem{nf_elem, AnticNumberField},
   for (b, n) in e
     l = get!(D, b) do
       bb = mC(pi^(-valuation(b, P)) * b)
-      return log(bb)
+      if is_zero(bb)
+        error("precision too low")
+      end
+      if bb isa QadicFieldElem
+        return _log(bb)
+      else
+        return log(bb)
+      end
     end
     res = res + n * l
   end
   return res
 end
 
-function _padic_regulator_non_normal(K, p)
+function _p_adic_regulator_non_normal(K, p)
   @req is_totally_real(K) "Field must be totally real"
   a = gen(K)
   N, KtoN = normal_closure(K)
@@ -1221,7 +1364,7 @@ function _padic_regulator_non_normal(K, p)
   # first identify the distinct p-adic completions of K
   A, mA = automorphism_group(N)
   d = degree(N)
-  prec = 32 
+  prec = 32
   auts = Int[]
   while true
     empty!(auts)
@@ -1244,7 +1387,7 @@ function _padic_regulator_non_normal(K, p)
 
   OK = ring_of_integers(K)
   U, mU = unit_group_fac_elem(OK)
-  r = rank(U)
+  r = torsion_free_rank(U)
   prec = 64
   _det = Hecke.AbstractAlgebra.det_df
   while true

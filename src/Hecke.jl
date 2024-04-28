@@ -27,7 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 # (C) 2015-2019 Claus Fieker, Tommy Hofmann
-# (C) 2020-2022 Claus Fieker, Tommy Hofmann, Carlo Sircana
+# (C) 2020-2024 Claus Fieker, Tommy Hofmann, Carlo Sircana
 #
 ################################################################################
 
@@ -77,6 +77,8 @@ import AbstractAlgebra: get_cached!, @alias
 
 import AbstractAlgebra: pretty, Lowercase, LowercaseOff, Indent, Dedent
 
+import AbstractAlgebra: Solve
+
 import LinearAlgebra: dot, nullspace, rank, ishermitian
 
 import SparseArrays: nnz
@@ -94,12 +96,12 @@ import Pkg
 
 exclude = [:Nemo, :AbstractAlgebra, :RealNumberField, :zz, :qq, :factor, :call,
            :factors, :parseint, :strongequal, :window, :xgcd, :rows, :cols,
-           :can_solve, :set_entry!,]
+           :set_entry!,]
 
 for i in names(Nemo)
   (i in exclude || !isdefined(Nemo, i)) && continue
-  eval(Meta.parse("import Nemo." * string(i)))
-  eval(Expr(:export, i))
+  @eval import Nemo: $i
+  @eval export $i
 end
 
 import Nemo: acb_struct, Ring, Group, Field, zzModRing, zzModRingElem, arf_struct,
@@ -168,7 +170,7 @@ function __init__()
     printstyled(" $VERSION_NUMBER ", color = :green)
     print("... \n ... which comes with absolutely no warranty whatsoever")
     println()
-    println("(c) 2015-2023 by Claus Fieker, Tommy Hofmann and Carlo Sircana")
+    println("(c) 2015-2024 by Claus Fieker, Tommy Hofmann and Carlo Sircana")
     println()
   end
 
@@ -198,6 +200,21 @@ using .Globals
 
 ################################################################################
 #
+#  Aliases
+#
+################################################################################
+
+# to make the alias of a function introduced in Hecke already available,
+# one needs to create a function stub, export it, and then do the alias
+function number_of_lattices end
+function number_of_relations end
+export number_of_lattices
+export number_of_relations
+@alias nlattices number_of_lattices
+@alias nrels number_of_relations
+
+################################################################################
+#
 #  AbstractAlgebra/Nemo shenanigans
 #
 ################################################################################
@@ -221,17 +238,17 @@ include("Assertions.jl")
 #
 ################################################################################
 
-function is_maximal_order_known(K::AnticNumberField)
+function is_maximal_order_known(K::AbsSimpleNumField)
   return has_attribute(K, :maximal_order)
 end
 
-function conjugate_data_arb(K::AnticNumberField)
+function conjugate_data_arb(K::AbsSimpleNumField)
   return get_attribute!(K, :conjugate_data_arb) do
     return acb_root_ctx(K.pol)
   end::acb_root_ctx
 end
 
-function conjugate_data_arb_roots(K::AnticNumberField, p::Int)
+function conjugate_data_arb_roots(K::AbsSimpleNumField, p::Int)
   already_set = false
   _c = get_attribute(K, :conjugate_data_arb_roots)
   if _c !== nothing
@@ -257,27 +274,27 @@ function conjugate_data_arb_roots(K::AnticNumberField, p::Int)
       p = max(p, 2)
       rall = [one(AcbField(p, cached = false))]
       rreal = [one(ArbField(p, cached = false))]
-      rcomplex = Vector{acb}()
+      rcomplex = Vector{AcbFieldElem}()
     elseif f == 2
       # x + 1
       p = max(p, 2)
       rall = [-one(AcbField(p, cached = false))]
       rreal = [-one(ArbField(p, cached = false))]
-      rcomplex = Vector{acb}()
+      rcomplex = Vector{AcbFieldElem}()
     else
       # Use that e^(i phi) = cos(phi) + i sin(phi)
       # Call sincospi to determine these values
       pstart = max(p, 2) # Sometimes this gets called with -1
-      local _rall::Vector{Tuple{arb, arb}}
-      rreal = arb[]
-      rcomplex = Vector{acb}(undef, div(degree(K), 2))
+      local _rall::Vector{Tuple{ArbFieldElem, ArbFieldElem}}
+      rreal = ArbFieldElem[]
+      rcomplex = Vector{AcbFieldElem}(undef, div(degree(K), 2))
       while true
         R = ArbField(pstart, cached = false)
         # We need to pair them
-        _rall = Tuple{arb, arb}[ sincospi(QQFieldElem(2*k, f), R) for k in 1:f if gcd(f, k) == 1]
+        _rall = Tuple{ArbFieldElem, ArbFieldElem}[ sincospi(QQFieldElem(2*k, f), R) for k in 1:f if gcd(f, k) == 1]
         if all(x -> radiuslttwopower(x[1], -p) && radiuslttwopower(x[2], -p), _rall)
           CC = AcbField(pstart, cached = false)
-          rall = acb[ CC(l[2], l[1]) for l in _rall]
+          rall = AcbFieldElem[ CC(l[2], l[1]) for l in _rall]
           j = 1
           good = true
           for i in 1:degree(K)
@@ -326,13 +343,13 @@ function conjugate_data_arb_roots(K::AnticNumberField, p::Int)
   return c[p]::acb_roots
 end
 
-function signature(K::AnticNumberField)
+function signature(K::AbsSimpleNumField)
   return get_attribute!(K, :signature) do
     return signature(defining_polynomial(K))
   end::Tuple{Int, Int}
 end
 
-function _get_prime_data_lifting(K::AnticNumberField)
+function _get_prime_data_lifting(K::AbsSimpleNumField)
   return get_attribute!(K, :_get_prime_data_lifting) do
     return Dict{Int,Any}()
   end::Dict{Int,Any}
@@ -370,23 +387,6 @@ function _get_version()
 end
 const pkg_version = _get_version()
 
-######################################################################
-# named printing support
-######################################################################
-
-# to use:
-# in HeckeMap
-#   in the show function, start with @show_name(io, map)
-# for other objects
-#   add @attributes to the struct
-#   add @show_name(io, obj) to show
-#   optionally, add @show_special(io, obj) as well
-# on creation, or whenever, call set_name!(obj, string)
-# @show_name will set on printing if bound in the REPL
-# moved into AbstractAlgebra
-
-#maps are different - as are number fields
-
 ################################################################################
 #
 #  Jupyter notebook check
@@ -408,7 +408,7 @@ abstract type HeckeMap <: SetMap end  #needed here for the hasspecial stuff
 
 import AbstractAlgebra: get_attribute, set_attribute!, @show_name, @show_special,
        _get_attributes, _get_attributes!, _is_attribute_storing_type,
-       @show_special_elem, @attributes, extra_name, set_name!, find_name
+       @show_special_elem, @attributes, extra_name, set_name!, get_name
 
 # Hecke maps store attributes in the header object
 _get_attributes(G::Map{<:Any, <:Any, HeckeMap, <:Any}) = _get_attributes(G.header)
@@ -561,6 +561,17 @@ add_assertion_scope(:PID_Test)
 
 ################################################################################
 #
+#  Function stub
+#
+################################################################################
+
+# - The following function is introduced in src/ModAlgAss/*
+# - The Hecke.MPolyFactor submodule wants to extend it, but is loaded earlier
+# - Introduce the function here, to make everyone happy
+function is_absolutely_irreducible end
+
+################################################################################
+#
 #  "Submodules"
 #
 ################################################################################
@@ -607,7 +618,7 @@ const _RealRings = _RealRing[_RealRing()]
 #
 ################################################################################
 
-#precompile(maximal_order, (AnticNumberField, ))
+#precompile(maximal_order, (AbsSimpleNumField, ))
 
 ################################################################################
 #
@@ -753,7 +764,7 @@ function open_doc()
     end
 end
 
-function build_doc(; doctest=false, strict=false, format=:mkdocs)
+function build_doc(; doctest=false, strict=false, format=:vitepress)
   if !isdefined(Main, :Build)
     doc_init()
   end
@@ -762,7 +773,7 @@ function build_doc(; doctest=false, strict=false, format=:mkdocs)
   end
   if format == :html
     open_doc()
-  elseif format == :mkdocs
+  elseif format == :vitepress
     println("""Run `mkdocs serve` inside `../Hecke/docs/` to view the documentation.
 
             Use `format = :html` for a simplified version of the docs which does
@@ -817,7 +828,7 @@ varinfo(pat::Regex) = varinfo(Main, pat)
 
 
 function print_cache(sym::Vector{Any})
-  for f in sym;
+  for f in sym
     #if f[2] isa Array || f[2] isa Dict || f[2] isa IdDict;
     try
       print(f[1], " ", length(f[2]), "\n");
@@ -835,11 +846,10 @@ end
 function find_cache(M::Module)
   sym = []
   for a in collect(names(M, all = true))
-    d = Meta.parse("$M.$a")
       try
-        z = eval(d);
+        z = getproperty(M, a)
         if isa(z, AbstractArray) || isa(z, AbstractDict)
-          push!(sym, (d, z))
+          push!(sym, ((M,a), z))
         end
     catch e
     end
@@ -847,19 +857,25 @@ function find_cache(M::Module)
   return sym
 end
 
-protect = [:(Hecke.ASSERT_LOOKUP), :(Hecke.VERBOSE_LOOKUP),
-           :(Hecke.ASSERT_SCOPE), :(Hecke.VERBOSE_SCOPE),
-           :(Hecke._euler_phi_inverse_maximum),
-           :(Hecke.odlyzko_bound_grh),
-           :(Hecke.nC), :(Hecke.B1), #part of ECM
-           :(Hecke.VERBOSE_PRINT_INDENT),
-           :(Hecke._RealRings),
-           :(Hecke.protect)] # We need to protect protect itself :)
-                             # Otherwise it might emptied and then everything
-                             # is emptied.
+const protect = [
+  # We need to protect protect itself :)
+  # Otherwise it might emptied and then everything
+  # is emptied.
+  (Hecke, :protect),
+
+  (Hecke, :ASSERT_LOOKUP),
+  (Hecke, :VERBOSE_LOOKUP),
+  (Hecke, :ASSERT_SCOPE),
+  (Hecke, :VERBOSE_SCOPE),
+  (Hecke, :_euler_phi_inverse_maximum),
+  (Hecke, :odlyzko_bound_grh),
+  (Hecke, :nC), (Hecke, :B1), #part of ECM
+  (Hecke, :VERBOSE_PRINT_INDENT),
+  (Hecke, :_RealRings),
+]
 
 function clear_cache(sym::Vector{Any})
-  for f in sym;
+  for f in sym
     if f[1] in protect
       continue
     end
@@ -876,8 +892,8 @@ function clear_cache()
   clear_cache(find_cache(Hecke))
 end
 
-precompile(maximal_order, (AnticNumberField, ))
-precompile(class_group, (NfAbsOrd{AnticNumberField, nf_elem},))
+precompile(maximal_order, (AbsSimpleNumField, ))
+precompile(class_group, (AbsSimpleNumFieldOrder,))
 
 @inline __get_rounding_mode() = Base.MPFR.rounding_raw(BigFloat)
 
