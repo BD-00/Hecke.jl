@@ -5,7 +5,6 @@
 ################################################################################
 
 function SMatSpace(R::Ring, r::Int, c::Int; cached = true)
-function SMatSpace(R::Ring, r::Int, c::Int; cached = true)
   T = elem_type(R)
   return SMatSpace{T}(R, r, c, cached)
 end
@@ -147,7 +146,6 @@ density(A::SMat) = 1.0 - sparsity(A)
 function show(io::IO, A::SMat{T}) where T
   print(io, "Sparse ", A.r, " x ", A.c, " matrix with ")
   print(io, A.nnz, " non-zero entries\n")
-  print(io, A.nnz, " non-zero entries\n")
 end
 
 ################################################################################
@@ -158,29 +156,13 @@ end
 
 @doc raw"""
     sparse_matrix(R::Ring) -> SMat
+
 Return an empty sparse matrix with base ring $R$.
 """
-function sparse_matrix(R::Ring)
-  r = SMat{elem_type(R), Vector{elem_type(R)}}()
+function sparse_matrix(R::T) where T <: Ring
+  r = SMat{elem_type(R)}()
   r.base_ring = R
   return r
-end
-function sparse_matrix(R::ZZRing)
-  r = SMat{ZZRingElem, ZZRingElem_Array_Mod.ZZRingElem_Array}()
-  r.base_ring = R
-  return r
-end
-
-@doc raw"""
-    sparse_matrix(R::Ring, n::Int, m::Int) -> SMat
-Return a sparse $n$ times $m$ zero matrix over $R$.
-"""
-function sparse_matrix(R::Ring, n::Int, m::Int)
-  S = sparse_matrix(R)
-  S.rows = [sparse_row(R) for i=1:n]
-  S.r = n
-  S.c = m
-  return S
 end
 
 ################################################################################
@@ -291,26 +273,6 @@ function sparse_matrix(A::MatElem; keepzrows::Bool = true)
     end
     push!(m.rows, r)
     m.r += 1
-  for i=1:nrows(A)
-    if iszero_row(A, i)
-      if !keepzrows
-        continue
-      else
-        r = sparse_row(R)
-      end
-    else
-      r = sparse_row(R)
-      for j = 1:ncols(A)
-        t = A[i, j]
-        if t != 0
-          m.nnz += 1
-          push!(r.values, R(t))
-          push!(r.pos, j)
-        end
-      end
-    end
-    push!(m.rows, r)
-    m.r += 1
   end
   return m
 end
@@ -326,7 +288,6 @@ function sparse_matrix(A::Matrix{T}) where {T <: RingElement}
   m.c = Base.size(A, 2)
   m.r = 0
   for i in 1:size(A, 1)
-    if iszero_row(A, i)
     if iszero_row(A, i)
       push!(m, sparse_row(parent(A[1, 1])))
       continue
@@ -463,7 +424,6 @@ end
 
 ################################################################################
 #
-#  Make sparse matrices iteratable
 #  Make sparse matrices iteratable
 #
 ################################################################################
@@ -642,7 +602,6 @@ function +(A::SMat{T}, B::SMat{T}) where T
   nrows(A) != nrows(B) && error("Matrices must have same number of rows")
   ncols(A) != ncols(B) && error("Matrices must have same number of columns")
   C = sparse_matrix(base_ring(A))
-  C = sparse_matrix(base_ring(A))
   m = min(nrows(A), nrows(B))
   for i=1:m
     push!(C, A[i] + B[i])
@@ -659,7 +618,6 @@ end
 function -(A::SMat{T}, B::SMat{T}) where T
   nrows(A) != nrows(B) && error("Matrices must have same number of rows")
   ncols(A) != ncols(B) && error("Matrices must have same number of columns")
-  C = sparse_matrix(base_ring(A))
   C = sparse_matrix(base_ring(A))
   m = min(nrows(A), nrows(B))
   for i=1:m
@@ -991,7 +949,6 @@ end
 ################################################################################
 #
 #  Vertical concatentation
-#  Vertical concatentation
 #
 ################################################################################
 
@@ -1026,7 +983,6 @@ end
 
 ################################################################################
 #
-#  Horizontal concatentation
 #  Horizontal concatentation
 #
 ################################################################################
@@ -1218,11 +1174,9 @@ end
     add_scaled_row!(A::SMat{T}, i::Int, j::Int, c::T) -> SMat{T}
 
 Returns $A$ after add_scaled_row!(Ai::SRow{T}, Aj::SRow{T}, c::T) in $A$.
-Returns $A$ after add_scaled_row!(Ai::SRow{T}, Aj::SRow{T}, c::T) in $A$.
 """
 function add_scaled_row!(A::SMat{T}, i::Int, j::Int, c::T) where T
   A.nnz = A.nnz - length(A[j])
-  add_scaled_row!(A[i], A[j], c)
   add_scaled_row!(A[i], A[j], c)
   A.nnz = A.nnz + length(A[j])
   return A
@@ -1492,12 +1446,6 @@ end
 
 Return a sparse $n$ times $n$ zero matrix over $R$.
 """
-function zero_matrix(::Type{SMat}, R::Ring, n::Int)
-  S = sparse_matrix(R)
-  S.rows = [sparse_row(R) for i=1:n]
-  S.c = S.r = n
-  return S
-end
 function zero_matrix(::Type{SMat}, R::Ring, n::Int)
   S = sparse_matrix(R)
   S.rows = [sparse_row(R) for i=1:n]
