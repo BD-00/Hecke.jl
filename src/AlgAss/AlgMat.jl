@@ -10,13 +10,15 @@ dim(A::MatAlgebra) = A.dim
 
 base_ring(A::MatAlgebra{T, S}) where {T, S} = A.base_ring::parent_type(T)
 
-coefficient_ring(A::MatAlgebra) = A.coefficient_ring
+base_ring_type(::Type{MatAlgebra{T, S}}) where {T, S} = parent_type(T)
 
-basis(A::MatAlgebra) = A.basis
+coefficient_ring(A::MatAlgebra{T, S}) where {T, S} = A.coefficient_ring::base_ring_type(S)
+
+basis(A::MatAlgebra) = A.basis::Vector{elem_type(A)}
 
 has_one(A::MatAlgebra) = true
 
-elem_type(::Type{MatAlgebra{T, S}}) where { T, S } = MatAlgebraElem{T, MatAlgebra{T, S}, S}
+elem_type(::Type{MatAlgebra{T, S}}) where { T, S } = MatAlgebraElem{T, S}
 
 order_type(::MatAlgebra{QQFieldElem, S}) where { S } = AlgAssAbsOrd{MatAlgebra{QQFieldElem, S}, elem_type(MatAlgebra{QQFieldElem, S})}
 order_type(::Type{MatAlgebra{QQFieldElem, S}}) where { S } = AlgAssAbsOrd{MatAlgebra{QQFieldElem, S}, elem_type(MatAlgebra{QQFieldElem, S})}

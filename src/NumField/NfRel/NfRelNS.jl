@@ -141,12 +141,12 @@ end
 function Base.show(io::IO, a::RelNonSimpleNumField)
   @show_name(io, a)
   @show_special(io, a)
-  if get(io, :supercompact, false)
+  if is_terse(io)
     print(io, "Non-simple number field")
   else
     io = pretty(io)
     print(io, "Non-simple number field of degree ", degree(a))
-    print(IOContext(io, :supercompact => true), " over ", Lowercase(), base_field(a))
+    print(terse(io), " over ", Lowercase(), base_field(a))
   end
 end
 
@@ -177,8 +177,7 @@ function number_field(f::Vector{Generic.Poly{T}}, S::Vector{Symbol}; cached::Boo
   return K, gens(K)::Vector{elem_type(K)}
 end
 
-function number_field(f::Vector{Generic.Poly{T}}, s::String="_\$"; cached::Bool = false, check::Bool = true) where T
-  sym = Symbol(s)
+function number_field(f::Vector{Generic.Poly{T}}, s::VarName="_\$"; cached::Bool = false, check::Bool = true) where T
   S = [Symbol("$s$i") for i=1:length(f)]
   return number_field(f, S, cached = cached, check = check)
 end

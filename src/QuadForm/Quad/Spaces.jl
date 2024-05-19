@@ -101,7 +101,7 @@ function Base.show(io::IO, ::MIME"text/plain", V::QuadSpace)
 end
 
 function show(io::IO, V::QuadSpace)
-  if get(io, :supercompact, false)
+  if is_terse(io)
     print(io, "Quadratic space")
   else
     print(io, "Quadratic space of dimension $(dim(V))")
@@ -2068,6 +2068,7 @@ end
 local_quad_space_class(K, prime::IntegerUnion, n, d, hasse_inv, k)=local_quad_space_class(K,ideal(ZZ,prime),n,d,hasse_inv,k)
 
 base_ring(G::LocalQuadSpaceCls) = G.K
+base_ring_type(::Type{LocalQuadSpaceCls{S, T, U}}) where {S, T, U} = S
 prime(G::LocalQuadSpaceCls) = G.p
 
 @doc raw"""
@@ -2133,7 +2134,7 @@ function show(io::IO, ::MIME"text/plain", G::LocalQuadSpaceCls)
 end
 
 function show(io::IO, G::LocalQuadSpaceCls)
-  if get(io, :supercompact, false)
+  if is_terse(io)
     print(io, "Local isometry class of quadratic space")
   else
     print(io, "Isometry class of quadratic space over the ", absolute_minimum(prime(G)), "-adic integers")
@@ -2327,12 +2328,12 @@ function show(io::IO, ::MIME"text/plain", G::QuadSpaceCls)
 end
 
 function show(io::IO, G::QuadSpaceCls)
-  if get(io, :supercompact, false)
+  if is_terse(io)
     print(io, "Isometry class of quadratic space")
   else
     io = pretty(io)
     print(io, "Isometry class of quadratic space over ")
-    print(IOContext(io, :supercompact => true), Lowercase(), base_ring(G))
+    print(terse(io), Lowercase(), base_ring(G))
   end
 end
 
@@ -2405,6 +2406,8 @@ det_nondegenerate_part(g::QuadSpaceCls) = g.det
 det_ndeg(g::QuadSpaceCls) = det_nondegenerate_part(g)
 
 base_ring(g::QuadSpaceCls) = g.K
+
+base_ring_type(::Type{QuadSpaceCls{S, T, U, V}}) where {S, T, U, V} = S
 
 @doc raw"""
     dim_radical(g::QuadSpaceCls) -> Int

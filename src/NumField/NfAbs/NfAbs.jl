@@ -36,14 +36,9 @@ function number_field(S::EuclideanRingResidueRing{QQPolyRingElem}; cached::Bool 
   return K, mp
 end
 
-function number_field(f::ZZPolyRingElem, s::Symbol; cached::Bool = true, check::Bool = true)
+function number_field(f::ZZPolyRingElem, s::VarName; cached::Bool = true, check::Bool = true)
   Qx = Globals.Qx
-  return number_field(Qx(f), String(s), cached = cached, check = check)
-end
-
-function number_field(f::ZZPolyRingElem, s::AbstractString; cached::Bool = true, check::Bool = true)
-  Qx = Globals.Qx
-  return number_field(Qx(f), s, cached = cached, check = check)
+  return number_field(Qx(f), Symbol(s), cached = cached, check = check)
 end
 
 function number_field(f::ZZPolyRingElem; cached::Bool = true, check::Bool = true)
@@ -74,7 +69,7 @@ julia> wildanger_field(3, ZZ(10), "a")
 (Number field of degree 3 over QQ, a)
 ```
 """
-function wildanger_field(n::Int, B::ZZRingElem, s::String = "_\$"; check::Bool = true, cached::Bool = true)
+function wildanger_field(n::Int, B::ZZRingElem, s::VarName = "_\$"; check::Bool = true, cached::Bool = true)
   x = gen(Globals.Qx)
   f = x^n
   for i=0:n-1
@@ -83,7 +78,7 @@ function wildanger_field(n::Int, B::ZZRingElem, s::String = "_\$"; check::Bool =
   return number_field(f, s, cached = cached, check = check)
 end
 
-function wildanger_field(n::Int, B::Integer, s::String = "_\$"; cached::Bool = true, check::Bool = true)
+function wildanger_field(n::Int, B::Integer, s::VarName = "_\$"; cached::Bool = true, check::Bool = true)
   return wildanger_field(n, ZZRingElem(B), s, cached = cached, check = check)
 end
 
@@ -100,6 +95,7 @@ julia> quadratic_field(5)
 ```
 """
 function quadratic_field(d::IntegerUnion; cached::Bool = true, check::Bool = true)
+  return quadratic_field(ZZRingElem(d), cached = cached, check = check)
 end
 
 function quadratic_field(d::ZZRingElem; cached::Bool = true, check::Bool = true)
@@ -123,7 +119,7 @@ end
 
 function show_quad(io::IO, q::AbsSimpleNumField)
   d = trailing_coefficient(q.pol)
-  if get(io, :supercompact, false)
+  if is_terse(io)
     if d < 0
       print(io, "Real quadratic field")
     else
@@ -136,10 +132,6 @@ function show_quad(io::IO, q::AbsSimpleNumField)
       print(io, "Imaginary quadratic field defined by ", q.pol)
     end
   end
-end
-
-function quadratic_field(d::Integer; cached::Bool = true, check::Bool = true)
-  return quadratic_field(ZZRingElem(d), cached = cached, check = check)
 end
 
 @doc doc"""

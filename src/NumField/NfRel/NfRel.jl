@@ -161,12 +161,12 @@ function Base.show(io::IO, ::MIME"text/plain", a::RelSimpleNumField)
 end
 
 function Base.show(io::IO, a::RelSimpleNumField)
-  if get(io, :supercompact, false)
+  if is_terse(io)
     print(io, "Relative number field")
   else
     io = pretty(io)
     print(io, "Relative number field of degree ", degree(a), " over ")
-    print(IOContext(io, :supercompact => true), Lowercase(), base_field(a))
+    print(terse(io), Lowercase(), base_field(a))
   end
 end
 
@@ -184,20 +184,11 @@ end
 #
 ################################################################################
 
-function number_field(f::PolyRingElem{T}, S::Symbol;
+function number_field(f::PolyRingElem{T}, S::VarName = "_\$";
                      cached::Bool = false, check::Bool = true)  where {T <: NumFieldElem}
   check && !is_irreducible(f) && error("Polynomial must be irreducible")
-  K = RelSimpleNumField{T}(f, S, cached)
+  K = RelSimpleNumField{T}(f, Symbol(S), cached)
   return K, K(gen(parent(f)))
-end
-
-function number_field(f::PolyRingElem{T}, s::String;
-                     cached::Bool = false, check::Bool = true)  where {T <: NumFieldElem}
-    S = Symbol(s)
-    return number_field(f, S, cached = cached, check = check)
-end
-function number_field(f::PolyRingElem{<: NumFieldElem}; cached::Bool = false, check::Bool = true)
-  return number_field(f, "_\$", cached = cached, check = check)
 end
 
 #Conversion to absolute non simple

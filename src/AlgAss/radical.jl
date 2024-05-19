@@ -113,29 +113,33 @@ function _radical_finite(A::MatAlgebra{FqFieldElem})
   F = base_ring(A)
   type = Nemo._fq_default_ctx_type(F)
   if type == 2
-    f = Nemo.canonical_raw_type(fqPolyRepField, F)
-    FF = codomain(f)
-    AA = matrix_algebra(FF, [f.(matrix(m)) for m in basis(A)], isbasis = true)
-    RR = _radical_finite(AA)
-    return [A(map_entries(c -> preimage(f, c), matrix(a)), check = false) for a in RR]
+    let f = Nemo.canonical_raw_type(fqPolyRepField, F),
+      FF = codomain(f),
+      AA = matrix_algebra(FF, [f.(matrix(m)) for m in basis(A)], isbasis = true),
+      RR = _radical_finite(AA)
+      return [A(map_entries(c -> preimage(f, c), matrix(a)), check = false) for a in RR]
+    end
   elseif type == 3
-    f = Nemo.canonical_raw_type(FqPolyRepField, F)
-    FF = codomain(f)
-    AA = matrix_algebra(FF, [f.(matrix(m)) for m in basis(A)], isbasis = true)
-    RR = _radical_finite(AA)
-    return [A(map_entries(c -> preimage(f, c), matrix(a)), check = false) for a in RR]
+    let f = Nemo.canonical_raw_type(FqPolyRepField, F),
+      FF = codomain(f),
+      AA = matrix_algebra(FF, [f.(matrix(m)) for m in basis(A)], isbasis = true),
+      RR = _radical_finite(AA)
+      return [A(map_entries(c -> preimage(f, c), matrix(a)), check = false) for a in RR]
+    end
   elseif type == 4
-    f = Nemo.canonical_raw_type(fpField, F)
-    FF = codomain(f)
-    AA = matrix_algebra(FF, [f.(matrix(m)) for m in basis(A)], isbasis = true)
-    RR = _radical_finite(AA)
-    return [A(map_entries(c -> preimage(f, c), matrix(a)), check = false) for a in RR]
+    let f = Nemo.canonical_raw_type(fpField, F),
+      FF = codomain(f),
+      AA = matrix_algebra(FF, [f.(matrix(m)) for m in basis(A)], isbasis = true),
+      RR = _radical_finite(AA)
+      return [A(map_entries(c -> preimage(f, c), matrix(a)), check = false) for a in RR]
+    end
   elseif type == 5
-    f = Nemo.canonical_raw_type(FpField, F)
-    FF = codomain(f)
-    AA = matrix_algebra(FF, [f.(matrix(m)) for m in basis(A)], isbasis = true)
-    RR = _radical(AA)
-    return [A(map_entries(c -> preimage(f, c), matrix(a)), check = false) for a in RR]
+    let f = Nemo.canonical_raw_type(FpField, F),
+      FF = codomain(f),
+      AA = matrix_algebra(FF, [f.(matrix(m)) for m in basis(A)], isbasis = true),
+      RR = _radical(AA)
+      return [A(map_entries(c -> preimage(f, c), matrix(a)), check = false) for a in RR]
+    end
   else
     # this is a Zech representation, so use the generic fallback
     return _radical_finite_generic(A)
@@ -164,7 +168,7 @@ function _radical_finite_prime_field(A::MatAlgebra{<:Union{fpFieldElem, FpFieldE
   pl = 1
   # if k > 0, then p < dim(A) <= typemax(Int)
   Mtemp = zero_matrix(ZZ, degree(A), degree(A))
-  if k > 0 
+  if k > 0
     _p = Int(p)
     R, mR = residue_ring(ZZ, _p^(k + 1))
     MR = zero_matrix(R, degree(A), degree(A))
@@ -366,7 +370,7 @@ function _lift!(A::zzModMatrix, B::fpMatrix, Mtemp)
 end
 
 function _lift!(A::zzModMatrix, B::FpMatrix, Mtemp::ZZMatrix)
-  ccall((:fmpz_mod_mat_get_fmpz_mat, libflint), Cvoid, (Ref{ZZMatrix}, Ref{FpMatrix}), Mtemp, B)
+  ccall((:fmpz_mod_mat_get_fmpz_mat, libflint), Cvoid, (Ref{ZZMatrix}, Ref{FpMatrix}, Ref{Nemo.fmpz_mod_ctx_struct}), Mtemp, B, base_ring(B).ninv)
   ccall((:fmpz_mat_get_nmod_mat, libflint), Cvoid, (Ref{zzModMatrix}, Ref{ZZMatrix}), A, Mtemp)
   return A
 end

@@ -34,6 +34,8 @@
 
 @inline base_ring(K::AbsNonSimpleNumField) = FlintQQ
 
+@inline base_ring_type(K::AbsNonSimpleNumField) = QQField
+
 @inline base_field(K::AbsNonSimpleNumField) = FlintQQ
 
 @inline degree(K::AbsNonSimpleNumField) = K.degree
@@ -237,12 +239,12 @@ end
 function Base.show(io::IO, a::AbsNonSimpleNumField)
   @show_name(io, a)
   @show_special(io, a)
-  if get(io, :supercompact, false)
+  if is_terse(io)
     print(io, "Non-simple number field")
   else
     io = pretty(io)
     print(io, "Non-simple number field of degree ", degree(a))
-    print(IOContext(io, :supercompact => true), " over ", Lowercase(), base_field(a))
+    print(terse(io), " over ", Lowercase(), base_field(a))
   end
 end
 
@@ -898,7 +900,7 @@ end
 ################################################################################
 
 @doc raw"""
-    number_field(f::Vector{QQPolyRingElem}, s::String="_\$") -> AbsNonSimpleNumField
+    number_field(f::Vector{QQPolyRingElem}, s::VarName="_\$") -> AbsNonSimpleNumField
 
 Let $f = (f_1, \ldots, f_n)$ be univariate rational polynomials, then
 we construct
@@ -915,7 +917,11 @@ function number_field(f::Vector{QQPolyRingElem}, s::String="_\$"; cached::Bool =
   return number_field(f, lS, cached = cached, check = check)
 end
 
-function number_field(f::Vector{QQPolyRingElem}, s::Vector{String}; cached::Bool = false, check::Bool = true)
+function number_field(f::Vector{QQPolyRingElem}, s::VarName; cached::Bool = false, check::Bool = true)
+  return number_field(f, String(s); cached = cached, check = check)
+end
+
+function number_field(f::Vector{QQPolyRingElem}, s::Vector{<:VarName}; cached::Bool = false, check::Bool = true)
   lS = Symbol[Symbol(x) for x=s]
   return number_field(f, lS, cached = cached, check = check)
 end
@@ -936,19 +942,14 @@ function number_field(f::Vector{QQPolyRingElem}, S::Vector{Symbol}; cached::Bool
   return K, gens(K)
 end
 
-function number_field(f::Vector{ZZPolyRingElem}, s::String="_\$"; cached::Bool = false, check::Bool = true)
+function number_field(f::Vector{ZZPolyRingElem}, s::VarName="_\$"; cached::Bool = false, check::Bool = true)
   Qx, _ = polynomial_ring(FlintQQ, var(parent(f[1])), cached = false)
   return number_field(QQPolyRingElem[Qx(x) for x = f], s, cached = cached, check = check)
 end
 
-function number_field(f::Vector{ZZPolyRingElem}, s::Vector{String}; cached::Bool = false, check::Bool = true)
+function number_field(f::Vector{ZZPolyRingElem}, s::Vector{<:VarName}; cached::Bool = false, check::Bool = true)
   Qx, _ = polynomial_ring(FlintQQ, var(parent(f[1])), cached = false)
   return number_field(QQPolyRingElem[Qx(x) for x = f], s, cached = cached, check = check)
-end
-
-function number_field(f::Vector{ZZPolyRingElem}, S::Vector{Symbol}; cached::Bool = false, check::Bool = true)
-  Qx, _ = polynomial_ring(FlintQQ, var(parent(f[1])), cached = false)
-  return number_field(QQPolyRingElem[Qx(x) for x = f], S, cached = cached, check = check)
 end
 
 function gens(K::AbsNonSimpleNumField)
@@ -1017,12 +1018,12 @@ function show_sparse_cyclo(io::IO, a::AbsNonSimpleNumField)
   print(io, "Sparse cyclotomic field of order $(get_attribute(a, :cyclo))")
 end
 
-function cyclotomic_field(::Type{NonSimpleNumField}, n::Int, s::String="z"; cached::Bool = false)
+function cyclotomic_field(::Type{NonSimpleNumField}, n::Int, s::VarName=:z; cached::Bool = false)
   x = gen(Hecke.Globals.Zx)
-  lf = factor(n)
   if n == 1
     lc = [1]
   else
+    lf = factor(n)
     lc = [Int(p^k) for (p,k) = lf.fac]
   end
   lp = [cyclotomic(k, x) for k = lc]

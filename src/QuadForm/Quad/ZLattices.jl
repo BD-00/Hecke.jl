@@ -13,6 +13,8 @@ ambient_space(L::ZZLat) = L.space
 
 base_ring(L::ZZLat) = FlintZZ
 
+base_ring_type(::Type{ZZLat}) = ZZRing
+
 base_field(L::ZZLat) = base_ring(gram_matrix(ambient_space(L)))
 
 ################################################################################
@@ -348,7 +350,7 @@ function show(io::IO, ::MIME"text/plain", L::ZZLat)
 end
 
 function show(io::IO, L::ZZLat)
-  if get(io, :supercompact, false)
+  if is_terse(io)
     print(io, "Integer lattice")
   else
     print(io, "Integer lattice of rank $(rank(L)) and degree $(degree(L))")

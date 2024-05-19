@@ -281,7 +281,7 @@ function Base.show(io::IO, ::MIME"text/plain" , T::TorQuadModule)
 end
 
 function Base.show(io::IO, T::TorQuadModule)
-  if get(io, :supercompact, false)
+  if is_terse(io)
     print(io, "Finite quadratic module")
   else
     print(io, "Finite quadratic module: ")
@@ -374,10 +374,10 @@ function Base.show(io::IO, ::MIME"text/plain", a::TorQuadModuleElem)
 end
 
 function show(io::IO, a::TorQuadModuleElem)
-  if get(io, :supercompact, false)
+  if is_terse(io)
     print(io, "Element of finite quadratic module")
   else
-    print(IOContext(io, :supercompact => true), a.data.coeff)
+    print(terse(io), a.data.coeff)
   end
 end
 
@@ -443,13 +443,6 @@ function gens(T::TorQuadModule)
 end
 
 number_of_generators(T::TorQuadModule) = length(T.gens_lift)
-
-function gen(T::TorQuadModule, i::Int)
-  if isdefined(T, :gens)
-    return gens(T)[i]
-  end
-  return T(gen(abelian_group(T), i))
-end
 
 function gen(T::TorQuadModule, i::Int)
   if isdefined(T, :gens)
