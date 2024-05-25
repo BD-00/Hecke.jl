@@ -14,7 +14,7 @@ function primitive_elem(F::FinField,first::Bool)
   while true # alpha exists
     for y in F
       if !first y = rand(F) end
-      if isprime(lift(ZZ, y))
+      if is_prime(lift(ZZ, y))
         if !(any(i->isone(y^divexact(ZZRingElem(p-1),i)), Fact))
           return y
         end
@@ -54,7 +54,7 @@ function sieve(F::FqField,SP = sieve_params(characteristic(F),0.02,1.01)) #F wit
  H = Int(H_fmpz)
  J = Int(H_fmpz^2 - p)
  qlimit, climit, ratio, inc = SP
- (lift(ZZ, a) <= qlimit&&isprime(lift(ZZ, a))) || (a = primitive_elem(F, true)) 
+ (lift(ZZ, a) <= qlimit&&is_prime(lift(ZZ, a))) || (a = primitive_elem(F, true)) 
  set_attribute!(F, :primitive_elem=>a)
 
  # factorbase up to qlimit
@@ -192,7 +192,7 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
  J = H^2 - p
  qlimit, climit, ratio, inc = SP
  @hassert :DiscLog 1 (H+climit)^2>0
- (lift(ZZ, a) <= qlimit&&isprime(lift(ZZ, a))) || (a = primitive_elem(F, true)) 
+ (lift(ZZ, a) <= qlimit&&is_prime(lift(ZZ, a))) || (a = primitive_elem(F, true)) 
  set_attribute!(F, :primitive_elem=>a)
 
  # factorbase up to qlimit
