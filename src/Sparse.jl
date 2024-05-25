@@ -31,6 +31,8 @@ include("Sparse/Solve.jl")
 include("Sparse/UpperTriangular.jl")
 include("Sparse/Rref.jl")
 
+#mine
 include("Sparse/IndexCalculus.jl")
+include("Sparse/Preprocessing.jl")
 include("Sparse/StructuredGauss.jl")
 include("Sparse/Wiedemann.jl")
