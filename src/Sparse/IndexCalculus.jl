@@ -379,7 +379,7 @@ function log(F::FqField, b)
   p_elem = get_attribute(F, :primitive_elem)
   FB = get_attribute(F, :Q)
   FB_logs = get_attribute(F, :Logdict)
-  if typeof(FB_logs)==Nothing
+  if isnothing(FB_logs)
     @warn "FB_logs empty"
     return 0
   end
@@ -409,14 +409,14 @@ function IdxCalc(a::T, b::T, F=parent(a)) where T<:FqFieldElem #RingElem better?
   b==1 && return ZZRingElem(0), F
   b==a && return ZZRingElem(1), F
   set_attribute!(F, :a=>a)
-  if typeof(get_attribute(F, :RelMat))==Nothing
+  if isnothing(get_attribute(F, :RelMat))
     @vtime :DiscLog 3 sieve(F)
   end
-  if typeof(get_attribute(F, :Logdict))==Nothing
+  if isnothing(get_attribute(F, :Logdict))
     p = get_attribute(F, :p)
     _modulus = div((p-1),2)
     two = ZZRingElem(2)
-    F2 = residue_ring(ZZ, _modulus) #change it when prepro fixed
+    F2, _ = residue_ring(ZZ, _modulus) #change it when prepro fixed
     set_attribute!(F, :F2=>F2)
     c, u, v = gcdx(two, _modulus)
     c == 1 || (@error "FB_LOGS: 2 ,(p-1)/2 not coprime")
