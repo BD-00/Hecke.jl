@@ -924,3 +924,12 @@ export zero_algebra
 export zero_divisor
 export zero_map
 export zeta_log_residue
+
+#mine:
+export IdxCalc
+export sieve
+export sieve_params
+export sp_prepro
+export structured_gauss
+export structured_gauss_field
+export wiedemann
