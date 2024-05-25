@@ -33,3 +33,4 @@ include("Sparse/Rref.jl")
 
 include("Sparse/IndexCalculus.jl")
 include("Sparse/StructuredGauss.jl")
+include("Sparse/Wiedemann.jl")
