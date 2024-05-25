@@ -1,3 +1,6 @@
+#TODO: check type distinction
+#TODO check necessity of function extensions (evaluate, mult etc.)
+
 some_nullspace(A::SMat) = wiedemann(A::SMat, transpose(A)::SMat)
 
 #(p-1)/2 prime 
@@ -6,7 +9,7 @@ some_nullspace(A::SMat) = wiedemann(A::SMat, transpose(A)::SMat)
 
 Computes ker($A$).
 """
-function wiedemann(A::SMat{T}, TA::SMat{T}) where T <:Union{fpFieldElem, FpFieldElem, zzModRingElem, ZZModRingElem} #N::Int64
+function wiedemann(A::SMat{T}, TA::SMat{T}) where T <:Union{FqFieldElem, zzModRingElem, ZZModRingElem} #N::Int64
 		RR = base_ring(A)
 		N = modulus(RR)
 		(n,m) = nrows(A),ncols(A)
@@ -41,7 +44,7 @@ function wiedemann(A::SMat{T}, TA::SMat{T}) where T <:Union{fpFieldElem, FpField
 		return true, (v-r)
 end
 
-function wiedemann(A::SMat{T}) where T <:Union{fpFieldElem, FpFieldElem, zzModRingElem, ZZModRingElem} #A square matrix
+function wiedemann(A::SMat{T}) where T <:Union{FqFieldElem, zzModRingElem, ZZModRingElem} #A square matrix
  RR = base_ring(A)
  N = modulus(RR)
  n = nrows(A)
@@ -90,7 +93,7 @@ function Hecke.evaluate(f,TA::SMat{T},A::SMat{T},c) where T <:Union{fpFieldElem,
 		return s
 end
 
-function Hecke.evaluate(f,A::SMat{T},c) where T <:Union{fpFieldElem, FpFieldElem, zzModRingElem, ZZModRingElem}
+function Hecke.evaluate(f,A::SMat{T},c) where T <:Union{FqFieldElem, zzModRingElem, ZZModRingElem}
  #return f(A^t *A)*c
  n = nrows(A)
  RR = base_ring(A)
@@ -172,4 +175,4 @@ function dot_experimental2!(v::T, A::SRow{T}, B::SRow{T},t=ZZRingElem()) where T
 end
 
 my_mul!(c::Vector{T}, A::SMat{T}, b::Vector{T}) where T <:Union{FpFieldElem, ZZModRingElem} = multi!(c, A, b)
-my_mul!(c::Vector{T}, A::SMat{T}, b::Vector{T}) where T <:Union{fpFieldElem, zzModRingElem} = mul!(c, A, b)
+my_mul!(c::Vector{T}, A::SMat{T}, b::Vector{T}) where T <:zzModRingElem = mul!(c, A, b)
