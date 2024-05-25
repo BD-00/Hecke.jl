@@ -363,7 +363,7 @@ function log_dict(F::FqField, A, TA, WIEDEMANN=true)
   
   Logdict = Dict(zip(Q,L))
 
-  length(Logdict) == l ? (@vprint :DiscLog 2 "FB_LOGS: all FB logs found") : (@vprint :DiscLog 2 "FB_LOGS: at least $(l-length(Logdict)) logarithms not found") 
+  #length(Logdict) == l ? (@vprint :DiscLog 2 "FB_LOGS: all FB logs found") : (@vprint :DiscLog 2 "FB_LOGS: at least $(l-length(Logdict)) logarithms not found") 
   set_attribute!(F, :Logdict=>Logdict, :kern=>kern, :Q=>FactorBase(Q))
   return F
 end
@@ -410,7 +410,7 @@ function IdxCalc(a::T, b::T, F=parent(a)) where T<:FqFieldElem #RingElem better?
   b==a && return ZZRingElem(1), F
   set_attribute!(F, :a=>a)
   if isnothing(get_attribute(F, :RelMat))
-    @vtime :DiscLog 3 sieve(F)
+    #@vtime :DiscLog 3 sieve(F)
   end
   if isnothing(get_attribute(F, :Logdict))
     p = get_attribute(F, :p)
@@ -427,7 +427,7 @@ function IdxCalc(a::T, b::T, F=parent(a)) where T<:FqFieldElem #RingElem better?
     TA = transpose(A)
     A, TA = sp_prepro(A, TA, get_attribute(F, :fb_length),2)
     #Wiedemann + dict with logs of FB
-    @vtime :DiscLog 3 log_dict(F, A, TA)
+    #@vtime :DiscLog 3 log_dict(F, A, TA)
   end
   logb = log(F, b)
   if logb == 0
