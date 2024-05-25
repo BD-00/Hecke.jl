@@ -322,6 +322,7 @@ function gauss_pivoting(A::SMat,TA::SMat, l, lower, upper)
   return pivots
 end
 
+#=
 function change_base_ring(R::Ring, A::SMat{T}) where T<: Integer
  z = sparse_matrix(R)
  z.c = A.c
@@ -369,6 +370,7 @@ function change_base_ring(R::ZZRing, A::SMat{T}) where T
   end
   return z
 end
+=#
 
 function scale_row2!(A::SMat{T}, i::Int, c::T, col_list, col_count, consider_cols, two_elem_cols_c) where T
  for j=1:length(A[i].pos)
@@ -385,4 +387,4 @@ function scale_row2!(A::SMat{T}, i::Int, c::T, col_list, col_count, consider_col
    col_count[j] == 2 && push!(two_elem_cols_c, j)
   end
  end
-end #TODO Einträge aus pos und values löschen
+end 
