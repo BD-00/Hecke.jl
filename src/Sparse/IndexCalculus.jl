@@ -1,9 +1,6 @@
-import Hecke.sparse_row
-
-#move to ZZRow.jl
-function sparse_row(R::ZZRing, pos::Vector{Int64}, val::Vector{<:Integer}; sort::Bool = true)
- return sparse_row(R, pos, map(ZZRingElem, val), sort = sort)
-end
+#TODO: find out if second sieve version still necessary after type renaming (was forfpFieldElem) 
+#TODO: what about nmodRing? -> Compaison to FpField
+#TODO: rewrite doc in the end
 
 ###############################################################################
 #
@@ -17,7 +14,7 @@ function primitive_elem(F::FinField,first::Bool)
   while true # alpha exists
     for y in F
       if !first y = rand(F) end
-      if isprime(lift(y))
+      if isprime(lift(ZZ, y))
         if !(any(i->isone(y^divexact(ZZRingElem(p-1),i)), Fact))
           return y
         end
@@ -44,11 +41,11 @@ function sieve_params(p,eps::Float64,ratio::Float64)
 end
 
 @doc raw"""
-    sieve(F::Nemo.FpField,SP = sieve_params(characteristic(F),0.02,1.1)) -> Nothing
+    sieve(F::FqField,SP = sieve_params(characteristic(F),0.02,1.1)) -> Nothing
 
 Computes coefficient matrix of factorbase logarithms and saves corresponding attributes on $F$.
 """
-function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Union{Nemo.FpField} #F with primitive element as attribute, p at most 35 decimals
+function sieve(F::FqField,SP = sieve_params(characteristic(F),0.02,1.01)) #F with primitive element as attribute, p at most 35 decimals
  p = characteristic(F)
  set_attribute!(F, :p=>p)
  a = get_attribute(F, :a)
@@ -57,13 +54,13 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
  H = Int(H_fmpz)
  J = Int(H_fmpz^2 - p)
  qlimit, climit, ratio, inc = SP
- (lift(a) <= qlimit&&isprime(lift(a))) || (a = primitive_elem(F, true)) 
+ (lift(ZZ, a) <= qlimit&&isprime(lift(ZZ, a))) || (a = primitive_elem(F, true)) 
  set_attribute!(F, :primitive_elem=>a)
 
  # factorbase up to qlimit
  fb_primes = Hecke.primes_up_to(qlimit)
- indx = searchsortedfirst(fb_primes, lift(a))
- FB = vcat([ZZRingElem(lift(a))],deleteat!(fb_primes,indx))::Vector{ZZRingElem} # swap a[1] = a[2] , a[2] = [1] array
+ indx = searchsortedfirst(fb_primes, lift(ZZ, a))
+ FB = vcat([ZZRingElem(lift(ZZ, a))],deleteat!(fb_primes,indx))::Vector{ZZRingElem} # swap a[1] = a[2] , a[2] = [1] array
  # use shift! / unshift! here...
  log2 = Base.log(2.0);
  logqs = Float64[Base.log(Int(q))/log2 for q in FB] #real logarithms for sieve 
@@ -180,12 +177,13 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
  return set_attribute!(F, :qlimit=>qlimit, :climit=>climit, :ratio=>ratio, :inc=>inc, :RelMat=>A, :FB_array=>FB, :len=>len)
 end
 
+#=
 @doc raw"""
-    sieve(F::Nemo.fpField,SP = sieve_params(characteristic(F),0.02,1.1)) -> Nothing
+    sieve(F::FqField,SP = sieve_params(characteristic(F),0.02,1.1)) -> Nothing
 
 Computes coefficient matrix of factorbase logarithms and saves corresponding attributes on $F$.
 """
-function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Union{Nemo.fpField} #F with primitive element as attribute
+function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Union{FqField} #F with primitive element as attribute
  p = Int(length(F))
  set_attribute!(F, :p=>p)
  a = get_attribute(F, :a)
@@ -194,13 +192,13 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
  J = H^2 - p
  qlimit, climit, ratio, inc = SP
  @hassert :DiscLog 1 (H+climit)^2>0
- (lift(a) <= qlimit&&isprime(lift(a))) || (a = primitive_elem(F, true)) 
+ (lift(ZZ, a) <= qlimit&&isprime(lift(ZZ, a))) || (a = primitive_elem(F, true)) 
  set_attribute!(F, :primitive_elem=>a)
 
  # factorbase up to qlimit
  fb_primes = Hecke.primes_up_to(qlimit)
- indx = searchsortedfirst(fb_primes, lift(a))
- FB = vcat([ZZRingElem(lift(a))],deleteat!(fb_primes,indx))::Vector{ZZRingElem} # swap a[1] = a[2] , a[2] = [1] array
+ indx = searchsortedfirst(fb_primes, lift(ZZ, a))
+ FB = vcat([ZZRingElem(lift(ZZ, a))],deleteat!(fb_primes,indx))::Vector{ZZRingElem} # swap a[1] = a[2] , a[2] = [1] array
  # use shift! / unshift! here...
  log2 = Base.log(2.0);
  logqs = Float64[Base.log(Int(q))/log2 for q in FB] #real logarithms for sieve 
@@ -306,6 +304,7 @@ function sieve(F::T,SP = sieve_params(characteristic(F),0.02,1.01)) where T<:Uni
  end
  return set_attribute!(F, :qlimit=>qlimit, :climit=>climit, :ratio=>ratio, :inc=>inc, :RelMat=>A, :FB_array=>FB, :len=>len)
 end
+=#
 
 ###############################################################################
 #
@@ -314,11 +313,11 @@ end
 ###############################################################################
 
 @doc raw"""
-    log_dict(F::Nemo.Galois(Fmpz)Field, A::SMat, TA::SMat) -> Nemo.Galois(Fmpz)Field
+    log_dict(F::Galois(Fmpz)Field, A::SMat, TA::SMat) -> Galois(Fmpz)Field
 
 Given a field $F$ with attributes from sieve, logs of factorbase are computed and added to $F$.
 """
-function log_dict(F::T, A, TA, WIEDEMANN=true)where T<:Union{Nemo.fpField, Nemo.FpField}
+function log_dict(F::FqField, A, TA, WIEDEMANN=true)
   p = get_attribute(F, :p)
   if WIEDEMANN
     cnt = 0
@@ -349,7 +348,7 @@ function log_dict(F::T, A, TA, WIEDEMANN=true)where T<:Union{Nemo.fpField, Nemo.
   a = get_attribute(F, :primitive_elem)
   l = get_attribute(F, :fb_length)
   for i in 1:l
-    temp = lift(kern[i])*two*u
+    temp = lift(ZZ, kern[i])*two*u
     test1 = temp%(p-1)
     test2 = (temp + v*_modulus)%(p-1)
     q_temp = FB[i]
@@ -370,11 +369,11 @@ function log_dict(F::T, A, TA, WIEDEMANN=true)where T<:Union{Nemo.fpField, Nemo.
 end
 
 @doc raw"""
-    log(F::Nemo.Galois(Fmpz)Field, b) -> ZZRingElem
+    log(F::Galois(Fmpz)Field, b) -> ZZRingElem
 
 Returns $g$ s.th. $a^g == b$ given the factorbase logs in $F$.
 """
-function log(F::T, b) where T<:Union{Nemo.fpField, Nemo.FpField}
+function log(F::FqField, b)
   #return log_a(b) i.e x s.t a^x = b
   p = get_attribute(F, :p)
   p_elem = get_attribute(F, :primitive_elem)
@@ -385,10 +384,10 @@ function log(F::T, b) where T<:Union{Nemo.fpField, Nemo.FpField}
     return 0
   end
   randomexp = ZZRingElem(rand(1:p-1))
-  while !issmooth(FB,ZZRingElem(lift(b*p_elem^randomexp)))
+  while !issmooth(FB,ZZRingElem(lift(ZZ, b*p_elem^randomexp)))
     randomexp = ZZRingElem(rand(1:p-1))
   end  
-  factorization = Hecke.factor(FB,lift(b*p_elem^randomexp))
+  factorization = Hecke.factor(FB,lift(ZZ, b*p_elem^randomexp))
 
   logb = -randomexp + sum([exp*FB_logs[prime] for (prime,exp) in factorization])
   return logb
@@ -401,11 +400,11 @@ end
 ###############################################################################
 
 @doc raw"""
-    IdxCalc(a::gfp_(fmpz_)elem, b::gfp_(fmpz_)elem, F=parent(a)) -> Tupel{ZZRingElem, Nemo.Galois(Fmpz)Field} 
+    IdxCalc(a::gfp_(fmpz_)elem, b::gfp_(fmpz_)elem, F=parent(a)) -> Tupel{ZZRingElem, Galois(Fmpz)Field} 
 
 Tries to find $g$ s.th. $a^g == b$ where $a$ is primitive element of $F$.
 """
-function IdxCalc(a::T, b::T, F=parent(a)) where T<:Union{fpFieldElem, FpFieldElem} #RingElem better?
+function IdxCalc(a::T, b::T, F=parent(a)) where T<:FqFieldElem #RingElem better?
   @assert parent(a) === parent(b)
   b==1 && return ZZRingElem(0), F
   b==a && return ZZRingElem(1), F
