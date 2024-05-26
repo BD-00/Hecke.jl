@@ -411,6 +411,7 @@ function IdxCalc(a::T, b::T, F=parent(a)) where T<:FqFieldElem #RingElem better?
   set_attribute!(F, :a=>a)
   if isnothing(get_attribute(F, :RelMat))
     #@vtime :DiscLog 3 sieve(F)
+    sieve(F)
   end
   if isnothing(get_attribute(F, :Logdict))
     p = get_attribute(F, :p)
@@ -428,6 +429,7 @@ function IdxCalc(a::T, b::T, F=parent(a)) where T<:FqFieldElem #RingElem better?
     A, TA = sp_prepro(A, TA, get_attribute(F, :fb_length),2)
     #Wiedemann + dict with logs of FB
     #@vtime :DiscLog 3 log_dict(F, A, TA)
+    log_dict(F, A, TA)
   end
   logb = log(F, b)
   if logb == 0
