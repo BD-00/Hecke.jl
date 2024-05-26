@@ -148,7 +148,7 @@ function sp_prepro_k(A::SMat{T}, TA::SMat{T}, l, k, forbidden_cols) where T <: U
         if !forbidden
           done = false
           for i in 2:k
-            add_scaled_col!(TA, p, S[i][1], -divexact(S[i][2],u)) #add P to Q -> Q = Q - v/u *P
+            add_scaled_col2!(TA, p, S[i][1], -divexact(S[i][2],u)) #add P to Q -> Q = Q - v/u *P
           end
           empty_col!(TA, A, p)
           for i in 2:k
@@ -188,7 +188,7 @@ function sp_prepro_k(A::SMat{T}, TA::SMat{T}, l, k, forbidden_cols) where T <: U
           done = false
           for i in 2:k
             scale_col!(TA, A, S[i][1], u)
-            add_scaled_col!(TA, p, S[i][1], -S[i][2]) #add P to Q -> Q = Q - v *P
+            add_scaled_col2!(TA, p, S[i][1], -S[i][2]) #add P to Q -> Q = Q - v *P
           end
           empty_col!(TA, A, p)
           for i in 2:k
@@ -259,7 +259,7 @@ function struct_gauss_k(A::SMat{T}, TA::SMat{T}, l, k, density_col) where T <: U
        else
          done = false
          for i in 2:k
-           add_scaled_col!(TA, p, S[i][1], -divexact(S[i][2],u)) #add P to Q -> Q = Q - v/u *P
+           add_scaled_col2!(TA, p, S[i][1], -divexact(S[i][2],u)) #add P to Q -> Q = Q - v/u *P
          end
          empty_col!(TA, A, p)
          for i in 2:k
@@ -423,6 +423,30 @@ function delete_zero_rows!(A::SMat{T}, s=1) where T #where s denotes the first r
    if isempty(A[i].pos)
      deleteat!(A.rows, i)
      A.r-=1
+   end
+ end
+ return A
+end
+
+function add_scaled_col2!(A::SMat{T}, i::Int, j::Int, c::T) where T
+ @assert c != 0
+
+ @assert 1 <= i <= ncols(A) && 1 <= j <= ncols(A)
+
+ for r in A.rows
+   if i in r.pos
+     i_i = findfirst(isequal(i) ,r.pos)
+     val_i = r.values[i_i]
+     if j in r.pos
+       i_j = findfirst(isequal(j), r.pos)
+       val_j = r.values[i_j]
+
+       r.values[i_j] += c*r.values[i_i]
+     else
+       k = searchsortedfirst(r.pos, j)
+       insert!(r.pos, k, j)
+       insert!(r.values, k, c*r.values[i_i])
+     end
    end
  end
  return A
