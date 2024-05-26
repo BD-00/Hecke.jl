@@ -148,7 +148,7 @@ function sp_prepro_k(A::SMat{T}, TA::SMat{T}, l, k, forbidden_cols) where T <: U
         if !forbidden
           done = false
           for i in 2:k
-            add_scaled_col!(TA, A, p, S[i][1], -divexact(S[i][2],u)) #add P to Q -> Q = Q - v/u *P
+            add_scaled_col!(TA, p, S[i][1], -divexact(S[i][2],u)) #add P to Q -> Q = Q - v/u *P
           end
           empty_col!(TA, A, p)
           for i in 2:k
@@ -188,7 +188,7 @@ function sp_prepro_k(A::SMat{T}, TA::SMat{T}, l, k, forbidden_cols) where T <: U
           done = false
           for i in 2:k
             scale_col!(TA, A, S[i][1], u)
-            add_scaled_col!(TA, A, p, S[i][1], -S[i][2]) #add P to Q -> Q = Q - v *P
+            add_scaled_col!(TA, p, S[i][1], -S[i][2]) #add P to Q -> Q = Q - v *P
           end
           empty_col!(TA, A, p)
           for i in 2:k
@@ -259,7 +259,7 @@ function struct_gauss_k(A::SMat{T}, TA::SMat{T}, l, k, density_col) where T <: U
        else
          done = false
          for i in 2:k
-           add_scaled_col!(TA, A, p, S[i][1], -divexact(S[i][2],u)) #add P to Q -> Q = Q - v/u *P
+           add_scaled_col!(TA, p, S[i][1], -divexact(S[i][2],u)) #add P to Q -> Q = Q - v/u *P
          end
          empty_col!(TA, A, p)
          for i in 2:k
