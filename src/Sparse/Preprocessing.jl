@@ -1,4 +1,5 @@
 #TODO: empty_col! in Matrix.jl auslagern?
+#TODO: add_scaled_col! fixen  (findfirst, Nullen) statt 2ter Version
 #TODO: gauss Preprocessing sortieren/löschen
 
 ###############################################################################
@@ -437,15 +438,24 @@ function add_scaled_col2!(A::SMat{T}, i::Int, j::Int, c::T) where T
    if i in r.pos
      i_i = findfirst(isequal(i) ,r.pos)
      val_i = r.values[i_i]
+     @assert !is_zero(val_i)
      if j in r.pos
        i_j = findfirst(isequal(j), r.pos)
        val_j = r.values[i_j]
-
        r.values[i_j] += c*r.values[i_i]
+       if iszero(r.values[i_j])
+        deleteat!(r.pos, i_j)
+        deleteat!(r.values, i_j)
+        A.nnz-=1
+       end
      else
        k = searchsortedfirst(r.pos, j)
-       insert!(r.pos, k, j)
-       insert!(r.values, k, c*r.values[i_i])
+       v = c*r.values[i_i]
+       if !iszero(v)
+        insert!(r.pos, k, j)
+        insert!(r.values, k, v)
+        A.nnz+=1
+       end
      end
    end
  end
