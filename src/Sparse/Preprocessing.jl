@@ -417,3 +417,13 @@ function empty_col!(A::SMat{T}, TA::SMat{T}, j::Int, changeTA=false) where T #on
  end
  return A
 end
+
+function delete_zero_rows!(A::SMat{T}, s=1) where T #where s denotes the first row where we wanna start
+ for i=A.r:-1:s
+   if isempty(A[i].pos)
+     deleteat!(A.rows, i)
+     A.r-=1
+   end
+ end
+ return A
+end
