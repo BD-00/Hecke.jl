@@ -1,3 +1,6 @@
+#TODO: empty_col! in Matrix.jl auslagern?
+#TODO: gauss Preprocessing sortieren/löschen
+
 ###############################################################################
 #
 #   PREPROCESSING FOR SPARSE MATRICES
@@ -372,6 +375,12 @@ function change_base_ring(R::ZZRing, A::SMat{T}) where T
 end
 =#
 
+###############################################################################
+#
+#   AUXILIARY FUNCTIONS
+#
+###############################################################################
+
 function scale_row2!(A::SMat{T}, i::Int, c::T, col_list, col_count, consider_cols, two_elem_cols_c) where T
  for j=1:length(A[i].pos)
   A[i].values[j] *= c
@@ -388,3 +397,23 @@ function scale_row2!(A::SMat{T}, i::Int, c::T, col_list, col_count, consider_col
   end
  end
 end 
+
+function empty_col!(A::SMat{T}, TA::SMat{T}, j::Int, changeTA=false) where T #only deletes entries in column j, output same size as input
+ @assert 1<=j<=TA.r
+ length(TA[j].pos)==0 && return A
+ for row in TA[j].pos #not empty
+   i = searchsortedfirst(A[row].pos, j)
+   if i == length(A[row].pos)+1
+     A.nnz+=1 #fixes the nnz problem if TA!=transpose(A)
+     continue
+   end
+   deleteat!(A[row].pos, i) ; deleteat!(A[row].values, i)
+ end
+ A.nnz -=length(TA[j].pos)
+ if changeTA
+   TA.nnz -= length(TA[j].pos)
+   empty!(TA[j].pos); empty!(TA[j].values)
+   return A, TA
+ end
+ return A
+end
