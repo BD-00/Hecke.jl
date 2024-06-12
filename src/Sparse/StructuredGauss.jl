@@ -393,7 +393,7 @@ function add_to_eliminate!(L_row, row_idx, best_row, best_col, best_val, SG)
  val = SG.A[row_idx, best_col] 
  @assert !iszero(val)
  #case !over_field && over_Z:
- g = gcd(lift(val), lift(best_val))
+ g = gcd(lift(ZZ, val), lift(ZZ, best_val))
  val_red = divexact(val, g)
  best_val_red = divexact(best_val, g)
  @assert L_row in SG.col_list[best_col]
@@ -406,7 +406,7 @@ function add_to_eliminate!(L_row, row_idx, best_row, best_col, best_val, SG)
  end
  scale_row!(SG.A, row_idx, best_val_red)
  @assert !(0 in SG.A[row_idx].values)
- add_scaled_row!(best_row, SG.A[row_idx], -val_red)
+ Hecke.add_scaled_row!(best_row, SG.A[row_idx], -val_red)
  @assert iszero(SG.A[row_idx, best_col])
  return SG
 end
@@ -426,7 +426,7 @@ function add_to_eliminate_field!(L_row, row_idx, best_row, best_col, best_val, S
  end
  #scale_row!(SG.A, row_idx, best_val_red)
  @assert !(0 in SG.A[row_idx].values)
- add_scaled_row!(best_row, SG.A[row_idx], -val)
+ Hecke.add_scaled_row!(best_row, SG.A[row_idx], -val)
  @assert iszero(SG.A[row_idx, best_col])
  return SG
 end
@@ -502,7 +502,7 @@ function compute_kernel(SG, with_light = true)
  update_light_cols!(SG)
  @assert SG.nlight > -1
  collect_dense_cols!(SG)
- _nullity, _dense_kernel = dense_kernel(SG)
+ _nullity, _dense_kernel = dense_kernel_new(SG)
  l, K = init_kernel(_nullity, _dense_kernel, SG, with_light)
  return compose_kernel(l, K, SG)
 end
@@ -511,7 +511,7 @@ function compute_kernel_field(SG, with_light = true)
  update_light_cols!(SG)
  @assert SG.nlight > -1
  collect_dense_cols!(SG)
- _nullity, _dense_kernel = dense_kernel(SG)
+ _nullity, _dense_kernel = dense_kernel_new(SG)
  l, K = init_kernel(_nullity, _dense_kernel, SG, with_light)
  return compose_kernel_field(l, K, SG)
 end
@@ -552,7 +552,18 @@ function dense_kernel(SG)
  return d, _dense_kernel
 end
 
-function init_kernel(_nullity, _dense_kernel, SG, with_light=true)
+function dense_kernel_new(SG)
+  ST = sparse_matrix(base_ring(SG.A), 0, nrows(SG.Y))
+  YT = transpose(SG.Y)
+  for j in SG.heavy_mapi
+   push!(ST, YT[j])
+  end
+  S = transpose(ST)
+  _dense_kernel = kernel(matrix(S), side=:right)
+  return 1, _dense_kernel
+ end
+
+function init_kernel(_nullity, _dense_kernel, SG, with_light=false)
  R = base_ring(SG.A)
  m = ncols(SG.A)
  if with_light
@@ -765,7 +776,7 @@ function add_to_eliminate!(L_row, row_idx, best_row, best_col, best_val, SG)
  val = SG.A[row_idx, best_col] 
  @assert !iszero(val)
  #case !over_field && over_Z:
- g = gcd(lift(val), lift(best_val))
+ g = gcd(lift(ZZ, val), lift(ZZ, best_val))
  val_red = divexact(val, g)
  best_val_red = divexact(best_val, g)
  @assert L_row in SG.col_list[best_col]
@@ -778,7 +789,7 @@ function add_to_eliminate!(L_row, row_idx, best_row, best_col, best_val, SG)
  end
  scale_row!(SG.A, row_idx, best_val_red)
  @assert !(0 in SG.A[row_idx].values)
- add_scaled_row!(best_row, SG.A[row_idx], -val_red)
+ Hecke.add_scaled_row!(best_row, SG.A[row_idx], -val_red)
  @assert iszero(SG.A[row_idx, best_col])
  return SG
 end
@@ -798,7 +809,7 @@ function add_to_eliminate_field!(L_row, row_idx, best_row, best_col, best_val, S
  end
  #scale_row!(SG.A, row_idx, best_val_red)
  @assert !(0 in SG.A[row_idx].values)
- add_scaled_row!(best_row, SG.A[row_idx], -val)
+ Hecke.add_scaled_row!(best_row, SG.A[row_idx], -val)
  @assert iszero(SG.A[row_idx, best_col])
  return SG
 end
