@@ -852,25 +852,13 @@ function swap_i_into_base(i, SG::data_StructGauss)
  end
 end
 
-#return is_light_col, light_weight, single_col, base, single_row_limit, Y, A, col_count, nlight
-#=
-function init_kernel(_dense_kernel, SG)
- m = ncols(SG.A)
- R = base_ring(SG.A)
- _kernel = fill(zero(R), m)
- single_part = []
- for i = 1:m
-  if SG.is_light_col[i]
-   _kernel[i]=zero(R)
-  else
-   j = SG.heavy_map[i]
-   if j>0
-    for c = 1:_nullity
-     K[i,c] = _dense_kernel[j, c]
+function delete_zero_rows!(A::SMat{T}) where T #where s denotes the first row where we wanna start
+  for i=A.r:-1:1
+    if isempty(A[i].pos)
+      deleteat!(A.rows, i)
+      A.r-=1
     end
-   end
   end
+  return A
  end
- return l, K
-end
-=#
+ 
