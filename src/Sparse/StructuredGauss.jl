@@ -502,7 +502,7 @@ function compute_kernel(SG, with_light = true)
  update_light_cols!(SG)
  @assert SG.nlight > -1
  collect_dense_cols!(SG)
- _nullity, _dense_kernel = dense_kernel_new(SG)
+ _nullity, _dense_kernel = dense_kernel(SG)
  l, K = init_kernel(_nullity, _dense_kernel, SG, with_light)
  return compose_kernel(l, K, SG)
 end
@@ -511,7 +511,7 @@ function compute_kernel_field(SG, with_light = true)
  update_light_cols!(SG)
  @assert SG.nlight > -1
  collect_dense_cols!(SG)
- _nullity, _dense_kernel = dense_kernel_new(SG)
+ _nullity, _dense_kernel = dense_kernel(SG)
  l, K = init_kernel(_nullity, _dense_kernel, SG, with_light)
  return compose_kernel_field(l, K, SG)
 end
@@ -548,10 +548,11 @@ function dense_kernel(SG)
   push!(ST, YT[j])
  end
  S = transpose(ST)
- d, _dense_kernel = kernel(matrix(S))
- return d, _dense_kernel
+ d, _dense_kernel = nullspace(matrix(S))
+ return size(_dense_kernel)[1], _dense_kernel
 end
 
+#=
 function dense_kernel_new(SG)
   ST = sparse_matrix(base_ring(SG.A), 0, nrows(SG.Y))
   YT = transpose(SG.Y)
@@ -562,6 +563,7 @@ function dense_kernel_new(SG)
   _dense_kernel = kernel(matrix(S), side=:right)
   return 1, _dense_kernel
  end
+ =#
 
 function init_kernel(_nullity, _dense_kernel, SG, with_light=false)
  R = base_ring(SG.A)
