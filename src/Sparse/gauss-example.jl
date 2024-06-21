@@ -28,3 +28,9 @@ l, K = Hecke.structured_gauss_field(A)
 C = read_dd_matrix("structured_gauss_bug_matrix.txt")
 D = deepcopy(C)
 l2, K2 = Hecke.structured_gauss_field(C)
+#TODO: check with B, D if K, K2 are computed correctly
+
+#alternative for small matrices:
+Hecke.delete_zero_rows!(B)
+lB, KB = nullspace(B) #nullspace is already included in the Hecke package and should give a correct output
+
