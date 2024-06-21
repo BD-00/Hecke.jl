@@ -549,7 +549,7 @@ function dense_kernel(SG)
  end
  S = transpose(ST)
  d, _dense_kernel = nullspace(matrix(S))
- return size(_dense_kernel)[1], _dense_kernel
+ return size(_dense_kernel)[2], _dense_kernel
 end
 
 #=
@@ -595,7 +595,7 @@ function init_kernel(_nullity, _dense_kernel, SG, with_light=false)
  return l, K
 end
 
-function compose_kernel(_kernel, single_part, SG)
+function compose_kernel_elem(_kernel, single_part, SG)
  nfail = 0
  failure = []
  for i=SG.base-1:-1:1
@@ -691,28 +691,6 @@ function compose_kernel_field(l, K, SG)
   end
  end
  return l, K
-end
-
-function eliminate_and_update!(best_single_row, SG)
- @assert best_single_row != 0
- best_row = deepcopy(SG.A[best_single_row])
- best_col = find_light_entry(best_row.pos, SG.is_light_col)
- @assert length(SG.col_list[best_col]) > 1
- best_val = SG.A[best_single_row, best_col]
- @assert !iszero(best_val)
- best_col_idces = SG.col_list[best_col]
- row_idx = 0
- while length(best_col_idces) > 1
-  row_idx = find_row_to_add_on(row_idx, best_row, best_col_idces, SG)
-  @assert best_col_idces == SG.col_list[best_col]
-  @assert row_idx > 0
-  @assert SG.col_list_perm[row_idx] in SG.col_list[best_col]
-  L_row = SG.col_list_perm[row_idx]
-  add_to_eliminate!(L_row, row_idx, best_row, best_col, best_val, SG)
-  update_after_addition!(L_row, row_idx, best_col, SG)
-  handle_new_light_weight!(row_idx, SG)
- end
- return SG
 end
 
 function kernel_matrix(_nullity, _dense_kernel, SG)

@@ -24,4 +24,7 @@ end
 A = read_dd_matrix("dd_8.txt")
 B = deepcopy(A)
 l, K = Hecke.structured_gauss_field(A)
-lB, KB = Hecke.structured_gauss(A)
+
+C = read_dd_matrix("structured_gauss_bug_matrix.txt")
+D = deepcopy(C)
+l2, K2 = Hecke.structured_gauss_field(C)
