@@ -60,6 +60,22 @@ end
 
 ################################################################################
 #
+#  Compute determinant - given matrix in part ref
+#
+################################################################################
+
+function PR_det(A)
+ PR = part_ref!(A)
+ D = compose_dense_matrix(PR)
+ d = det(D)
+ for i = 1:PR.nsingle
+  d*=PR.A[i, PR.single_col[i]]
+ end
+ return div(d, PR.det_factor)
+end
+
+################################################################################
+#
 #  Partial Echolonization with determinant tracking
 #
 ################################################################################
@@ -130,7 +146,7 @@ function build_part_ref!(PR)
  while !isempty(queue)
   queue_new = Int[]
   for j in queue
-   if length(PR.col_list[j])==1 && PR.is_light_col[j]
+   if length(PR.col_list[j]) == 1 && PR.is_light_col[j]
     singleton_row_origin = only(PR.col_list[j])
     singleton_row_idx = PR.col_list_permi[singleton_row_origin]
     for jj in PR.A[singleton_row_idx].pos
@@ -325,8 +341,10 @@ function update_after_addition!(L_row, row_idx::Int, best_col, PR::data_PartRef)
  PR.light_weight[row_idx] = 0
  for c in PR.A[row_idx].pos
   @assert c != best_col
-  PR.is_light_col[c] && sort!(push!(PR.col_list[c], L_row))
-  PR.is_light_col[c] && (PR.light_weight[row_idx]+=1)
+  if PR.is_light_col[c]
+   sort!(push!(PR.col_list[c], L_row))
+   PR.is_light_col[c] && (PR.light_weight[row_idx]+=1)
+  end
  end
  return PR
 end
@@ -380,10 +398,45 @@ function move_to_end(i::Int64, PR::data_PartRef)
   swap_rows_perm(i, PR.single_row_limit-1, PR)
   PR.single_row_limit -=1
  end
- i_origin = PR.col_list_perm[i]
- for c in PR.A[dense_start].pos
-  jj = findfirst(isequal(i_origin), PR.col_list[c])
-  deleteat!(PR.col_list[c], jj)
+ ds_origin = PR.col_list_perm[PR.dense_start]
+ for c in PR.A[PR.dense_start].pos
+  if PR.is_light_col[c]
+   jj = findfirst(isequal(ds_origin), PR.col_list[c])
+   deleteat!(PR.col_list[c], jj)
+  end
  end
  PR.dense_start -= 1
+end
+
+################################################################################
+#
+#  Isolate non-triangular part
+#
+################################################################################
+
+function compose_dense_matrix(PR::data_PartRef)
+ @assert PR.nsingle == PR.dense_start
+ n = nrows(PR.A)
+ m = ncols(PR.A)
+ j=1
+ for i = 1:m
+  if !PR.is_single_col[i]
+   PR.heavy_map[i] = j
+   push!(PR.heavy_mapi,i)
+   j+=1
+  end
+ end
+
+ D = sparse_matrix(PR.R, 0, n-PR.nsingle)
+ for i = PR.dense_start+1:n
+  p = Int[]
+  v = ZZRingElem_Array()
+  sizehint!(v, length(PR.A[i]))
+  for j = 1:length(PR.A[i].pos)
+   push!(v, PR.A[i].values[j])
+   push!(p, PR.heavy_map[PR.A[i].pos[j]])
+  end
+  push!(D, sparse_row(ZZ, p, v))
+ end
+ return D
 end
