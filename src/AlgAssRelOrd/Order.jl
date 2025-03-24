@@ -375,6 +375,10 @@ function ==(R::AlgAssRelOrd, S::AlgAssRelOrd)
   return _spans_subset_of_pseudohnf(Rpmat, Spmat; shape = :lowerleft) && _spans_subset_of_pseudohnf(Spmat, Rpmat; shape = :lowerleft)
 end
 
+function Base.hash(R::AlgAssRelOrd, h::UInt)
+  return hash(algebra(R), h)
+end
+
 ################################################################################
 #
 #  Discriminant and Reduced Trace Matrix
@@ -572,7 +576,7 @@ _denominator_of_mult_table(A::GroupAlgebra{T}, R::Union{ AbsNumFieldOrder, RelNu
 function _simple_maximal_order(O::AlgAssRelOrd, make_free::Bool = true, ::Val{with_transform} = Val(false)) where {with_transform}
   A = algebra(O)
   @assert A isa MatAlgebra
-  n = degree(A)
+  n = _matdeg(A)
   K = coefficient_ring(A)
 
   # Build a matrix with the first columns of basis elements of O
@@ -797,9 +801,9 @@ end
 function enum_units(O::AlgAssRelOrd, g::AbsNumFieldOrderIdeal)
   A = algebra(O)
   @assert A isa MatAlgebra
-  @assert degree(A)^2 == dim(A)
+  @assert _matdeg(A)^2 == dim(A)
 
-  n = degree(A)
+  n = _matdeg(A)
 
   K = base_ring(A)
   OK = base_ring(O)

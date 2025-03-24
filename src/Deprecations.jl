@@ -201,7 +201,6 @@ end
 @deprecate ispseudo_hnf is_pseudo_hnf
 @deprecate isquadratic is_quadratic
 @deprecate isquadratic_type is_quadratic_type
-@deprecate isquaternion_algebra is_quaternion_algebra
 @deprecate isradical_extension is_radical_extension
 @deprecate isramified is_ramified
 @deprecate isrationally_isometric is_rationally_isometric
@@ -280,3 +279,7 @@ end
 @deprecate prime_field(L::Union{QadicField, LocalField}) absolute_base_field(L)
 @deprecate coefficient_ring(k::LocalField) base_field(k)
 @deprecate coefficient_field(k::QadicField) base_field(k)
+
+# Deprecated in 0.35.10
+@deprecate minpoly(a::Union{LocalFieldElem, QadicFieldElem, RelFinFieldElem, AbsNumFieldOrderElem}, R::PolyRing) minpoly(R, a)
+@deprecate charpoly(a::AbsNumFieldOrderElem, R::PolyRing) charpoly(R, a)

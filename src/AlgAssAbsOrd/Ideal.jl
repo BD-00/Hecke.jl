@@ -1149,7 +1149,7 @@ function _islocally_free_left(O::AlgAssAbsOrd, I::AlgAssAbsOrdIdl, p::Union{Int,
       end
     end
 
-    if length(basiseIJoverZ) != degree(C)
+    if length(basiseIJoverZ) != _matdeg(C)
       # I is not locally free
       return false, O()
     end
@@ -1503,7 +1503,11 @@ function Base.one(S::AlgAssAbsOrdIdlSet)
   return ideal(order(S), one(order(S)))
 end
 
- ==(x::AlgAssAbsOrdIdlSet, y::AlgAssAbsOrdIdlSet) = x.order === y.order
+==(x::AlgAssAbsOrdIdlSet, y::AlgAssAbsOrdIdlSet) = x.order === y.order
+
+function Base.hash(x::AlgAssAbsOrdIdlSet, h::UInt)
+  return hash(objectid(x.order), h)
+end
 
 ################################################################################
 #
@@ -1694,7 +1698,7 @@ end
 ################################################################################
 
 function Base.hash(A::AlgAssAbsOrdIdl, h::UInt)
-  return Base.hash(basis_matrix(A, copy = false), h)
+  return Base.hash(basis_matrix(A, copy = false), hash(algebra(A), h))
 end
 
 ################################################################################

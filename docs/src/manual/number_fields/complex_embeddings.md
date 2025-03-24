@@ -1,14 +1,12 @@
 ```@meta
 CurrentModule = Hecke
-DocTestSetup = quote
-    using Hecke
-  end
+CollapsedDocStrings = true
+DocTestSetup = Hecke.doctestsetup()
 ```
-
 # Complex embedding
 
 We describe functionality for complex embeddings of arbitrary number fields.
-Note that a *complex embeddding* of a number field $L$ is a morphism $\iota \colon L \to \mathbf{C}$.
+Note that a *complex embedding* of a number field $L$ is a morphism $\iota \colon L \to \mathbf{C}$.
 Such an embedding is called *real* if $\operatorname{im}(\iota) \subseteq \mathbf{R}$ and *imaginary* otherwise.
 
 ## Construction of complex embeddings
@@ -113,12 +111,12 @@ julia> K, a = number_field([x^2 + 1, x^3 + 2], "a");
 
 julia> emb = complex_embeddings(K)
 6-element Vector{AbsNonSimpleNumFieldEmbedding}:
- Complex embedding corresponding to [1.00 * i, -1.26] of non-simple number field
- Complex embedding corresponding to [1.00 * i, 0.63 + 1.09 * i] of non-simple number field
- Complex embedding corresponding to [-1.00 * i, 0.63 + 1.09 * i] of non-simple number field
- Complex embedding corresponding to [-1.00 * i, -1.26] of non-simple number field
- Complex embedding corresponding to [-1.00 * i, 0.63 - 1.09 * i] of non-simple number field
- Complex embedding corresponding to [1.00 * i, 0.63 - 1.09 * i] of non-simple number field
+ Complex embedding corresponding to [1.00 * i, -1.26] of K
+ Complex embedding corresponding to [1.00 * i, 0.63 + 1.09 * i] of K
+ Complex embedding corresponding to [-1.00 * i, 0.63 + 1.09 * i] of K
+ Complex embedding corresponding to [-1.00 * i, -1.26] of K
+ Complex embedding corresponding to [-1.00 * i, 0.63 - 1.09 * i] of K
+ Complex embedding corresponding to [1.00 * i, 0.63 - 1.09 * i] of K
 
 julia> k, b = quadratic_field(-1);
 
