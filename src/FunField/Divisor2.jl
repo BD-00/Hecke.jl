@@ -146,6 +146,8 @@ function maximal_reduction(D::Divisor, A::Divisor)
   return D_tilde, r, a
 end
 
+
+
 #=
 function height(D::Divisor)
   @req !iszero(D) "Divisor is zero."
