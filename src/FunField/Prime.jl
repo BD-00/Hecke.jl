@@ -1,27 +1,47 @@
-function rational_primes(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem})
+function rational_prime_ideals(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem})::Tuple{FactorBase{Hecke.GenOrdIdl}, FactorBase{Hecke.GenOrdIdl}}
  kt = base_ring(F) #Fq(t)
  t = numerator(gen(kt))
  k = base_ring(kt) #Fq
 
  I = [t+c for c in k] #irreducible polynomials of deg 1 over Fq (warning: in Fq(t), so no test for irred. possible)
- fin_ord = finite_maximal_order(F)
- fin_places = []
+ Ofin = finite_maximal_order(F)
+ fin_places = GenOrdIdl[]
  for p in I
-  p_dec = prime_decomposition(fin_ord, numerator(p))
+  p_dec = prime_decomposition(Ofin, p)
   for (q,e) in p_dec
    isone(degree(q)) && push!(fin_places, q)
   end
  end
- inf_ord = infinite_maximal_order(F)
- inf_places = []
- t_inv = gen(base_ring(inf_ord))
- inf_dec = prime_decomposition(inf_ord, t_inv)
- for (q,e) in inf_dec
+ Oinf = infinite_maximal_order(F)
+ inf_places = GenOrdIdl[]
+ t_inv = gen(base_ring(Oinf))
+ dec_inf = prime_decomposition(Oinf, t_inv)
+ for (q,e) in dec_inf
   isone(degree(q))&&push!(inf_places, q)
  end
  return FactorBase(fin_places), FactorBase(inf_places)
 end
 
+function rational_primes(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem})
+ kt = base_ring(F) #Fq(t)
+ t = numerator(gen(kt))
+ k = base_ring(kt) #Fq
+ Ofin = finite_maximal_order(F)
+ Oinf = infinite_maximal_order(F)
+ primes = Divisor[]
+ for c in k
+  p_dec = prime_decomposition(Ofin, t+c)
+  for (q,e) in p_dec
+   isone(degree(q)) && push!(primes, Hecke.divisor(q))
+  end
+ end
+ t_inv = gen(base_ring(Oinf))
+ dec_inf = prime_decomposition(Oinf, t_inv)
+ for (q,e) in dec_inf
+  isone(degree(q)) && push!(primes, Hecke.divisor(q))
+ end
+ return FactorBase(unique(primes), check=false)
+end
 
 function primes(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem}, d::Int)
  kt = base_ring(F) #Fq(t)
@@ -30,22 +50,22 @@ function primes(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem}, d::Int)
 
  I = irred_polys(parent(t), d) #irreducible polynomials of deg 1 over Fq
 
- fin_ord = finite_maximal_order(F)
- fin_places = []
+ Ofin = finite_maximal_order(F)
+ fin_places = GenOrdIdl[]
  for p in I
   deg_p = degree(p)
-  p_dec = prime_decomposition(fin_ord, p)
+  p_dec = prime_decomposition(Ofin, p)
   for (q,e) in p_dec
    f = degree(q)
    deg_q = f*deg_p
    deg_q <= d && push!(fin_places, q) #TODO: sort by degree e.g. using Dict
   end
  end
- inf_ord = infinite_maximal_order(F)
- inf_places = []
- t_inv = gen(base_ring(inf_ord))
- inf_dec = prime_decomposition(inf_ord, t_inv)
- for (q,e) in inf_dec
+ Oinf = infinite_maximal_order(F)
+ inf_places = GenOrdIdl[]
+ t_inv = gen(base_ring(Oinf))
+ dec_inf = prime_decomposition(Oinf, t_inv)
+ for (q,e) in dec_inf
   degree(q) <= d && push!(inf_places, q) #deg of inf place = 1, so f<=d enough?
  end
  return FactorBase(unique(fin_places)), FactorBase(unique(inf_places))
@@ -55,6 +75,18 @@ function gcd(a::T, b::T) where T<:Hecke.GenOrdIdl
  return a+b
 end
 
+function gcd(D1::Divisor, D2::Divisor)
+ Ifin, Iinf = ideals(D1)
+ Jfin, Jinf = ideals(D2)
+ return Divisor(Ifin + Jfin, Iinf+Jinf)
+end
+
+function _compose(a::node{Divisor}, b::node{Divisor}, check = false)
+ if check && !isone(gcd(a.content, b.content))
+   error("input not coprime")
+ end
+ return node{Divisor}(a.content + b.content, a, b)
+end
 
 function irred_polys(R::FqPolyRing, d::Int)
  t = gen(R)
