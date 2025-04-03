@@ -40,10 +40,10 @@ function rational_primes(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem})
  for (q,e) in dec_inf
   isone(degree(q)) && push!(primes, Hecke.divisor(q))
  end
- return FactorBase(unique(primes), check=false)
+ return FactorBase(unique(primes))
 end
 
-function primes(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem}, d::Int)
+function prime_ideals(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem}, d::Int)
  kt = base_ring(F) #Fq(t)
  t = numerator(gen(kt))
  k = base_ring(kt) #Fq
@@ -71,18 +71,37 @@ function primes(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem}, d::Int)
  return FactorBase(unique(fin_places)), FactorBase(unique(inf_places))
 end
 
-function gcd(a::T, b::T) where T<:Hecke.GenOrdIdl
- return a+b
+function prime_divisors(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem}, d::Int)
+ kt = base_ring(F) #Fq(t)
+ t = numerator(gen(kt))
+
+ I = irred_polys(parent(t), d) #irreducible polynomials of deg 1 over Fq
+
+ Ofin = finite_maximal_order(F)
+ fin_places = Divisor[]
+ for p in I
+  deg_p = degree(p)
+  p_dec = prime_decomposition(Ofin, p)
+  for (q,e) in p_dec
+   f = degree(q)
+   deg_q = f*deg_p
+   deg_q <= d && push!(fin_places, Hecke.divisor(q)) #TODO: sort by degree e.g. using Dict
+  end
+ end
+ Oinf = infinite_maximal_order(F)
+ inf_places = GenOrdIdl[]
+ t_inv = gen(base_ring(Oinf))
+ dec_inf = prime_decomposition(Oinf, t_inv)
+ for (q,e) in dec_inf
+  degree(q) <= d && push!(inf_places, Hecke.divisor(q)) #deg of inf place = 1, so f<=d enough?
+ end
+ return FactorBase(unique(fin_places)), FactorBase(unique(inf_places))
 end
 
-function gcd(D1::Divisor, D2::Divisor)
- Ifin, Iinf = ideals(D1)
- Jfin, Jinf = ideals(D2)
- return Divisor(Ifin + Jfin, Iinf+Jinf)
-end
+gcd(I::GenOrdIdl, J::GenOrdIdl) = I+J
 
 function _compose(a::node{Divisor}, b::node{Divisor}, check = false)
- if check && !isone(gcd(a.content, b.content))
+ if check && !isone(Hecke.gcd(a.content, b.content))
    error("input not coprime")
  end
  return node{Divisor}(a.content + b.content, a, b)
