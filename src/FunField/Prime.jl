@@ -43,24 +43,53 @@ function rational_primes(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem})
  return FactorBase(unique(primes))
 end
 
-function prime_ideals(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem}, d::Int)
+function fin_rat_primes(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem})
  kt = base_ring(F) #Fq(t)
  t = numerator(gen(kt))
  k = base_ring(kt) #Fq
+ Ofin = finite_maximal_order(F)
+ polys = FqPolyRingElem[]
+ #primes = Divisor[]
+ primes = GenOrdIdl[]
+ for c in k
+  p_dec = prime_decomposition(Ofin, t+c)
+  for (q,e) in p_dec
+   if isone(degree(q))
+    push!(primes, q)
+    if isempty(polys) || norm(q)!=polys[end]
+     push!(polys, norm(q))
+    end
+   end
+  end
+ end
+ return polys, primes
+end
 
+
+function fin_prime_ideals(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem}, d::Int)
+ kt = base_ring(F) #Fq(t)
+ t = numerator(gen(kt))
  I = irred_polys(parent(t), d) #irreducible polynomials of deg 1 over Fq
 
  Ofin = finite_maximal_order(F)
  fin_places = GenOrdIdl[]
+ fin_polys = FqPolyRingElem[]
  for p in I
   deg_p = degree(p)
   p_dec = prime_decomposition(Ofin, p)
   for (q,e) in p_dec
    f = degree(q)
    deg_q = f*deg_p
-   deg_q <= d && push!(fin_places, q) #TODO: sort by degree e.g. using Dict
+   if deg_q <= d 
+    push!(fin_places, q) #TODO: sort by degree e.g. using Dict
+    push!(fin_polys, norm(q))
+   end
   end
  end
+ return unique(fin_polys), unique(fin_places)
+end
+
+function inf_prime_ideals(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem}, d::Int)
  Oinf = infinite_maximal_order(F)
  inf_places = GenOrdIdl[]
  t_inv = gen(base_ring(Oinf))
@@ -68,7 +97,7 @@ function prime_ideals(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem}, d::
  for (q,e) in dec_inf
   degree(q) <= d && push!(inf_places, q) #deg of inf place = 1, so f<=d enough?
  end
- return FactorBase(unique(fin_places)), FactorBase(unique(inf_places))
+ return inf_places, FactorBase(inf_places)
 end
 
 function prime_divisors(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem}, d::Int)
@@ -98,14 +127,6 @@ function prime_divisors(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem}, d
  return FactorBase(unique(fin_places)), FactorBase(unique(inf_places))
 end
 
-gcd(I::GenOrdIdl, J::GenOrdIdl) = I+J
-
-function _compose(a::node{Divisor}, b::node{Divisor}, check = false)
- if check && !isone(Hecke.gcd(a.content, b.content))
-   error("input not coprime")
- end
- return node{Divisor}(a.content + b.content, a, b)
-end
 
 function irred_polys(R::FqPolyRing, d::Int)
  t = gen(R)
@@ -124,6 +145,85 @@ function irred_polys(R::FqPolyRing, d::Int)
  return I
 end
 
+################################################################################
+#
+#  Factorbase
+#
+################################################################################
+
+one(D::Divisor) = trivial_divisor(D.function_field)
+
+function _compose(a::node{Divisor}, b::node{Divisor}, check = false)
+ if check && !isone(Hecke.gcd(a.content, b.content))
+   error("input not coprime")
+ end
+ return node{Divisor}(a.content + b.content, a, b)
+end
+
+gcd(I::GenOrdIdl, J::GenOrdIdl) = I+J
+
+#=
+function divexact(I::GenOrdIdl, J::GenOrdIdl)
+ @assert order(I) == order(J)
+ isone(J) && return I
+ if isone(I)
+  @req isone(J) "Not an exact division, one."
+  return I
+ end
+ Inew = ideal(one(order(I)))
+ factI = factor(I)
+ factJ = factor(J)
+ for k in keys(factJ)
+  @req haskey(factI, k) "Not an exact division, haskey."
+  eJ = factJ[k]
+  eI = factI[k]
+  @req eJ <= eI "Not an exact division, exp."
+  if eJ<eI 
+   Inew = Inew * k^(eI-eJ)
+  end
+ end
+ return Inew
+end
+=#
+
+function divexact(I::GenOrdIdl, J::GenOrdIdl)
+ C = colon(I, J)
+ @req isone(denominator(C)) "Not an exact division."
+ @assert I == numerator(C)*J
+ return numerator(C)
+end
+
+function divexact(I::GenOrdFracIdl, J::GenOrdFracIdl)
+ C = colon(I, J)
+ @req isone(denominator(C)) "Not an exact division."
+ return C
+end
+#only correct if denominator 1
+#=
+function divexact(D1::Divisor, D2::Divisor)
+ return Hecke.divisor(divexact(D1.finite_ideal, D2.finite_ideal), divexact(numerator(D1.infinite_ideal), numerator(D2.infinite_ideal)))
+end
+=#
+
+#only makes sense for effective divisors
+function is_smooth(FB::FactorBase{Divisor}, D::Divisor)
+ g = gcd(FB.prod, D)
+ while !iszero(g)
+   D = divexact(D, g)
+   #@show isone(D), D
+   g = gcd(g, D)
+ end
+ return iszero(D)
+end
+
+function is_smooth(FB::FactorBase{GenOrdIdl}, D::GenOrdIdl)
+ g = gcd(FB.prod, D)
+ while !isone(g)
+   D = divexact(D, g)
+   g = gcd(g, D)
+ end
+ return isone(D)
+end
 
 ################################################################################
 #
