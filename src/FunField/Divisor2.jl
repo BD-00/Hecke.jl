@@ -167,6 +167,10 @@ end
 
 
 #TODO: try only test with polys
+#TODO: don't separate support
+#TODO: schauen wo Zeit reingeht
+#TODO: poly FB
+#TODO: relations with deg >1 false
 function class_group_naive(F::AbstractAlgebra.Generic.FunctionField)
  Ofin = finite_maximal_order(F)
  Oinf = infinite_maximal_order(F)
@@ -190,25 +194,26 @@ function class_group_naive(F::AbstractAlgebra.Generic.FunctionField)
  inf_primes = [p for (p,e) in A_supp]
 
 
- @show m = length(fin_primes)
+ m = length(fin_primes)
  n = length(inf_primes)
  #Find relations:
 
  #Initialize relation matrix
- l = ceil(Int, 1.5*m)+n
+ #l = ceil(Int, 1.5*(m+n))
+ l = 2*(m+n)
  Rel_mat = ZZMatrix(l, m+n) #TODO: check for sparsity
  counter = 0 #TODO upper bound using smoothness prob
  i = 1
  while i <= l
   #Find Divisor D as linear combination of primes.
-  @show counter +=1
-  @show i
+  counter +=1
+  #@show i
   v = zeros(ZZ, m)
   #D = trivial_divisor(F)
   I = ideal(one(Ofin))
-  for j = 1:5
+  for j = 1:3 #TODO: dependence to number of fin primes
    idx = rand(1:m)
-   e = rand(1:3)
+   e = rand(1:5)
    v[idx] += e
    I*= fin_primes[idx]^e
   end
@@ -218,20 +223,21 @@ function class_group_naive(F::AbstractAlgebra.Generic.FunctionField)
   #Reduce D
   D_tilde, r, a = Hecke.maximal_reduction(D, A, true)
   iszero(r) && continue
-  @show "after max_reduction"
+  #@show "after max_reduction"
   @assert is_effective(D_tilde)
-  @show _bool, _row = Hecke.is_relation3(D_tilde, d, fin_primes, inf_primes)
+  _bool, _row = Hecke.is_relation3(D_tilde, d, fin_primes, inf_primes)
   if _bool
    Rel_mat[i, :] += _row #D_tilde
    Rel_mat[i, 1:m] -= v #D
    for j = 1:n
     Rel_mat[i, m+j] += ZZ(r)*A_supp[j][2]
    end
+   #@show test_relation3(a, Rel_mat[i, :], fin_primes, inf_primes, Ofin, Oinf)
    i+=1
   end
  end
  #TODO: SNF, check if enough rels
- return snf(Rel_mat)
+ return counter, m, n, snf(Rel_mat)
 end
 
 function is_relation(D_tilde, Ofin, Oinf, FB_poly, FB_prime, FB_inf)
@@ -284,20 +290,24 @@ function is_relation2(D_tilde, fin_primes, inf_primes)
 end
 
 function is_relation3(D_tilde, d, fin_primes, inf_primes)
- supp_fin = Hecke.finite_support(D_tilde)
- supp_inf = Hecke.infinite_support(D_tilde)
  len_fin = length(fin_primes)
  len_inf = length(inf_primes)
  _val = zeros(ZZ, len_fin+len_inf)
  
+ #=
  for (p, e) in finite_support(D_tilde)
-  degree(p)>d && return false, _val
+  degree(p)>d && return false, _val #TODO: different for deg > 1
  end
 
+ not necessary if all inf pimes in FB
  for (p, e) in infinite_support(D_tilde)
   !(p in inf_primes) && return false, _val
  end
- 
+ =# 
+
+ for (p, e) in finite_support(D_tilde)
+  !(p in fin_primes) && return false, _val
+ end
 
  for i = 1:len_fin
   P = fin_primes[i]
@@ -315,6 +325,22 @@ function is_relation3(D_tilde, d, fin_primes, inf_primes)
   end
  end
  return true, _val
+end
+
+function test_relation3(a, _val, fin_primes, inf_primes, Ofin, Oinf)
+ m = length(fin_primes)
+ n = length(inf_primes)
+ @assert length(_val) == n+m
+ I = ideal(one(Ofin))
+ J = ideal(one(Oinf))
+ for i = 1:m
+  I*=fin_primes[i]^Int(_val[i])
+ end
+ for j = 1:n
+  J*=inf_primes[j]^Int(_val[m+j])
+ end
+ D = Hecke.divisor(I, J)
+ return a == D
 end
 #Idea: save primes to poly and _norms that st smoothness,
 #then check primes only to corresp._norms
@@ -461,7 +487,6 @@ k = GF(3)
 kt, t = rational_function_field(k, "t")
 ktx, x = polynomial_ring(kt, "x")
 F, a = function_field(x^3+(t^2+2)x^2+(2t^2+2)x+2)
-A = pole_divisor(F(t))
 deg 2 -> 4 endl Primideale
 
 (3)
@@ -469,14 +494,12 @@ k = GF(5)
 kt, t = rational_function_field(k, "t")
 ktx, x = polynomial_ring(kt, "x")
 F, a = function_field(x^3+(t^2+2t+2)x^2+(t+2)x+2)
-A = pole_divisor(F(t))
 
 (4)
 k = GF(25)
 kt, t = rational_function_field(k, "t")
 ktx, x = polynomial_ring(kt, "x")
 F, a = function_field(x^3+(3t+4)x^2+2x+1)
-A = pole_divisor(F(t))
 
 (5)
 k = GF(7)
@@ -490,15 +513,12 @@ k = GF(49)
 kt, t = rational_function_field(k, "t")
 ktx, x = polynomial_ring(kt, "x")
 F, a = function_field(x^4+2x^3+(2t^2+3t+4)x+1)
-A = pole_divisor(F(t))
-
 
 (7)
 k = GF(11)
 kt, t = rational_function_field(k, "t")
 ktx, x = polynomial_ring(kt, "x")
-F, a = function_field(x^3+(8t^2+t)x^2+(6t^3+3t+3)x+8)
-A = pole_divisor(F(t))
+F, a = function_field(x^3+(8t^2+t)x^2+(6t^2+3t+3)x+8)
 Z/2 x Z/134 x Z
 
 (8)
@@ -506,21 +526,54 @@ k = GF(11)
 kt, t = rational_function_field(k, "t")
 ktx, x = polynomial_ring(kt, "x")
 F, a = function_field(x^3+(10t^2+7t+1)x^2+(2t^2+8t+5)x+7)
-A = pole_divisor(F(t))
 
 (9)
 k = GF(17)
 kt, t = rational_function_field(k, "t")
 ktx, x = polynomial_ring(kt, "x")
 F, a = function_field(x^3+2x^2+(6t^2+14t+6)x+10t^2+10t+1)
-A = pole_divisor(F(t))
 
 (10)
 k = GF(9)
 kt, t = rational_function_field(k, "t")
 ktx, x = polynomial_ring(kt, "x")
 F, a = function_field(x^4+2x^3+(2t+1)x^2+2x+1)
-A = pole_divisor(F(t))
+
+(11)
+k = GF(5)
+kt, t = rational_function_field(k, "t")
+ktx, x = polynomial_ring(kt, "x")
+F, a = function_field(x^4+(2t+3)x^3+x^2+(3t+2)x+1)
+
+(12)
+k = GF(25)
+kt, t = rational_function_field(k, "t")
+ktx, x = polynomial_ring(kt, "x")
+F, a = function_field(x^4+2x^3+(3t+2)x^2+x+2)
+
+(13)
+k = GF(25)
+kt, t = rational_function_field(k, "t")
+ktx, x = polynomial_ring(kt, "x")
+F, a = function_field(x^4+(2t+3)x^3+x^2+1)
+
+(14)
+k = GF(25)
+kt, t = rational_function_field(k, "t")
+ktx, x = polynomial_ring(kt, "x")
+F, a = function_field(x^4+(2t+3)x^3+(t+1)x^2+(4t+3)x+1)
+
+(15)
+k = GF(49)
+kt, t = rational_function_field(k, "t")
+ktx, x = polynomial_ring(kt, "x")
+F, a = function_field(x^4+(2t+3)x^3+(3t+2)x^2+(4t+5)x+1)
+
+(16)
+k = GF(5)
+kt, t = rational_function_field(k, "t")
+ktx, x = polynomial_ring(kt, "x")
+F, a = function_field(x^5+(2t+3)x^2+3x+1)
 =#
 
 #=
