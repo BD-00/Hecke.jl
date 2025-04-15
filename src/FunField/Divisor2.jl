@@ -171,7 +171,78 @@ end
 #TODO: schauen wo Zeit reingeht
 #TODO: poly FB
 #TODO: relations with deg >1 false
+#TODO: make Rel_mat sparse
+#TODO: consider fin annd inf support together
+
 function class_group_naive(F::AbstractAlgebra.Generic.FunctionField)
+ Ofin = finite_maximal_order(F)
+ Oinf = infinite_maximal_order(F)
+ t = gen(base_ring(Ofin)) #element in k(t)
+ A = pole_divisor(F(t)) # =(t)_infty
+ A_supp = support(A)
+
+ #compute degree bound as in Hess, Satz 3.16
+ #=
+ g = genus(F)
+ q = characteristic(base_ring(F)) #TODO: get int
+ d = ceil(Int, 2*log(Int(q), 4*g-2))
+ =#
+ d = 1
+
+ #Factorbases and lists of finite ideals resp. norms
+ fin_polys, fin_primes = Hecke.fin_prime_ideals(F, d)
+ inf_primes = [p for (p,e) in A_supp]
+
+ m = length(fin_primes)
+ n = length(inf_primes)
+ #Find relations:
+
+ #Initialize relation matrix
+ #@show l = floor(Int, 1.5*(m+n))
+ @show l = 2*(m+n)
+ Rel_mat = sparse_matrix(ZZ, 0, m+n)
+ counter = 0 #TODO upper bound using smoothness prob
+
+ while length(Rel_mat) <= l
+
+  #Find Divisor D as linear combination of primes.
+  @show counter +=1
+  @show length(Rel_mat)
+  _pos = sort!(unique!(rand(1:m, min(m, 3))))
+  len_pos = length(_pos)
+  _val = rand(-10:-1, len_pos)
+  @show _val
+  @assert length(_val) == len_pos
+  I = ideal(one(Ofin))
+  for j = 1:len_pos  #TODO: dependence to number of fin primes
+   idx = _pos[j]
+   I*= fin_primes[idx]^-_val[j]
+  end
+  D = Hecke.divisor(I)
+  @assert is_effective(D)
+  @assert isempty(Hecke.infinite_support(D))
+
+  #Reduce D
+  D_tilde, r, a = Hecke.maximal_reduction(D, A, true)
+  iszero(r) && continue
+  #@show "after max_reduction"
+  @assert is_effective(D_tilde)
+  @time _bool, _row = Hecke.is_relation3_sp(D_tilde, fin_primes, inf_primes)
+  if _bool
+   for j = 1:n
+    push!(_pos, m+j)
+    push!(_val, r*A_supp[j][2])
+   end
+   Hecke.add_scaled_row!(sparse_row(ZZ, _pos, _val), _row, one(ZZ)) #D_tilde-D+r*A
+   push!(Rel_mat, _row)
+   #A_row = sparse_row(ZZ, collect(m+1:m+n), [r*A_supp[j][2] for j = 1:n])
+  end
+ end
+ #TODO: SNF, check if enough rels
+ return counter, m, n, Rel_mat
+end
+
+function class_group_dense(F::AbstractAlgebra.Generic.FunctionField)
  Ofin = finite_maximal_order(F)
  Oinf = infinite_maximal_order(F)
  t = gen(base_ring(Ofin)) #element in k(t)
@@ -201,7 +272,7 @@ function class_group_naive(F::AbstractAlgebra.Generic.FunctionField)
  #Initialize relation matrix
  #l = ceil(Int, 1.5*(m+n))
  l = 2*(m+n)
- Rel_mat = ZZMatrix(l, m+n) #TODO: check for sparsity
+ Rel_mat = ZZMatrix(l, m+n)
  counter = 0 #TODO upper bound using smoothness prob
  i = 1
  while i <= l
@@ -237,7 +308,7 @@ function class_group_naive(F::AbstractAlgebra.Generic.FunctionField)
   end
  end
  #TODO: SNF, check if enough rels
- return counter, m, n, snf(Rel_mat)
+ return counter, m, n, Rel_mat
 end
 
 function is_relation(D_tilde, Ofin, Oinf, FB_poly, FB_prime, FB_inf)
@@ -261,49 +332,40 @@ function is_relation(D_tilde, Ofin, Oinf, FB_poly, FB_prime, FB_inf)
  return t3
 end
 
-function is_relation2(D_tilde, fin_primes, inf_primes)
+function is_relation2(D_tilde, fin_primes, inf_primes)#slower than sp_3
+ _pos = Int[]
+ _val = Int[]
+ D0 = Hecke.finite_divisor(D_tilde)
  len_fin = length(fin_primes)
  len_inf = length(inf_primes)
- _val = zeros(ZZ, len_fin+len_inf)
- N = norm(D_tilde.finite_ideal)
- @assert isone(denominator(N))
- #!is_smooth(FB_polys, numerator(N)) && println("fin polys"); return false
+
  for i = 1:len_fin
   P = fin_primes[i]
-  vp = valuation(D_tilde, P)
+  vp = valuation(D0, P)
   if !iszero(vp)
-   D_tilde -= vp*Hecke.divisor(P)
-   _val[i] = ZZ(vp)
+    push!(_pos, i)
+    push!(_val, vp)
+    D0 -= Hecke.divisor(P^vp)
   end
  end
- !isempty(Hecke.finite_support(D_tilde)) && println("fin primes"); return false, v
+ !iszero(D0) && return false, sparse_row(ZZ)
+ 
+ #assumed that all infinite primes in factorbase
  for j = 1:len_inf
   Q = inf_primes[j]
   vq = valuation(D_tilde, Q)
   if !iszero(vq)
-   D_tilde -= vq*Hecke.divisor(Q)
-   _val[len_fin + j] = ZZ(vq)
+    push!(_pos, len_fin+j)
+    push!(_val, vq)
   end
  end
- @show iszero(D_tilde)
- return iszero(D_tilde), _val
+ return true, sparse_row(ZZ, _pos, _val)
 end
 
 function is_relation3(D_tilde, d, fin_primes, inf_primes)
  len_fin = length(fin_primes)
  len_inf = length(inf_primes)
  _val = zeros(ZZ, len_fin+len_inf)
- 
- #=
- for (p, e) in finite_support(D_tilde)
-  degree(p)>d && return false, _val #TODO: different for deg > 1
- end
-
- not necessary if all inf pimes in FB
- for (p, e) in infinite_support(D_tilde)
-  !(p in inf_primes) && return false, _val
- end
- =# 
 
  for (p, e) in finite_support(D_tilde)
   !(p in fin_primes) && return false, _val
@@ -325,6 +387,37 @@ function is_relation3(D_tilde, d, fin_primes, inf_primes)
   end
  end
  return true, _val
+end
+
+function is_relation3_sp(D_tilde, fin_primes, inf_primes)
+ len_fin = length(fin_primes)
+ len_inf = length(inf_primes)
+ len = len_fin + len_inf
+ _pos = Int[]
+ _val = Int[]
+
+ for (p, e) in finite_support(D_tilde)
+  !(p in fin_primes) && return false, sparse_row(ZZ)
+ end
+
+ for i = 1:len_fin
+  P = fin_primes[i]
+  vp = valuation(D_tilde, P)
+  if !iszero(vp)
+   push!(_pos, i)
+   push!(_val, vp)
+  end
+ end
+
+ for j = 1:len_inf
+  Q = inf_primes[j]
+  vq = valuation(D_tilde, Q)
+  if !iszero(vq)
+   push!(_pos, len_fin+j)
+   push!(_val, vq)
+  end
+ end
+ return true, sparse_row(ZZ, _pos, _val)
 end
 
 function test_relation3(a, _val, fin_primes, inf_primes, Ofin, Oinf)
@@ -506,9 +599,8 @@ k = GF(7)
 kt, t = rational_function_field(k, "t")
 ktx, x = polynomial_ring(kt, "x")
 F, a = function_field(x^3+(2t+3)x^2+1)
-A = pole_divisor(F(t))
 
-(6)
+(6) way too slow
 k = GF(49)
 kt, t = rational_function_field(k, "t")
 ktx, x = polynomial_ring(kt, "x")
