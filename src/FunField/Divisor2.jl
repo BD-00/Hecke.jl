@@ -5,7 +5,7 @@ AbstractAlgebra.add_assertion_scope(:Divisor2)
 AbstractAlgebra.set_assertion_level(:Divisor2, 0)
 
 
-function divisor_reduction(D::Divisor, A::Divisor, min_red = false)
+function divisor_reduction(D::Divisor, A::Divisor, m=0)
  @req !iszero(D) "D is zero"
  F = D.function_field
  Ofin = finite_maximal_order(F)
@@ -36,19 +36,19 @@ function divisor_reduction(D::Divisor, A::Divisor, min_red = false)
      d, rem = divrem(exp[j], 2^(i-1))
      if !iszero(d)
       exp[j] = rem 
-      D_i, l_j, b = Hecke.maximal_reduction(D_i + Hecke.divisor(supp[j][1]), A, min_red)
+      D_i, l_j, b = Hecke.maximal_reduction(D_i + Hecke.divisor(supp[j][1]), A, m)
       push!(Princ_B[i], b)
       r+=two_pow*l_j
      end
    end
-   D_tilde, r_i, Princ_A[i] = maximal_reduction(2*D_tilde + D_i, A, min_red)
+   D_tilde, r_i, Princ_A[i] = maximal_reduction(2*D_tilde + D_i, A, m)
    r+=two_pow*r_i
  end
  return D_tilde, r, Princ_A, Princ_B
 end
 
 
-function divisor_reduction2(D::Divisor, A::Divisor, min_red=false)
+function divisor_reduction2(D::Divisor, A::Divisor, m=0)
  #TODO: case iszero(D)
 
  F = D.function_field
@@ -71,7 +71,7 @@ function divisor_reduction2(D::Divisor, A::Divisor, min_red=false)
        d, rem = divrem(exp[j], 2^(i-1))
        if !iszero(d)
         exp[j] = rem 
-        Dec[i], l, b = Hecke.maximal_reduction(Dec[i] + Hecke.divisor(supp[j][1]), A, min_red)
+        Dec[i], l, b = Hecke.maximal_reduction(Dec[i] + Hecke.divisor(supp[j][1]), A, m)
         L[i] += l
         push!(Princ_B[i], b)
        end
@@ -86,7 +86,7 @@ function divisor_reduction2(D::Divisor, A::Divisor, min_red=false)
  R = zeros(Int, m+1)
  Princ_A = [D_tilde for i = 1:m+1]
  for i = m+1:-1:1
-  D_tilde, R[i], Princ_A[i] = maximal_reduction(2*D_tilde + Dec[i], A, min_red)
+  D_tilde, R[i], Princ_A[i] = maximal_reduction(2*D_tilde + Dec[i], A, m)
  end
  r = 0
  for i=1:m+1
@@ -104,44 +104,49 @@ Note that a unique reduction is only guaranteed if deg(A) = 1.
 """
 
 #TODO: choose r depending on some invariant
-#TODO: is effective
-function maximal_reduction(D::Divisor, A::Divisor, min_red = false)
+#TODO: case deg(D) <= 0
+#TODO: check if input already max. reduced ?
+function maximal_reduction(D::Divisor, A::Divisor, m = 0)
   @req !iszero(D) "Divisor is zero."
-  @req dimension(D)>0 "Dimension of divisor is zero."
-  d = degree(D)
-  #deg_A = degree(A)
-  if d<0 
-    s = -1 # add multiples of A
-  else 
-    s = 1 # subtract multiples of A
-  end#
-  #@show s
+  @req degree(A)>0 "Reduction only with divisor of degree > 0."
+  #@show d = degree(D) #relevant for cases, or use dimension?
+  
   r = 0
   D_tilde = D
-  while dimension(D_tilde - s*10*A) > 0
-    D_tilde -= s*10*A
-    r += s*10
-  end
-  while dimension(D_tilde - s*A) > 0
-   D_tilde -= s*A
-   r += s
+  dim_tilde = dimension(D_tilde)
+  if dim_tilde > 0
+   D_next = D_tilde - 10*A
+   while dimension(D_next) > 0
+     D_tilde = D_next
+     D_next -= 10*A
+     r += 10
+   end
+  else
+   while iszero(dim_tilde)
+    D_tilde += 10*A
+    dim_tilde = dimension(D_tilde)
+    r -= 10
+   end
   end
 
-  #TODO: fix binary search
-  #=
+  while dimension(D_tilde - A) > 0
+   D_tilde -= A
+   r += 1
+  end
+  
+#= binary search works, but not efficient for small examples
   current = r # dimension > 0
-  next = r - s*10 # dimension 0
+  next = r + s*10 # dimension 0
   mid = next
-
-  while current - mid != s
-    @show current, mid
-    mid = div(next + current,2) 
-    diff = current - mid
-    @show diff
+  diff = next - current
+  while diff != s
+    mid = div(next + current,2)
+    diff = mid - current
+    @show current, mid, next, diff, r
     if dimension(D_tilde - diff*A) > 0
       current = mid
       D_tilde -= diff*A
-      r += diff
+      r += s*diff
     else 
       next = mid
     end
@@ -150,8 +155,8 @@ function maximal_reduction(D::Divisor, A::Divisor, min_red = false)
   RRSp = riemann_roch_space(D_tilde)
   a = divisor(RRSp[1])
   D_tilde+=a
-  if min_red
-   m = degree(A)
+  if !iszero(m)
+   @assert m >= degree(A)
    #up = floor(Int, div(genus(D.function_field)+m-1-degree(D_tilde),m))
    #for j = 0:up
    j = 0
@@ -161,8 +166,64 @@ function maximal_reduction(D::Divisor, A::Divisor, min_red = false)
     r -= j
    end
   end
-  @assert is_effective(D_tilde)
   return D_tilde, r, a
+end
+
+function maximal_reduction_ideals(D::Divisor, A::Divisor, m = 0)
+ @req !iszero(D) "Divisor is zero."
+ @req degree(A)>0 "Reduction only with divisor of degree > 0."
+ #@show d = degree(D) #relevant for cases, or use dimension?
+ ID, JD = ideals(D)
+ IA, JA = ideals(A)
+ r = 0
+ I, J = ID, JD
+ D_tilde = D
+ dim_tilde = dimension(D)
+ if dim_tilde > 0
+  In, Jn = I//IA^10, J//JA^10
+  while dimension(Hecke.divisor(In, Jn)) > 0
+    I, J = In, Jn
+    In, Jn = In//IA^10, Jn//JA^10
+  end
+ else
+  while iszero(dim_tilde)
+   I, J = I*IA^10, J*JA^10
+   D_tilde = Hecke.divisor(I, J)
+   dim_tilde = dimension(Hecke.divisor(I, J))
+   r -= 10
+  end
+ end
+
+ 
+ In, Jn = I//IA, J//JA
+ D_next = Hecke.divisor(In, Jn)
+ while dimension(D_next) > 0
+   D_tilde = D_next
+   I, J = In, Jn
+   In, Jn = In//IA, Jn//JA
+   D_next = Hecke.divisor(In, Jn)
+ end
+ 
+ RRSp = riemann_roch_space(D_tilde)
+ a = divisor(RRSp[1])
+ Ia, Ja = ideals(a)
+ D_tilde = Hecke.divisor(I*Ia, J*Ja)
+ if !iszero(m)
+  @assert m >= degree(A)
+  #up = floor(Int, div(genus(D.function_field)+m-1-degree(D_tilde),m))
+  #for j = 0:up
+  j = 0
+  In, Jn = I*IA, J*JA
+  D_next = Hecke.divisor(In, Jn)
+  while dimension(D_next) <= m
+   j+=1
+   D_tilde = D_next
+   In, Jn = In*IA, Jn*JA
+   D_next = Hecke.divisor(In, Jn)
+   r -= j
+  end
+ end
+ return D_tilde, r, a
 end
 
 
@@ -176,10 +237,78 @@ end
 
 function class_group_naive(F::AbstractAlgebra.Generic.FunctionField)
  Ofin = finite_maximal_order(F)
- Oinf = infinite_maximal_order(F)
- t = gen(base_ring(Ofin)) #element in k(t)
- A = pole_divisor(F(t)) # =(t)_infty
+ A = pole_divisor(Hecke.separating_element(F)) # =(t)_infty
  A_supp = support(A)
+ deg_A = degree(A)
+ 
+ #compute degree bound as in Hess, Satz 3.16
+ #=
+ g = genus(F)
+ q = characteristic(base_ring(F)) #TODO: get int
+ d = ceil(Int, 2*log(Int(q), 4*g-2))
+ =#
+ d = 1
+
+ #Factorbases and lists of finite ideals resp. norms
+ fin_polys, fin_primes = Hecke.fin_prime_ideals(F, d)
+ inf_primes = collect(s[1] for s in A_supp)
+
+ m = length(fin_primes)
+ n = length(inf_primes)
+ #Find relations:
+
+ #Initialize relation matrix
+ #@show l = floor(Int, 1.5*(m+n))
+ l = 2*(m+n)
+ Rel_mat = sparse_matrix(ZZ, 0, m+n)
+ counter = 0 #TODO upper bound using smoothness prob
+
+ while length(Rel_mat) <= l
+
+  #Find Divisor D as linear combination of primes.
+  counter +=1
+  #@show length(Rel_mat)
+  _pos = sort!(unique!(rand(1:m, min(m, 3))))
+  len_pos = length(_pos)
+  _val = rand(-5:-1, len_pos)
+  #@show _val
+  @assert length(_val) == len_pos
+  I = ideal(one(Ofin))
+  for j = 1:len_pos  #TODO: dependence to number of fin primes
+   idx = _pos[j]
+   I*= fin_primes[idx]^-_val[j]
+  end
+  D = Hecke.divisor(I)
+  #remove later since expensive
+  @assert is_effective(D)
+  @assert isempty(Hecke.infinite_support(D))
+
+  #Reduce D
+  D_tilde, r, a = Hecke.maximal_reduction(D, A, deg_A)
+  @show r
+  iszero(r) && continue
+  #@show "after max_reduction"
+  @assert is_effective(D_tilde)
+  _bool, _row = Hecke.is_relation3_sp(D_tilde, fin_primes, inf_primes)
+  if _bool
+   for j = 1:n
+    push!(_pos, m+j)
+    push!(_val, r*A_supp[j][2])
+   end
+   Hecke.add_scaled_row!(sparse_row(ZZ, _pos, _val), _row, one(ZZ)) #D_tilde-D+r*A
+   push!(Rel_mat, _row)
+   #A_row = sparse_row(ZZ, collect(m+1:m+n), [r*A_supp[j][2] for j = 1:n])
+  end
+ end
+ #TODO: SNF, check if enough rels
+ return counter, m, n, Rel_mat
+end
+
+function class_group_sparse(F::AbstractAlgebra.Generic.FunctionField)
+ Ofin = finite_maximal_order(F)
+ A = pole_divisor(Hecke.separating_element(F)) # =(t)_infty
+ A_supp = support(A)
+ deg_A = degree(A)
 
  #compute degree bound as in Hess, Satz 3.16
  #=
@@ -206,12 +335,13 @@ function class_group_naive(F::AbstractAlgebra.Generic.FunctionField)
  while length(Rel_mat) <= l
 
   #Find Divisor D as linear combination of primes.
-  @show counter +=1
-  @show length(Rel_mat)
-  _pos = sort!(unique!(rand(1:m, min(m, 3))))
+  counter +=1
+  #@show length(Rel_mat)
+  #_pos = sort!(unique!(rand(1:m, min(m, 3))))
+  _pos = sort!(unique!(rand(1:m, floor(Int, 0.2*m+2))))
   len_pos = length(_pos)
-  _val = rand(-10:-1, len_pos)
-  @show _val
+  _val = rand(-8:-1, len_pos)
+  #@show _val
   @assert length(_val) == len_pos
   I = ideal(one(Ofin))
   for j = 1:len_pos  #TODO: dependence to number of fin primes
@@ -219,15 +349,17 @@ function class_group_naive(F::AbstractAlgebra.Generic.FunctionField)
    I*= fin_primes[idx]^-_val[j]
   end
   D = Hecke.divisor(I)
+  #remove later since expensive
   @assert is_effective(D)
   @assert isempty(Hecke.infinite_support(D))
 
   #Reduce D
-  D_tilde, r, a = Hecke.maximal_reduction(D, A, true)
+  D_tilde, r, a = Hecke.maximal_reduction(D, A, deg_A)
+  @show r
   iszero(r) && continue
   #@show "after max_reduction"
-  @assert is_effective(D_tilde)
-  @time _bool, _row = Hecke.is_relation3_sp(D_tilde, fin_primes, inf_primes)
+  #@assert is_effective(D_tilde)
+  _bool, _row = Hecke.is_relation3_sp(D_tilde, fin_primes, inf_primes)
   if _bool
    for j = 1:n
     push!(_pos, m+j)
@@ -235,11 +367,12 @@ function class_group_naive(F::AbstractAlgebra.Generic.FunctionField)
    end
    Hecke.add_scaled_row!(sparse_row(ZZ, _pos, _val), _row, one(ZZ)) #D_tilde-D+r*A
    push!(Rel_mat, _row)
+   @show length(Rel_mat)
    #A_row = sparse_row(ZZ, collect(m+1:m+n), [r*A_supp[j][2] for j = 1:n])
   end
  end
  #TODO: SNF, check if enough rels
- return counter, m, n, Rel_mat
+ return counter, m, n, snf(Rel_mat)
 end
 
 function class_group_dense(F::AbstractAlgebra.Generic.FunctionField)
@@ -250,6 +383,7 @@ function class_group_dense(F::AbstractAlgebra.Generic.FunctionField)
  #A = Hecke.divisor(prime_decomposition(Oinf, base_ring(Oinf)(1//t))[1][1])
  @assert iszero(Hecke.finite_support(A))
  A_supp = support(A)
+ deg_A = degree(A)
 
  #compute degree bound as in Hess, Satz 3.16
  #=
@@ -260,7 +394,6 @@ function class_group_dense(F::AbstractAlgebra.Generic.FunctionField)
  d = 1
  #Factorbases and lists of finite ideals resp. norms
  fin_polys, fin_primes = Hecke.fin_prime_ideals(F, d)
- #FB_polys = FactorBase(fin_polys)
 
  inf_primes = [p for (p,e) in A_supp]
 
@@ -292,7 +425,8 @@ function class_group_dense(F::AbstractAlgebra.Generic.FunctionField)
   @assert is_effective(D)
   @assert isempty(Hecke.infinite_support(D))
   #Reduce D
-  D_tilde, r, a = Hecke.maximal_reduction(D, A, true)
+  D_tilde, r, a = Hecke.maximal_reduction(D, A, deg_A)
+  @show r
   iszero(r) && continue
   #@show "after max_reduction"
   @assert is_effective(D_tilde)
@@ -311,45 +445,26 @@ function class_group_dense(F::AbstractAlgebra.Generic.FunctionField)
  return counter, m, n, Rel_mat
 end
 
-function is_relation(D_tilde, Ofin, Oinf, FB_poly, FB_prime, FB_inf)
- Ifin = D_tilde.finite_ideal
- Iinf = D_tilde.infinite_ideal
- @assert is_effective(D_tilde)
- #@show numerator(Ifin), denominator(Ifin)
- #@show [e for (p,e) in finite_support(D_tilde)]
- #@show numerator(Iinf), denominator(Iinf)
- #@show [e for (p,e) in infinite_support(D_tilde)]
- #@assert isone(denominator(Ifin))
- #@assert isone(denominator(Iinf))
- _pol = norm(Ifin)
- @show t1 = is_smooth(FB_poly, numerator(_pol))
- !t1 && return false
- #@show t2 = is_smooth(FB_prime, numerator(Ifin))
- #!t2 && return false
- #!is_smooth(FB_inf, ideal(denominator(Iinf)))
- #!is_smooth(FB_prime, ideal(Ofin, denominator(Ifin))) && return false
- @show t3 = is_smooth(FB_inf, numerator(Iinf))
- return t3
-end
-
 function is_relation2(D_tilde, fin_primes, inf_primes)#slower than sp_3
  _pos = Int[]
  _val = Int[]
- D0 = Hecke.finite_divisor(D_tilde)
+ #D0 = Hecke.finite_divisor(D_tilde)
+ I = D_tilde.finite_ideal
  len_fin = length(fin_primes)
  len_inf = length(inf_primes)
 
  for i = 1:len_fin
   P = fin_primes[i]
-  vp = valuation(D0, P)
+  #vp = valuation(D0, P)
+  vp = valuation(D_tilde, P)
   if !iszero(vp)
     push!(_pos, i)
     push!(_val, vp)
-    D0 -= Hecke.divisor(P^vp)
+    I = I//(GenOrdFracIdl(P)^vp)
   end
  end
- !iszero(D0) && return false, sparse_row(ZZ)
- 
+ #!iszero(D0) && return false, sparse_row(ZZ)
+ !isone(I) && return false, sparse_row(ZZ)
  #assumed that all infinite primes in factorbase
  for j = 1:len_inf
   Q = inf_primes[j]
@@ -437,17 +552,8 @@ function test_relation3(a, _val, fin_primes, inf_primes, Ofin, Oinf)
 end
 #Idea: save primes to poly and _norms that st smoothness,
 #then check primes only to corresp._norms
- #=
-function height(D::Divisor)
-  @req !iszero(D) "Divisor is zero."
-  zero_div = zero_divisor(D)
-  pole_div = pole_divisor(D)
-  h = 0
-  !iszero(zero_div) && h += degree(zero_div)
-  !iszero(pole_div) && h += degree(pole_div)
- return h
-end
-=#
+
+height(D::Divisor) = degree(zero_divisor(D)) + degree(pole_divisor(D))
 
 ################################################################################
 #
@@ -464,8 +570,8 @@ function test_reduction(D, A, D_tilde, r, Princ_A, Princ_B)
  return D == D_tilde + r*A -Princ
 end
 
-function test_maxreduction(D_tilde, r, a, D, A, check_deg = false)
- if D == D_tilde + r*A -a #TODO: not true for some reason
+function test_maxreduction(D_tilde, r, a, D, A, m=0)
+ if D == D_tilde + r*A -a
    println("equality fulfilled")
  else 
   println("equality not fulfilled")
@@ -475,15 +581,18 @@ function test_maxreduction(D_tilde, r, a, D, A, check_deg = false)
  dim_tilde = dimension(D_tilde)
  if iszero(dim_tilde) 
   println("too far reduced")
- else
+ elseif iszero(m)
   iszero(dimension(D_tilde-A)) ? println("max reduced") : println("NOT max reduced")
+ else
+  dimension(D_tilde+A) > m ? println("min reduced") : println("NOT min reduced")
  end
+
  deg_A = degree(A)
- dim_tilde <= deg_A ? println("dimension bounded correctly") : println("dimension bounded INcorrectly")
- if check_deg
-  g = genus(D_tilde.function_field)
-  degree(D_tilde) < g + deg_A ? println("degree bounded correctly") : println("degree bounded INcorrectly")
- end
+ if iszero(m)
+  dim_tilde <= deg_A ? println("dimension bounded correctly") : println("dimension bounded INcorrectly")
+ else
+  dim_tilde <= m ? println("dimension bounded correctly") : println("dimension bounded INcorrectly")
+ end 
 end
 
 
