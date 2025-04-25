@@ -1,0 +1,50 @@
+l = floor(Int, 1.5*(m+n))
+_pos = sort!(unique!(rand(1:m, floor(Int, 0.2*m+2))))
+len_pos = length(_pos)
+_val = rand(-8:-1, len_pos)
+
+field = F7, counter = 65, m = 18, n = 3 
+class group: Z x 134 x 2 
+
+ 
+field = F8, counter = 29, m = 13, n = 3 
+class group: Z x 8 x 2 (false)
+
+ 
+field = F9, counter = 48, m = 15, n = 2 
+class group: Z x 16 
+
+ 
+field = F10, counter = 22, m = 8, n = 2 
+class group: Z x 2 x 2 (false)
+
+ 
+field = F11, counter = 14, m = 2, n = 4 
+class group: Z x Z (false)
+
+
+l = 2*(m+n)
+_pos = sort!(unique!(rand(1:m, floor(Int, 0.2*m+2))))
+len_pos = length(_pos)
+_val = rand(-8:-1, len_pos)
+
+field = F7, counter = 71, m = 18, n = 3 
+class group: Z x 134 x 2 
+
+ 
+field = F8, counter = 37, m = 13, n = 3 
+class group: Z x 8 x 2 (false)
+
+ 
+field = F9, counter = 55, m = 15, n = 2 
+class group: Z x 16 
+
+ 
+field = F10, counter = 26, m = 8, n = 2 
+class group: Z 
+
+ 
+field = F11, counter = 16, m = 2, n = 4 
+class group: Z x Z (false)
+
+ 
