@@ -1,3 +1,57 @@
+function Base.isless(f::FqFieldElem, g::FqFieldElem)
+ F = parent(f)
+ @assert F == parent(g)
+ f == g && return false
+ d = degree(parent(f))
+ if d == 1
+  return isless(lift(ZZ, f), lift(ZZ, g))
+ else
+  for k in (d - 1):-1:0
+   fk, gk = Nemo._coeff(f, k), Nemo._coeff(g, k)
+   fk == gk && continue
+   return isless(fk, gk)
+  end
+ end
+ @error "something went wrong"
+end
+
+function Base.isless(f::T, g::T) where T <: PolyRingElem
+ F = parent(f)
+ @assert F == parent(g)
+ f == g && return false
+ deg_f = degree(f)
+ deg_g = degree(g)
+ if deg_f == deg_g
+  for k = deg_f:-1:0
+   cf, cg = coeff(f, k), coeff(g, k)
+   cf == cg && continue
+   return isless(cf, cg)
+  end
+ else
+  return isless(deg_f, deg_g)
+ end
+ @error "something went wrong"
+end
+
+function Base.isless(f::Hecke.GenOrdElem, g::Hecke.GenOrdElem)
+ @assert parent(f) == parent(g)
+ f_data, g_data = data(f), data(g)
+ @assert denominator(f_data) == 1 ==  denominator(g_data)
+ return isless(numerator(f_data), numerator(g_data))
+end
+
+#TODO: always two generators in orders?
+function Base.isless(f::Hecke.GenOrdIdl, g::Hecke.GenOrdIdl)
+ @assert f.order == g.order
+ f.gen_one == g.gen_one && return f.gen_two < g.gen_two
+ return isless(f.gen_one, g.gen_one)
+end
+
+function residue_class_degree(p::Hecke.GenOrdIdl{AbstractAlgebra.Generic.FunctionField{FqFieldElem}, FqPolyRing})
+ @assert is_prime(p)
+ #TODO
+end
+
 function rational_prime_ideals(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem})::Tuple{FactorBase{Hecke.GenOrdIdl}, FactorBase{Hecke.GenOrdIdl}}
  kt = base_ring(F) #Fq(t)
  t = numerator(gen(kt))
@@ -66,10 +120,11 @@ function fin_rat_primes(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem})
 end
 
 
+#TODO: wieso keine STellen über poly vom Grad >1?
 function fin_prime_ideals(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem}, d::Int)
  kt = base_ring(F) #Fq(t)
  t = numerator(gen(kt))
- I = irred_polys(parent(t), d) #irreducible polynomials of deg 1 over Fq
+ I = irred_polys(parent(t), d) #irreducible polynomials of deg <= d over Fq
 
  Ofin = finite_maximal_order(F)
  fin_places = GenOrdIdl[]
@@ -88,6 +143,37 @@ function fin_prime_ideals(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem},
  end
  return unique(fin_polys), unique(fin_places)
 end
+
+function fin_prime_ideals_ord(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem}, d::Int)
+ kt = base_ring(F) #Fq(t)
+ t = numerator(gen(kt))
+ I = irred_polys(parent(t), d) #irreducible polynomials of deg <= d over Fq
+
+ Ofin = finite_maximal_order(F)
+ fin_places = GenOrdIdl[]
+ fin_polys = FqPolyRingElem[]
+ for p in I
+  deg_p = degree(p)
+  p_dec = prime_decomposition(Ofin, p)
+  for (q,e) in p_dec
+   f = degree(q)
+   deg_q = f*deg_p
+   if deg_q <= d 
+    push!(fin_places, q)
+    idx = searchsortedfirst(fin_polys, norm(q))
+    idx > length(fin_polys) && push!(fin_polys, norm(q))
+    fin_polys[idx]!= norm(q) && insert!(fin_polys, idx, norm(q))
+
+    jdx = searchsortedfirst(fin_places, q)
+    jdx > length(fin_places) && push!(fin_places, q)
+    fin_places[jdx] != q && insert!(fin_places, jdx, q)
+   end
+  end
+ end
+ return fin_polys, fin_places
+end
+
+
 
 function inf_prime_ideals(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem}, d::Int)
  Oinf = infinite_maximal_order(F)
@@ -128,11 +214,11 @@ function prime_divisors(F::AbstractAlgebra.Generic.FunctionField{FqFieldElem}, d
 end
 
 
-function irred_polys(R::FqPolyRing, d::Int)
+function irred_polys(R::FqPolyRing, d::Int, Fq_elems=collect(base_ring(R)))
  t = gen(R)
  Fq = base_ring(R)
  q = length(Fq)
- Fq_elems = collect(Fq)
+ #Fq_elems = collect(Fq)
  I = [t+c for c in Fq]
  for i = 2:d
   for j = 0:q^d-1
