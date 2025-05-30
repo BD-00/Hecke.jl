@@ -4,6 +4,89 @@ AbstractAlgebra.set_verbosity_level(:Divisor2, 0)
 AbstractAlgebra.add_assertion_scope(:Divisor2)
 AbstractAlgebra.set_assertion_level(:Divisor2, 0)
 
+mutable struct RiemannRochCtx
+ RR_basis::Vector{Generic.FunctionFieldElem}
+ basis_gens::Vector{Generic.FunctionFieldElem}
+ d_limit::Vector{Int}
+ function RiemannRochCtx()
+    return new([],[],[])
+  end
+end
+
+#Extends RR-basis of D to RR-basis of D+r*(x)_infty. If r=0, we compute riemann_roch_space(D).
+function _riemann_roch_space(D::Divisor, r=0, RR_Ctx=RiemannRochCtx())
+ F = function_field(D)
+ x = gen(base_ring(F))
+ if iszero(r)
+  I_fin, I_inf = ideals(D)
+  J_fin = inv(I_fin)
+  J_inf = inv(I_inf)
+
+  F = function_field(D)
+  x = gen(base_ring(F))
+  n = degree(F)
+
+  basis_gens = basis(J_fin) #basis over fin max order
+
+  B_fin = matrix(map(coordinates, basis_gens)) #gens of basis elems over k(x)
+  B_inf = matrix(map(coordinates, basis(J_inf)))
+
+  M = solve(B_inf, B_fin; side = :left) #basis trafo in k(x)
+  d = lcm(vec(map(denominator,collect(M))))
+  d_deg = degree(d)
+  Mnew = change_base_ring(parent(d), d*M) #embedding of M in F with denom scaled to 1
+
+  T, U = weak_popov_with_transform(Mnew) #row transformation s.th. T = U*Mnew reduced
+
+  RR_Ctx.basis_gens = change_base_ring(F, U) * basis(J_fin) #reduced basis_gens ???
+  RR_Ctx.RR_basis = Generic.FunctionFieldElem[]
+  empty!(RR_Ctx.d_limit)
+
+  for i in (1:n)
+    d_i = maximum(map(degree, T[i,1:n])) #max degree in i-th row
+    d_l = - d_i + d_deg
+    push!(RR_Ctx.d_limit, d_l)
+    for j in (0:d_l)
+      push!(RR_Ctx.RR_basis, x^(j) * RR_Ctx.basis_gens[i])
+    end
+  end
+  return RR_Ctx.RR_basis, RR_Ctx
+ else
+  if r>0
+   len = length(RR_Ctx.d_limit)
+   new_basis = sizehint!(Generic.FunctionFieldElem[], length(RR_Ctx.RR_basis) + len*r)
+   k = 0
+   for i in (1:len)
+    #insert part of basis belonging to v_i
+    d_i = RR_Ctx.d_limit[i]
+    for l in (0:d_i)
+     k+=1
+     push!(new_basis, RR_Ctx.RR_basis[k])
+    end
+    for j in (1:r)
+     _exp = d_i+j
+     is_zero(_exp) && push!(new_basis, RR_Ctx.basis_gens[i])
+     _exp > 0 && push!(new_basis, x*new_basis[end])
+    end
+    RR_Ctx.d_limit[i]+=r
+   end
+   RR_Ctx.RR_basis = new_basis
+   return new_basis, RR_Ctx
+  else #r<0
+   new_basis = sizehint!(Generic.FunctionFieldElem[], length(RR_Ctx.RR_basis))
+   for i in 1:length(RR_Ctx.d_limit)
+    _lim = RR_Ctx.d_limit[i]+r
+    _lim >=0 && push!(new_basis, RR_Ctx.basis_gens[i])
+    for j in (1:_lim)
+     push!(new_basis, x*new_basis[end])
+    end
+    RR_Ctx.d_limit[i] = _lim
+   end
+   RR_Ctx.RR_basis = new_basis
+   return new_basis, RR_Ctx
+  end
+ end
+end
 
 function divisor_reduction(D::Divisor, A::Divisor, m=0)
  @req !iszero(D) "D is zero"
@@ -106,6 +189,8 @@ Note that a unique reduction is only guaranteed if deg(A) = 1.
 #TODO: choose r depending on some invariant
 #TODO: case deg(D) <= 0
 #TODO: check if input already max. reduced ?
+#TODO: RR computation more efficient
+#TODO estimate the size of r and adapt step sizes to it
 function maximal_reduction(D::Divisor, A::Divisor, m = 0)
   @req !iszero(D) "Divisor is zero."
   @req degree(A)>0 "Reduction only with divisor of degree > 0."
@@ -167,6 +252,33 @@ function maximal_reduction(D::Divisor, A::Divisor, m = 0)
    end
   end
   return D_tilde, r, a
+end
+
+function maximal_reduction(D::Divisor, m=0)
+ #max reduction with (x)_infty
+ F = function_field(D)
+ A = pole_divisor(Hecke.separating_element(F))
+ @req !iszero(D) "Divisor is zero."
+ RR, RRCtx = _riemann_roch_space(D)
+ r = maximum(RRCtx.d_limit)
+ RR_red, RRCtx = _riemann_roch_space(D, -r, RRCtx)
+ @assert RR_red == riemann_roch_space(D-r*A)
+ @assert length(RR_red) > 0
+ a = divisor(RR_red[1])
+ D_tilde = D-r*A+a
+ #RR_tilde = RR_red.*inv(RR[1])
+ if !iszero(m)
+  @assert m >= degree(A)
+  d = RRCtx.d_limit
+  _ones = ones(Int, length(d))
+  d += _ones
+  j = 0
+  while sum(filter(x->x>0, d+=_ones)) <= m
+   j+=1
+   r -= j
+  end
+ end
+ return D_tilde, r, a
 end
 
 function maximal_reduction_ideals(D::Divisor, A::Divisor, m = 0)
@@ -234,6 +346,7 @@ end
 #TODO: relations with deg >1 false
 #TODO: make Rel_mat sparse
 #TODO: consider fin annd inf support together
+#TODO: test if creation + addition of two sparse rows cheaper or adding elements to one using minus before
 
 function class_group_naive(F::AbstractAlgebra.Generic.FunctionField)
  Ofin = finite_maximal_order(F)
@@ -372,7 +485,7 @@ function class_group_sparse(F::AbstractAlgebra.Generic.FunctionField)
   end
  end
  #TODO: SNF, check if enough rels
- return counter, m, n, snf(Rel_mat)
+ return counter, m, n, Rel_mat
 end
 
 function class_group_dense(F::AbstractAlgebra.Generic.FunctionField)
@@ -534,6 +647,10 @@ function is_relation3_sp(D_tilde, fin_primes, inf_primes)
  end
  return true, sparse_row(ZZ, _pos, _val)
 end
+
+function is_relation_ord(D_tilde, fin_polys, fin_primes, inf_primes)
+
+end 
 
 function test_relation3(a, _val, fin_primes, inf_primes, Ofin, Oinf)
  m = length(fin_primes)
