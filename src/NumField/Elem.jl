@@ -32,15 +32,16 @@ end
 #
 ################################################################################
 
-is_integral(a::QQFieldElem) = isone(denominator(a))
+is_algebraic_integer(a::QQFieldElem) = isone(denominator(a))
+
+is_integral(a::QQFieldElem) = is_algebraic_integer(a)
 
 @doc doc"""
-    is_integral(a::NumFieldElem) -> Bool
+    is_algebraic_integer(x::NumFieldElem)
 
-Returns whether $a$ is integral, that is, whether the minimal polynomial of $a$
-has integral coefficients.
+Return whether $x$ is an algebraic integer.
 """
-function is_integral(a::NumFieldElem)
+function is_algebraic_integer(a::NumFieldElem)
   K = parent(a)
   if is_maximal_order_known(K)
     OK = maximal_order(K)
@@ -54,6 +55,39 @@ function is_integral(a::NumFieldElem)
   end
   return true
 end
+
+@doc doc"""
+    is_integral(a::NumFieldElem) -> Bool
+
+Returns whether $a$ is integral, that is, whether the minimal polynomial of $a$
+has integral coefficients.
+"""
+is_integral(a::NumFieldElem) = is_algebraic_integer(a)
+
+################################################################################
+#
+#  Integer and rational
+#
+################################################################################
+
+@doc raw"""
+    isinteger(a::AbsNonSimpleNumFieldElem)
+
+Return `true` if the given number field element is an integer, i.e., in ZZ, otherwise
+return `false`.
+"""
+function isinteger(a::AbsNonSimpleNumFieldElem)
+  is_constant(data(a)) || return false
+  return isinteger(constant_coefficient(data(a)))
+end
+
+@doc raw"""
+    is_rational(a::AbsNonSimpleNumFieldElem)
+
+Return `true` if the given number field element is a rational number, i.e., in QQ,
+otherwise `false`.
+"""
+is_rational(a::AbsNonSimpleNumFieldElem) = is_constant(data(a))
 
 ################################################################################
 #
@@ -597,7 +631,7 @@ end
 ################################################################################
 
 function denominator!(z::ZZRingElem, a::AbsSimpleNumFieldElem)
-   ccall((:nf_elem_get_den, libantic), Nothing,
+   ccall((:nf_elem_get_den, libflint), Nothing,
          (Ref{ZZRingElem}, Ref{AbsSimpleNumFieldElem}, Ref{AbsSimpleNumField}),
          z, a, a.parent)
    return z
