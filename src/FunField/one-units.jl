@@ -136,6 +136,7 @@ function one_unit_quotient_fq(f::T, k::Int) where T <: PolyRingElem{<:FinFieldEl
   #for k = 2, 1+P/1+P^k can be computed directly:
   _gens = [1+c*x^i*f for i in 0:d-1 for c in Fp_basis]
   _rels = diagonal_matrix(p, d*l)
+  test_relation_matrix(_gens, _rels, f^2)
 
   k == 2 && return _gens, _rels
 
@@ -148,8 +149,10 @@ function one_unit_quotient_fq(f::T, k::Int) where T <: PolyRingElem{<:FinFieldEl
     a=b
     b*=2
     _gens, _rels = group_extension_fq(f, a, b, _gens, _rels)
+    test_relation_matrix(_gens, _rels, f^b)
   end
   _gens, _rels = group_extension_fq(f, b, k, _gens, _rels)
+  test_relation_matrix(_gens, _rels, f^k)
   return _gens, _rels #TODO: output snf here?
 end
 
@@ -182,9 +185,10 @@ function group_extension_fq(f::T, a::Int, b::Int, _gens_right, _rels_right) wher
 
   deg_bound = d*(b-a)
 
-  _gens_left = [1+c*x^i*f_pow_a for i in 0:deg_bound-1 for c in Fp_basis]
+  _gens_left = [1+c*x^i*f_pow_a for i in 0:deg_bound-1 for c in Fp_basis] #x^i blockwise, iterating over coeffs in block
   _rels_left = diagonal_matrix(p, deg_bound*l)
   _rels = block_diagonal_matrix([_rels_right, _rels_left])
+  _gens = append!(_gens_right, _gens_left)
 
   n, m = size(_rels_right)
   for i = 1:n
@@ -197,9 +201,7 @@ function group_extension_fq(f::T, a::Int, b::Int, _gens_right, _rels_right) wher
         _rel = mulmod(_rel, powermod(_gens_right[j], r_j, f_pow_b), f_pow_b)  #TODO: smart reduction mod f^b
       end
     end
-    @show i #test
-    @show _rel
-    @show _rel-=1
+    _rel-=1
     iszero(_rel) && continue
     h = divexact(_rel, f_pow_a) #_rel = 1+h*f^a mod 1+f^b with h not in f^(b-a)
     @assert degree(h) < d*(b-a) 
@@ -210,25 +212,50 @@ function group_extension_fq(f::T, a::Int, b::Int, _gens_right, _rels_right) wher
     j = m+1
     for h_j in coeff_h #coeffs in Fq, need coefficient to Fp-basis
       if !iszero(h_j)
-        neg!(h_j)
+        neg!(h_j) #careful: inplace might not work for all types
         for idx in 0:l-1
           lambda = coeff(h_j, idx)
           if !iszero(lambda)
             _rels[i, j] = lift(ZZ, lambda)
           end
+          j+=1
         end
-        j+=1
       else
         j+=l
       end
     end
-  end
-  return append!(_gens_right, _gens_left), _rels
+
+    test_relation(_gens, _rels, i, f_pow_b)
+  end 
+  return _gens, _rels
 end
 
 #TODO: add case where middle part is the direct sum of left and right?
+#TODO: compare to composition of relations on module side via generators there
 
 #check whether polynomial described by the relation in row i is congruent to 1 mod f^a
-function test_relation(_gens::_rels::ZZMatrix, i::Int, f_pow_a)
-
+function test_relation(_gens::Vector{T}, _rels::ZZMatrix, i::Int, f_pow_a) where T <: PolyRingElem{<:FinFieldElem}
+  l = length(_gens)
+  @assert l == size(_rels)[2]
+  g = one(parent(_gens[1]))
+  for j in 1:l
+    g*=powermod( _gens[j], _rels[i, j], f_pow_a)
+  end
+  m = mod(g, f_pow_a)
+  @assert m == 1
 end
+
+function test_relation_matrix(_gens::Vector{T}, _rels::ZZMatrix, f_pow_k) where T <: PolyRingElem{<:FinFieldElem}
+  l = length(_gens)
+  @assert l == size(_rels)[2]
+  for i in 1:size(_rels)[1]
+    g = one(parent(_gens[1]))
+    for j in 1:l
+      g*=powermod( _gens[j], _rels[i, j], f_pow_k)
+    end
+    m = mod(g, f_pow_k)
+    @assert m == 1
+  end
+end
+
+#test whether h results from relation resp. whether rel*relright = 1
