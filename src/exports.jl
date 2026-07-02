@@ -34,6 +34,8 @@ export Divisor
 export Divisors
 export EllipticCurve
 export EllipticCurvePoint
+export EllipticCurveLocalData
+export EllipticCurveReduction
 export EmbeddedAbsSimpleNumField
 export EmbeddedAbsSimpleNumFieldElem
 export EmbeddedNumFieldElem
@@ -48,6 +50,10 @@ export FinGenAbGroup
 export FinGenAbGroupElem
 export FinGenAbGroupHom
 export FinGenAbGroupToGroupHom
+export FiniteRing
+export FiniteRingElem
+export FiniteRingHom
+export FiniteRingMap
 export MultTableGroup
 export MultTableGroupElem
 export MultTableGroupToGroupHom
@@ -56,8 +62,8 @@ export HermGenus
 export HermLat
 export HermLocalGenus
 export HypellCrv
+export HypellCrvIsom
 export HypellCrvPt
-export HyperellipticCurve
 export IdealSet
 export InfPlc
 export Isogeny
@@ -144,6 +150,7 @@ export add_assertion_scope
 export add_right_scaled_row
 export add_scaled_row
 export add_verbosity_scope
+export additive_generators
 export algebra
 export ambient_space
 export angle
@@ -190,12 +197,17 @@ export canonical_injection
 export canonical_injections
 export canonical_projection
 export canonical_projections
+export canonical_symbol
 export carmichael_lambda
 export center
+export center_density
 export central_primitive_idempotents
 export chain_complex
 export class_group
+export class_number
 export classical_modular_polynomial
+export clebsch_from_igusa_clebsch
+export clebsch_invariants
 export close_vectors
 export close_vectors_iterator
 export closure
@@ -241,6 +253,7 @@ export content_ideal
 export contract
 export coordinates
 export coprime_base
+export coprime_residues
 export copy
 export cos
 export cover
@@ -250,6 +263,8 @@ export crt_env
 export crt_inv
 export crt_signed
 export cycle
+export cyclic_algebra
+export cyclic_generator
 export cyclotomic_extension
 export cyclotomic_field
 export cyclotomic_field_as_cm_extension
@@ -257,6 +272,9 @@ export cyclotomic_polynomial
 export cyclotomic_regulator
 export cyclotomic_units_totally_real
 export decompose
+export decompose_into_indecomposable_rings
+export decompose_into_p_rings
+export decomposition_field
 export decomposition_group
 export deepcopy
 export defining_modulus
@@ -316,6 +334,7 @@ export embedding
 export embeddings
 export enumerate_definite_genus
 export enumerate_quadratic_triples
+export enumerate_quadratic_triples_iterator
 export equation
 export equation_order
 export euclid
@@ -335,6 +354,7 @@ export farey_lift
 export find_points
 export finite_divisor
 export finite_maximal_order
+export finite_ring
 export fixed_field
 export fixed_ring
 export flat
@@ -351,6 +371,8 @@ export free_resolution
 export frobenius_map
 export function_field
 export fundamental_discriminant
+export g2_from_igusa
+export g2_invariants
 export galois_module
 export gcd
 export gcd_into!
@@ -389,6 +411,7 @@ export hensel_lift
 export hermitian_genera
 export hermitian_lattice
 export hermitian_local_genera
+export hermite_number
 export hermitian_space
 export hermitian_structure
 export hermitian_structure_with_transfer_data
@@ -404,6 +427,7 @@ export hom_tensor
 export homogeneous_equation
 export howell_form
 export hyperbolic_plane_lattice
+export hyperelliptic_curve
 export hyperelliptic_polynomials
 export hyperkaehler_lattice
 export id
@@ -414,7 +438,13 @@ export ideal_type
 export ideals
 export idempotents
 export identity_isogeny
-export identity_map
+export igusa_clebsch_from_clebsch
+export igusa_clebsch_from_igusa
+export igusa_clebsch_invariants
+export igusa_from_g2
+export igusa_from_igusa_clebsch
+export igusa_invariants
+export igusa_invariant_J15
 export image
 export in
 export index
@@ -425,6 +455,7 @@ export induce_rational_reconstruction
 export induces_to_quotient
 export induces_to_subgroup
 export inertia_degree
+export inertia_field
 export inertia_subgroup
 export infinite_divisor
 export infinite_maximal_order
@@ -487,9 +518,11 @@ export is_free
 export is_free_with_basis
 export is_fundamental_discriminant
 export is_genus
+export is_genus_with_genus
 export is_gorenstein
 export is_hermitian
 export is_idempotent
+export is_indecomposable
 export is_indefinite
 export is_independent
 export is_index_divisor
@@ -503,6 +536,7 @@ export is_isometric
 export is_isometric_with_isometry
 export is_isometry
 export is_isomorphic
+export is_isomorphic_with_isomorphism
 export is_isomorphic_with_map
 export is_isotropic
 export is_isotropic_with_vector
@@ -557,6 +591,7 @@ export is_simplified_model
 export is_smooth
 export is_snf
 export is_split
+export is_split_with_map
 export is_split_with_zero_divisor
 export is_squarefree
 export is_subfield
@@ -647,6 +682,7 @@ export maximal_abelian_subfield
 export maximal_even_lattice
 export maximal_integral_lattice
 export maximal_order
+export maximal_p_quotient_ring
 export maximal_submodules
 export meataxe
 export min
@@ -667,6 +703,8 @@ export modulus_quadratic_form
 export morphisms
 export mukai_lattice
 export mul!
+export mul_dense
+export mul_sparse
 export multiples
 export multiplication_by_m_map
 export multiplication_table
@@ -679,6 +717,7 @@ export multiset
 export naive_height
 export narrow_class_group
 export negation_map
+export neighbours
 export neron_tate_height
 export next_prime
 export ngens
@@ -696,6 +735,7 @@ export normic_defect
 export normred
 export norms
 export number_field
+export number_of_additive_generators
 export number_of_lattices
 export number_of_relations
 #export number_of_small_groups #(conflict with Oscar?)
@@ -710,6 +750,7 @@ export orthogonal_complement
 export orthogonal_projection
 export orthogonal_submodule
 export overlattice
+export overlattices
 export overorders
 export parent
 export periods
@@ -740,6 +781,8 @@ export prime_ideals_over
 export prime_ideals_up_to
 export primes
 export primitive_closure
+export primitive_extension
+export primitive_root
 export principal_generator
 export principal_subfields
 export pselmer_group
@@ -786,6 +829,7 @@ export real_embeddings
 export real_period
 export real_places
 export reduce_full
+export reduce_binary_form
 export reduced_charpoly
 export reduced_discriminant
 export reduced_resultant
@@ -814,9 +858,11 @@ export ring_of_integers
 export ring_of_multipliers
 export root
 export root_lattice
+export root_lattices
 export root_lattice_recognition
 export root_lattice_recognition_fundamental
 export root_sublattice
+export root_symbols
 export roots
 export rres
 export rresx
@@ -835,9 +881,11 @@ export set_verbosity_level
 export shift
 export short_vectors
 export short_vectors_affine
+export short_vectors_affine_iterator
 export short_vectors_iterator
 export short_weierstrass_model
 export shortest_vectors
+export shortest_vectors_sublattice
 export show
 export show_psi
 export siegel_reduction
@@ -878,6 +926,8 @@ export subfields
 export subgroups
 export submodules
 export subsets
+export successive_minima
+export successive_minima_with_vectors
 export sunit_group
 export sunit_group_fac_elem
 export sunit_mod_units_group_fac_elem
@@ -916,6 +966,7 @@ export trace_of_frobenius
 export trailing_coefficient
 export transform
 export transform_rstu
+export transvectant
 export triangularize
 export trivial_divisor
 export trivial_morphism
@@ -933,7 +984,11 @@ export value_module
 export value_module_quadratic_form
 export vcat
 export vcat!
+export vectors_of_square_and_divisibility
+export vector_space_dim
 export volume
+export weighted_equality
+export weighted_reduction
 export weil_pairing
 export wildanger_field
 export witt_invariant

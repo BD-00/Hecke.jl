@@ -41,11 +41,13 @@ any_order(K::AbsSimpleNumField)
 ```jldoctest
 julia> Qx, x = polynomial_ring(QQ, :x);
 
-julia> K, a = number_field(x^2 - 2, :a);
+julia> K, a = number_field(x^2 - 2, :a; cached = false);
 
 julia> O = equation_order(K)
-Maximal order of number field of degree 2 over QQ
-with basis [1, a]
+Order
+  of number field with defining polynomial x^2 - 2
+    over rational field
+with Z-basis [1, a]
 ```
 
 ```@docs

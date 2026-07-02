@@ -138,6 +138,28 @@
       @test mod(AtoQ\(e + f), J) == mod((AtoQ\e + AtoQ\f), J)
       @test mod(AtoQ\(e * f), J) == mod((AtoQ\e) * (AtoQ\f), J)
     end
+
+    # AbsNumFieldOrderIdeal inputs
+    let
+      k, a = cyclotomic_real_subfield(32)
+      ok = lll(maximal_order(k))
+      I = 1*ok
+      J = 2*ok
+      Q, OtoQ = quo(I, J, 2)
+      @test dim(Q) == degree(ok)
+
+      for i = 1:5
+        c = rand(I, 10)
+        d = rand(I, 10)
+        @test OtoQ(c + d) == OtoQ(c) + OtoQ(d)
+        @test OtoQ(c * d) == OtoQ(c) * OtoQ(d)
+
+        e = rand(Q, -10:10)
+        f = rand(Q, -10:10)
+        @test OtoQ(OtoQ\e) == e
+        @test OtoQ(OtoQ\f) == f
+      end
+    end
   end
 
   @testset "rand" begin
@@ -149,10 +171,7 @@
     @test rand(rng, I) isa E
     @test rand(rng, Hecke.RandomExtensions.make(I), 2, 3) isa Matrix{E}
 
-    Random.seed!(rng, rand_seed)
-    a = rand(rng, I)
-    Random.seed!(rng, rand_seed)
-    @test a == rand(rng, I)
+    @test reproducible(I)
   end
 
   let
@@ -162,5 +181,53 @@
     @test A * a == J
     a = @inferred Hecke.right_principal_generator(J)
     @test a * A == J
+  end
+
+  let
+    for q in [2, 3, 4]
+      for n in [1, 2, 3]
+        A = matrix_algebra(GF(q), n)
+        for side in [:right, :left]
+          J = Hecke.maximal_ideal(A; side = side)
+          @test Hecke._test_ideal_sidedness(J, side)
+          @test dim(J) == n*(n-1)
+          Js = Hecke.maximal_ideals(A; side = side)
+          @test length(Js) == divexact(q^n - 1, q - 1)
+          @test allunique(Js)
+          @test all(x -> Hecke._test_ideal_sidedness(x, side) && dim(x) == n*(n-1), Js)
+        end
+        @test_throws ArgumentError Hecke.maximal_ideal(A; side = :bla)
+        @test_throws ArgumentError Hecke.maximal_ideals(A; side = :bla)
+      end
+    end
+  end
+
+  # prime ideals
+  let
+    M = matrix_algebra(GF(2), 2)
+    lP = Hecke.prime_ideals(M)
+    @test length(lP) == 1 && is_zero(lP[1])
+    B, = StructureConstantAlgebra(matrix_algebra(GF(2), 2))
+    lP = Hecke.prime_ideals(B)
+    @test length(lP) == 1 && is_zero(lP[1])
+    C, = direct_product(B, B, B)
+    lP = Hecke.prime_ideals(C)
+    @test allunique(lP)
+    for P in lP
+      CC, = quo(C, P)
+      @test is_simple(CC)
+    end
+
+    A = group_algebra(GF(2), small_group(8, 3))
+    lP = Hecke.prime_ideals(A)
+    @test length(lP) == 1 && dim(lP[1]) == 7
+
+    A = group_algebra(GF(2), small_group(12, 3))
+    lP = Hecke.prime_ideals(A)
+    @test length(lP) == 2 && issetequal(dim.(lP), [10, 11])
+    for P in lP
+      CC, = quo(A, P)
+      @test is_simple(CC)
+    end
   end
 end

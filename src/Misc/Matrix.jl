@@ -161,17 +161,19 @@ function is_hnf(x::ZZMatrix, shape::Symbol)
 end
 
 function Nemo._hnf(x::MatElem{ZZRingElem})
-  if nrows(x) * ncols(x) > 100
+  # don't do fancy things for small matrices
+  if !(nrows(x) <= 50 && ncols(x) <= 50) && nrows(x) * ncols(x) > 100
     s = sparse_matrix(x)
     if sparsity(s) > 0.7
       return matrix(Hecke.hnf(s))
     end
   end
-  return Nemo.__hnf(x) # ist die original Nemo flint hnf
+  return Nemo.__hnf(x) #  raw Nemo flint hnf
 end
 
 function Nemo._hnf_with_transform(x::MatElem{ZZRingElem})
-  if nrows(x) * ncols(x) > 100
+  # don't do fancy things for small matrices
+  if !(nrows(x) <= 50 && ncols(x) <= 50) && nrows(x) * ncols(x) > 100
     s = sparse_matrix(x)
     if sparsity(s) > 0.7
       s = hcat(s, identity_matrix(SMat, ZZ, nrows(x)))
@@ -372,7 +374,7 @@ end
 Tests if $a$ is positive definite by testing if all principal minors
 have positive determinant.
 """
-function is_positive_definite(a::ZZMatrix)
+function is_positive_definite(a::Union{QQMatrix, ZZMatrix})
   for i=1:nrows(a)
     if det(sub(a, 1:i, 1:i)) <= 0
       return false
@@ -437,9 +439,9 @@ function round_scale!(b::ZZMatrix, a::ArbMatrix, l::Int)
   r = R()
   for i = 1:s[1]
       for j = 1:s[2]
-          v = ccall((:arb_mat_entry_ptr, libarb), Ptr{ArbFieldElem},
+          v = ccall((:arb_mat_entry_ptr, libflint), Ptr{ArbFieldElem},
               (Ref{ArbMatrix}, Int, Int), a, i - 1, j - 1)
-          ccall((:arb_mul_2exp_si, libarb), Nothing, (Ref{ArbFieldElem}, Ptr{ArbFieldElem}, Int), r, v, l)
+          ccall((:arb_mul_2exp_si, libflint), Nothing, (Ref{ArbFieldElem}, Ptr{ArbFieldElem}, Int), r, v, l)
           b[i, j] = round(ZZRingElem, r)
       end
   end

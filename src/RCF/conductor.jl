@@ -450,9 +450,17 @@ function discriminant_sign(C::ClassField)
   end
 end
 
+function absolute_discriminant(::Type{FacElem}, C::ClassField)
+  OK = base_ring(C)
+  d = factored_norm(discriminant(FacElem, C))
+  d *= parent(d)(discriminant_sign(C)) 
+  d *= parent(d)(abs(QQ(discriminant(OK))))^degree(C)
+  return d
+end
+
 function absolute_discriminant(C::ClassField)
   OK = base_ring(C)
-  return discriminant_sign(C) * norm(discriminant(C))*discriminant(OK)^degree(C)
+  return discriminant_sign(C) * norm(discriminant(C))*abs(discriminant(OK))^degree(C)
 end
 
 function discriminant(C::ClassField, ::QQField)
@@ -461,11 +469,14 @@ end
 
 @doc raw"""
     discriminant(C::ClassField) -> AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}
+    discriminant(FacElem, C::ClassField) -> FacElem{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}}
 
 Using the conductor-discriminant formula, compute the (relative) discriminant of $C$.
 This does not use the defining equations.
+
+In the `FacElem` version, the discriminant is returned in factored form.
 """
-function discriminant(C::ClassField)
+function discriminant(::Type{FacElem}, C::ClassField)
   if isdefined(C,:conductor)
     m = C.conductor[1]
     inf_plc = C.conductor[2]
@@ -477,15 +488,14 @@ function discriminant(C::ClassField)
   O = order(m)
   if isdefined(C, :relative_discriminant)
     if isempty(C.relative_discriminant)
-      return ideal(O, 1)
+      return FacElem(Dict(ideal(O, 1)=>1))
     else
-      return prod([P^v for (P, v) in C.relative_discriminant])
+      return FacElem(C.relative_discriminant)
     end
   end
   if is_one(m)
-    return m
+    return FacElem(Dict(m =>1))
   end
-
 
   @assert typeof(m) == AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}
 
@@ -505,9 +515,9 @@ function discriminant(C::ClassField)
     end
     C.relative_discriminant = relative_disc
     if isempty(C.relative_discriminant)
-      return ideal(O, 1)
+      return FacElem(Dict(ideal(O, 1)=>1))
     else
-      return prod([P^v for (P, v) in C.relative_discriminant])
+      return FacElem(C.relative_discriminant)
     end
   end
 
@@ -556,10 +566,14 @@ function discriminant(C::ClassField)
   end
   C.relative_discriminant = relative_disc
   if isempty(relative_disc)
-    return ideal(O, 1)
+    return FacElem(Dict(ideal(O, 1)=>1))
   else
-    return prod([P^v for (P, v) in relative_disc])
+    return FacElem(C.relative_discriminant)
   end
+end
+
+function discriminant(C::ClassField)
+  return evaluate(discriminant(FacElem, C))
 end
 
 ##############################################################################
@@ -1325,7 +1339,7 @@ If the optional keyword `is_normal` is set to a list of automorphisms, then
 only those wil be considered.
 
 `type` can be set to the desired relative Galois group, given as a vector
-of integers descibing the structure.
+of integers describing the structure.
 
 !!! note
     This will not find all subfields over $\mathbf{Q}$, but only the ones
@@ -1632,7 +1646,7 @@ function lorenz_module(k::AbsSimpleNumField, n::Int; containing=false)
     end
   end
   lf = factor(n)
-  return Base.reduce(lcm, [lorenz_module_pp(k, Int(p), l, containing = containing) for (p,l) = lf.fac])
+  return Base.reduce(lcm, [lorenz_module_pp(k, Int(p), l, containing = containing) for (p, l) in lf])
 end
 
 #TODO: is this the right interface???
@@ -1680,7 +1694,7 @@ function norm(m::T, a::FacElem{AbsSimpleNumFieldElem, AbsSimpleNumField}) where 
   Qt = parent(K.pol)
   h = gcd(gen(k) - evaluate(Qt(m(gen(k))), t), evaluate(K.pol, t))
   d = Dict{AbsSimpleNumFieldElem, ZZRingElem}()
-  for (e,v) = a.fac
+  for (e, v) in a
     n = resultant(h, mod(change_base_ring(k, Qt(e), parent = kt), h))
     if haskey(d, n)
       d[n] += v

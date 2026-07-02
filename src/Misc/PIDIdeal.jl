@@ -48,23 +48,18 @@ end
 
 function _ideal_pid(R::Ring, x::Vector)
   return _ideal_pid(R, mapreduce(x -> parent(x) === R ? x : R(x), gcd, x; init = zero(R)))
-  if parent(x) === R
-    return PIDIdeal(x)
-  else
-    return PIDIdeal(R(x))
-  end
 end
 
-function ideal(R::PolyRing{<:FieldElem}, x...)
-  return _ideal_pid(R, x...)
+function ideal(R::PolyRing{<:FieldElem}, x::RingElement, y::RingElement...)
+  return _ideal_pid(R, x, y...)
 end
 
-function ideal(R::PolyRing{<:FieldElem}, xs::AbstractVector{T}) where T<:RingElement
+function ideal(R::PolyRing{<:FieldElem}, xs::Vector)
   return _ideal_pid(R, xs)
 end
 
-function ideal(R::Field, x...)
-  return _ideal_pid(R, x...)
+function ideal(R::Field, x::RingElement, y::RingElement...)
+  return _ideal_pid(R, x, y...)
 end
 
 function ideal(R::Field, xs::AbstractVector{T}) where T<:RingElement
@@ -132,3 +127,20 @@ function is_one(x::PIDIdeal{T}) where {T}
 end
 
 is_zero(x::PIDIdeal) = is_zero(gen(x))
+
+is_maximal(I::PIDIdeal{<:PolyRingElem{<:FieldElem}}) = is_irreducible(gen(I))
+
+is_maximal(I::PIDIdeal{<:FieldElem}) = is_zero(I)
+
+is_prime(I::PIDIdeal) = is_zero(I) || is_maximal(I)
+
+is_prime(I::PIDIdeal{<:FieldElem}) = is_zero(I)
+
+radical(I::PIDIdeal{<:FieldElem}) = I
+
+#is_primary(I::PIDIdeal) = is_zero(I) || is_prime_power_with_data(gen(I))[1]
+
+#radical(I::PIDIdeal) = iszero(I) ? I : ideal(radical(gen(I)))
+
+#primary_decomposition(I::PIDIdeal) = iszero(I) ? [ (I,I) ] :
+#  [ (ideal(p^k), ideal(p)) for (p,k) in factor(gen(I)) ]

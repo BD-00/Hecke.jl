@@ -1,37 +1,59 @@
 #XXX: valuation(Q(0)) == 0 !!!!!
-function newton_lift(f::ZZPolyRingElem, r::QadicFieldElem, prec::Int = precision(parent(r)), starting_prec::Int = 2)
+
+# Assumes f has integral coefficients (i.e., f in Z_q[X])
+# Assumes the lift is possible, i.e., v_p(f(r)) > 2*v_p(f'(r));
+#   see "Handbook of Elliptic and Hyperelliptic Curve Cryptography", Lemma 12.8.
+# Takes the derivative df as input for efficiency (caller typically needs it
+#   anyway to verify the Newton lift precondition).
+function _newton_lift(f::PolyRingElem{QadicFieldElem}, df::PolyRingElem{QadicFieldElem}, r::QadicFieldElem, prec::Int = precision(parent(r)), starting_prec::Int = 2)
   Q = parent(r)
+
+  o = Q(r)
+  starting_prec = min(starting_prec, precision(o))
+  @assert precision(o) >= starting_prec
+
+  o = df(o)
+  vo = valuation(o)
+  o = inv(o)
+
   n = prec
   i = n
   chain = [n]
   while i>starting_prec
-    i = div(i+1, 2)
+    i = div(i+1+vo, 2)
     push!(chain, i)
   end
-  fs = derivative(f)
-  qf = change_base_ring(Q, f, cached = false)
-  qfs = change_base_ring(Q, fs, cached = false)
-  r = setprecision(r, 1)
-  o = Q(r)
-  s = qf(r)
-  o = inv(setprecision(qfs, 1)(o))
-  @assert r.N == 1
+
   for p = reverse(chain)
     setprecision!(r, p)
     setprecision!(o, p)
     setprecision!(Q, r.N)
     if r.N > precision(Q)
-      setprecision!(qf, r.N)
-      setprecision!(qfs, r.N)
+      setprecision!(f, r.N)
+      setprecision!(df, r.N)
     end
-    r = r - qf(r)*o
+    r = r - f(r)*o
     if r.N >= n
       setprecision!(Q, n)
       return r
     end
-    o = o*(2-qfs(r)*o)
+    o = o*(2-df(r)*o)
   end
   return r
+end
+
+function newton_lift(f::Union{PolyRingElem{ZZRingElem}, PolyRingElem{QadicFieldElem}}, r::QadicFieldElem, prec::Int = precision(parent(r)), starting_prec::Int = 2)
+  Q = parent(r)
+
+  if base_ring(f) == ZZ
+    qf = change_base_ring(Q, f, cached = false)
+    qfs = change_base_ring(Q, derivative(f), cached = false)
+  else
+    qf = f
+    qfs = derivative(f)
+  end
+
+  return _newton_lift(qf, qfs, r, prec, starting_prec)
 end
 
 function newton_lift(f::ZZPolyRingElem, r::LocalFieldElem, precision::Int = precision(parent(r)), starting_prec::Int = 2)
@@ -69,14 +91,23 @@ end
 @doc raw"""
     roots(Q::QadicField, f::ZZPolyRingElem; max_roots::Int = degree(f)) -> Vector{QadicFieldElem}
 
-The roots of $f$ in $Q$, $f$ has to be square-free (at least the roots have to be simple roots).
+The roots of $f$ in $Q$. The current implementation uses Newton lifting from
+the residue field, so only simple roots (in the residue field) are considered:
+a root $r$ in the residue field with $f(r) = 0$ is lifted to a root in $Q$
+only if $f'(r) \neq 0$.
 """
 function roots(Q::QadicField, f::ZZPolyRingElem; max_roots::Int = degree(f))
   k, mk = residue_field(Q)
   rt = roots(k, f)
+
+  qf = change_base_ring(Q, f, cached = false)
+  qfs = change_base_ring(Q, derivative(f), cached = false)
+
   RT = QadicFieldElem[]
   for r = rt
-    push!(RT, newton_lift(f, preimage(mk, r)))
+    qr = preimage(mk, r)
+    valuation(qfs(qr)) > 0 && continue # for now we handle only simple roots
+    push!(RT, _newton_lift(qf, qfs, qr))
     if length(RT) >= max_roots
       return RT
     end
@@ -147,7 +178,7 @@ mutable struct qAdicConj
     Dp = get_cached!(D, p, cached) do
       Zx = polynomial_ring(ZZ, cached = false)[1]
       d = lcm(map(denominator, coefficients(K.pol)))
-      C = qAdicRootCtx(Zx(K.pol*d), p)
+      C = qAdicRootCtx(numerator(K.pol*d, Zx), p)
       return (C, Dict{AbsSimpleNumFieldElem, Any}())
     end
 
@@ -603,7 +634,7 @@ function completion(K::AbsSimpleNumField, ca::QadicFieldElem; cached::Bool = tru
 #  bjj = Kjj(parent(Kjj.pol)(b))
 #  djj = lift_root(f, ajj, bjj, p, 10)
 #  d = K(parent(K.pol)(djj))
-      ccall((:nf_elem_set, libantic), Nothing, (Ref{AbsSimpleNumFieldElem}, Ref{AbsSimpleNumFieldElem}, Ref{AbsSimpleNumField}), c, d, K)
+      ccall((:nf_elem_set, libflint), Nothing, (Ref{AbsSimpleNumFieldElem}, Ref{AbsSimpleNumFieldElem}, Ref{AbsSimpleNumField}), c, d, K)
       set!(pc, precision(x))
     elseif precision(x) < pc
       d = mod_sym(c, p^precision(x))

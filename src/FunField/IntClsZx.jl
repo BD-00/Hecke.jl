@@ -3,7 +3,7 @@ using Hecke
 using ..HessQRModule
 import ..HessQRModule: HessQR
 
-function Hecke.integral_closure(S::HessQR, F::Generic.FunctionField{T}) where {T}
+function Hecke.integral_closure(S::HessQR, F::Generic.FunctionField{T, U}) where {T, U}
   return Hecke._integral_closure(S, F)
 end
 
@@ -69,12 +69,12 @@ function florian(M::MatElem{<:Generic.RationalFunctionFieldElem{QQFieldElem}}, R
 
 
   de = det(MM)
-  for p = keys(factor(ZZ, content(de)).fac)
+  for (p, _) in factor(ZZ, content(de))
     #step 2: do a HNF mod p and record the lifted operations
     k = Native.GF(p)
     kt = polynomial_ring(k, cached = false)[1]
     while true
-      H = map(kt, MM)
+      H = map(f -> change_base_ring(k, f, parent = kt), MM)
       piv = 1
       for i=1:n
         if iszero(H[i,piv])
@@ -94,8 +94,8 @@ function florian(M::MatElem{<:Generic.RationalFunctionFieldElem{QQFieldElem}}, R
             q, r = divrem(H[i, j], H[i,piv])
             H[:, j:j] = H[:, j:j] - q*H[:, piv:piv]
             @assert H[i, j] == r
-            T2[:, j] = T2[:, j:j] - Qt(Hecke.lift(Hecke.Globals.Zx, q))*T2[:, piv:piv]
-            MM[:, j] = MM[:, j:j] - R(Hecke.lift(Hecke.Globals.Zx, q))*MM[:, piv:piv]
+            T2[:, j] = T2[:, j:j] - Qt(change_base_ring(QQ, Hecke.lift(Hecke.Globals.Zx, q); parent = R))*T2[:, piv:piv]
+            MM[:, j] = MM[:, j:j] - change_base_ring(QQ, Hecke.lift(Hecke.Globals.Zx, q); parent = R)*MM[:, piv:piv]
             if iszero(r)
               break
             end
@@ -138,21 +138,17 @@ function Hecke.integral_closure(Zx::ZZPolyRing, F::Generic.FunctionField)
   R = parent(numerator(t))
   o1 = integral_closure(S, F)
   o2 = integral_closure(R, F)
-  if isdefined(o1, :trans)
-    T = o1.trans
-  else
-    T = identity_matrix(Qt, degree(F))
-  end
-  if isdefined(o2, :itrans)
-    T = T * o2.itrans
+  T = basis_matrix(o1)
+  if !is_equation_order(o2)
+    T = T * basis_matrix_inverse(o2)
   end
   _, T1, T2 = florian(T, R, S)
 
   o3 = Hecke.GenOrd(Zx, F, true)
-  if isdefined(o2, :trans)
-    oo2 = order(o3, integral_split(inv(T2)*o2.trans, Zx)..., check = false)
-  else
+  if is_equation_order(o2)
     oo2 = order(o3, integral_split(inv(T2), Zx)..., check = false)
+  else
+    oo2 = order(o3, integral_split(inv(T2)*basis_matrix(o2), Zx)..., check = false)
   end
   return oo2
 
@@ -160,11 +156,7 @@ function Hecke.integral_closure(Zx::ZZPolyRing, F::Generic.FunctionField)
   H, TT1 = hnf_with_transform(map_entries(S, T1*T*T2))
   @assert isone(H)
   T1 = map_entries(Qt, TT1)*T1
-  if isdefined(o1, :trans)
-    oo1 = order(o3, integral_split(T1*o1.trans, Zx)..., check = false)
-  else
-    oo1 = order(o3, integral_split(T1, Zx)..., check = false)
-  end
+  oo1 = order(o3, integral_split(T1*basis_matrix(o1), Zx)..., check = false)
   return oo1, oo2
 end
 
@@ -185,8 +177,8 @@ function Hecke.integral_split(a::Generic.RationalFunctionFieldElem{QQFieldElem},
   d = denominator(a)
   dn = reduce(lcm, map(denominator, coefficients(n)), init = ZZRingElem(1))
   dd = reduce(lcm, map(denominator, coefficients(d)), init = ZZRingElem(1))
-  zn = S(n*dn)
-  zd = S(d*dd)
+  zn = change_base_ring(ZZ, n*dn; parent = S)
+  zd = change_base_ring(ZZ, d*dd; parent = S)
   cn = content(zn)
   cd = content(zd)
   zn = divexact(zn, cn)

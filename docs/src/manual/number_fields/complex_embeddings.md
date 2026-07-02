@@ -7,7 +7,7 @@ DocTestSetup = Hecke.doctestsetup()
 
 We describe functionality for complex embeddings of arbitrary number fields.
 Note that a *complex embedding* of a number field $L$ is a morphism $\iota \colon L \to \mathbf{C}$.
-Such an embedding is called *real* if $\operatorname{im}(\iota) \subseteq \mathbf{R}$ and *imaginary* otherwise.
+Such an embedding is called *real* if its image is real, $\operatorname{im}(\iota) \subseteq \mathbf{R}$, and *imaginary* otherwise.
 
 ## Construction of complex embeddings
 
@@ -24,7 +24,7 @@ is_real(::NumFieldEmb)
 is_imaginary(::NumFieldEmb)
 ```
 
-## Conjugated embedding
+## Conjugate embedding
 
 ```@docs
 conj(::NumFieldEmb)
@@ -36,7 +36,7 @@ Given an embedding $f \colon K \to \mathbf{C}$ and an element $x$ of $K$,
 the image $f(x)$ of $x$ under $f$ can be constructed as follows.
 
 ```julia
-    (f::NumFieldEmb)(x::NumFieldElem, prec::Int = 32) -> AcbFieldElem
+(f::NumFieldEmb)(x::NumFieldElem, prec::Int = 32) -> AcbFieldElem
 ```
 
   - Note that the return type will be a complex ball of type `AcbFieldElem`. The radius `r` of the ball is guaranteed to satisfy `r < 2^(-prec)`.
@@ -51,14 +51,15 @@ evaluation_function(e::NumFieldEmb, prec::Int)
 
 ## Logarithmic embedding
 
-Given an object `e` representing an embedding $\iota \colon L \to \mathbf{C}$, the corresponding logarithmic embedding $L \to \mathbf{R}, \ x \mapsto \log(\lvert \iota(x) \rvert)$ can be constructed as `log(abs(e))`.
+Given an object `e` representing an embedding $\iota \colon L \to \mathbf{C}$, the corresponding logarithmic map $L \to \mathbf{R}$ defined by$\ x \mapsto \log(\lvert \iota(x) \rvert)$ can be constructed as `log(abs(e))`.
 
 ```jldoctest
 julia> K, a = quadratic_field(2);
 
 julia> e = complex_embedding(K, 1.41)
-Complex embedding corresponding to 1.41
+Real embedding
   of real quadratic field defined by x^2 - 2
+corresponding to root 1.41
 
 julia> log(abs(e))(a, 128)
 [0.346573590279972654708616060729088284037750067180127627 +/- 4.62e-55]
@@ -71,7 +72,7 @@ julia> log(abs(e(a)))
 
 Given a subfield $\iota \colon k \to K$, any embedding
 $f \colon K \to \mathbf{C}$ naturally restricts to a complex embedding of $K$. Computing this restriction is supported in case $k$ appears
-as a base field of (a base field) of $K$ or $\iota$ is provided:
+as a base field of (a base field of) $K$ or $\iota$ is provided:
 
 ```@docs
 restrict(::NumFieldEmb, ::NumField)
@@ -123,10 +124,12 @@ julia> k, b = quadratic_field(-1);
 julia> i = hom(k, K, a[1]);
 
 julia> restrict(emb[1], i)
-Complex embedding corresponding to 1.00 * i
+Imaginary embedding
   of imaginary quadratic field defined by x^2 + 1
+corresponding to root 1.00 * i
 
 julia> restrict(emb[3], i)
-Complex embedding corresponding to -1.00 * i
+Imaginary embedding
   of imaginary quadratic field defined by x^2 + 1
+corresponding to root -1.00 * i
 ```

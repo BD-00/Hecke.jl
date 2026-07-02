@@ -65,6 +65,16 @@ ConformanceTests.equality(A::SRow, B::SRow) = A == B
 #
 ################################################################################
 
+function _assert_is_unique_sorted(pos)
+  f = nothing
+  for p in pos
+    if f !== nothing && p == f
+      error("positions must be unique")
+    end
+    f = p
+  end
+end
+
 @doc raw"""
     sparse_row(R::Ring) -> SRow
 
@@ -82,8 +92,9 @@ The elements $x_i$ must belong to the ring $R$.
 """
 function sparse_row(R::NCRing, A::Vector{Tuple{Int, T}}; sort::Bool = true) where T
   if sort && length(A) > 1
-    A = Base.sort(A, lt=(a,b) -> isless(a[1], b[1]))
+    A = Base.sort(A, by=first)
   end
+  _assert_is_unique_sorted(first(a) for a in A)
   return SRow(R, A)
 end
 
@@ -97,7 +108,33 @@ function sparse_row(R::NCRing, A::Vector{Tuple{Int, Int}}; sort::Bool = true)
   if sort && length(A) > 1
     A = Base.sort(A, lt=(a,b) -> isless(a[1], b[1]))
   end
+  _assert_is_unique_sorted(a[1] for a in A)
   return SRow(R, A)
+end
+
+@doc raw"""
+    sparse_row(R::NCRing, idx::Int, coeff::T; check::Bool=true) where {T}
+
+Constructs a sparse row with at most one non-zero entry `coeff` in
+position `idx`.
+"""
+function sparse_row(R::NCRing, idx::Int, coeff; check::Bool=true)
+  return sparse_row(R, idx, R(coeff); check)
+end
+
+function sparse_row(R::NCRing, idx::Int, coeff::NCRingElem; check::Bool=true)
+  parent(coeff) === R || return sparse_row(R, idx, R(coeff); check)
+  check && is_zero(coeff) && return SRow(R)
+  return SRow(parent(coeff), Int[idx], elem_type(R)[coeff]; check=false)
+end
+
+# For ZZRingElems this has to be overwritten, because the values are stored differently.
+function sparse_row(R::ZZRing, idx::Int, coeff::RingElem; check::Bool=true)
+  parent(coeff) === R || return sparse_row(R, idx, R(coeff); check)
+  check && is_zero(coeff) && return sparse_row(R)
+  arr = ZZRingElem_Array(1)
+  arr[1] = coeff
+  return SRow(R, Int[idx], arr)
 end
 
 function Base.empty!(A::SRow)
@@ -132,6 +169,7 @@ function sparse_row(R::NCRing, pos::Vector{Int}, val::AbstractVector{T}; sort::B
     pos = pos[p]
     val = val[p]
   end
+  _assert_is_unique_sorted(pos)
   if T === elem_type(R)
     return SRow(R, pos, val)
   else
@@ -284,6 +322,8 @@ function map_entries(f, A::SRow)
   iszero(A) && error("Can change ring only for non-zero rows")
   R = parent(f(A.values[1]))
   z = sparse_row(R)
+  sizehint!(z.pos, length(A))
+  sizehint!(z.values, length(A))
   for (i, v) in A
     nv = f(v)
     if iszero(nv)
@@ -344,6 +384,18 @@ end
 #if set! is used that all values will be identical: t
 function Hecke.getindex!(a::T, A::Vector{T}, i::Int) where {T <: NCRingElem}
   return A[i]
+end
+
+function getindex(r::Hecke.SRow, u::AbstractUnitRange)
+  s = sparse_row(base_ring(r))
+  shift = 1-first(u)
+  for (p,v) = r
+    if p in u
+      push!(s.pos, p+shift)
+      push!(s.values, v)
+    end
+  end
+  return s
 end
 
 ################################################################################
@@ -565,6 +617,8 @@ end
 
 function *(b::T, A::SRow{T}) where T
   B = sparse_row(parent(b))
+  sizehint!(B.pos, length(A))
+  sizehint!(B.values, length(A))
   if iszero(b)
     return B
   end

@@ -501,7 +501,7 @@ function ___enumerate_cholesky(::Type{Vector}, Q::Matrix{QQFieldElem}, l::Union{
     t1 = compute_len!(t1, c, T, Q, x, U)
     t2 = numerator!(t2, t1)
     _short_enough = false
-    if S === Int
+    if S === Int && fits(Int, t2)
       _len = Int(t2)
       _short_enough = _len <= c
       if !(l isa Nothing)
@@ -761,7 +761,7 @@ end
 
 # This is the work horse
 # Assumes that G is a gram matrix, finds all vectors v with length l
-# lb <= v < ub. Also applies the transformation transform
+# lb <= l < ub. Also applies the transformation transform
 #
 # If transform === nothing, no transform in the vector case
 #
@@ -774,7 +774,7 @@ function _short_vectors_gram_nolll_integral(::Type{T}, G, _lb, _ub, transform::X
 
   # We pass the following function through to the iterator
   # They are applied to the vector found and the length of the vector
-  cleanvec = v -> __clean_and_assemble(v, transform, !isnothing(transform) && !isone(transform), S)
+  cleanvec = v -> __clean_and_assemble(v, transform, !isnothing(transform) && !isone(transform), zeros_array(ZZ, n), S)
   cleanscalar = l -> l//d
 
   if ub isa ZZRingElem && fits(Int, ub)
@@ -818,10 +818,10 @@ end
 
 Base.IteratorSize(::Type{<:LatEnumCtx}) = Base.SizeUnknown()
 
-function __clean_and_assemble(v::V, transform::U, dotransform::Bool, elem_type::Type{S} = ZZRingElem) where {V, U, S}
+function __clean_and_assemble(v::V, transform::U, dotransform::Bool, tmp::Vector{ZZRingElem}, elem_type::Type{S} = ZZRingElem) where {V, U, S}
   # this may or may not produce a copy
   if dotransform
-    m = _transform(v, transform)
+    m = _transform(v, transform, tmp)
   else
     m = v
   end
@@ -851,8 +851,9 @@ end
 
 function __assemble_result!(W, V::T, transform, n) where {T}
   k = 0
+  tmp = zeros_array(ZZ, n)
   for (v, l) in V
-    m = _transform(v, transform)
+    m = _transform(v, transform, tmp)
 
     positive = false
     for k in 1:n
@@ -920,7 +921,7 @@ end
 
 # No assumption on _G, algorithm applies LLL
 function _short_vectors_gram(::Type{T}, _G, ub, elem_type::Type{S} = ZZRingElem; hard::Bool = false) where {T, S}
-  return _short_vectors_gram(T, _G, ZZRingElem(0), ub, S, hard = hard)
+  return _short_vectors_gram(T, _G, ZZRingElem(0), ub, S; hard)
 end
 
 ################################################################################
@@ -969,23 +970,35 @@ function _shortest_vectors_gram(_G, elem_type::Type{S} = ZZRingElem) where {S}
   return min, cur_vec
 end
 
-function _short_vectors_gram_integral(::Type{S}, _G, ub, elem_type::Type{U} = ZZRingElem; hard = false) where {S, U}
-  if hard
+function _short_vectors_gram_integral(::Type{S}, _G, lb, ub, elem_type::Type{U} = ZZRingElem; hard=false, is_lll_reduced_known::Bool=false) where {S, U}
+  if is_lll_reduced_known
+    Glll = _G
+    T = one(_G)
+  elseif hard
     Glll, T = lll_gram_with_transform(_G, LLLContext(0.99999999999999, 0.500000000001, :gram))
   else
     Glll, T = lll_gram_with_transform(_G)
   end
   if S === Vector && isone(T)
-    V = _short_vectors_gram_nolll_integral(S, Glll, 0, ub, nothing, one(ZZ), elem_type)
+    V = _short_vectors_gram_nolll_integral(S, Glll, lb, ub, nothing, one(ZZ), elem_type)
   else
-    V = _short_vectors_gram_nolll_integral(S, Glll, 0, ub, T, one(ZZ), elem_type)
+    V = _short_vectors_gram_nolll_integral(S, Glll, lb, ub, T, one(ZZ), elem_type)
   end
 
   return V
 end
 
-function _shortest_vectors_gram_integral(::Type{S}, _G) where {S}
-  Glll, T = lll_gram_with_transform(_G)
+function _short_vectors_gram_integral(::Type{S}, _G, ub, elem_type::Type{U} = ZZRingElem; kwargs...) where {S, U}
+  return _short_vectors_gram_integral(S, _G, ZZRingElem(0), ub, U; kwargs...)
+end
+
+function _shortest_vectors_gram_integral(::Type{S}, _G; is_lll_reduced_known::Bool=false) where {S}
+  if is_lll_reduced_known
+    Glll = _G
+    T = one(_G)
+  else
+    Glll, T = lll_gram_with_transform(_G)
+  end
   max = maximum([Glll[i, i] for i in 1:nrows(Glll)])
   @assert max > 0
   if isone(T)
@@ -997,15 +1010,18 @@ function _shortest_vectors_gram_integral(::Type{S}, _G) where {S}
   return min, [ v for v in V if v[2] == min]
 end
 
-_transform(m::ZZMatrix, T::ZZMatrix) = m * T
+_transform(m::ZZMatrix, T::ZZMatrix, tmp) = m * T
 
-_transform(m::Vector, ::Nothing) = m
+_transform(m::Vector, ::Nothing, tmp) = m
 
-function _transform(m::Vector{Int}, T::ZZMatrix)
-  return ZZRingElem.(m) * T
+function _transform(m::Vector{Int}, T::ZZMatrix, tmp)
+  @inbounds for i in 1:length(m)
+    tmp[i] = m[i]
+  end
+  return return tmp * T
 end
 
-function _transform(m::Vector{ZZRingElem}, T::ZZMatrix)
+function _transform(m::Vector{ZZRingElem}, T::ZZMatrix, tmp)
   return m * T
 end
 

@@ -48,7 +48,7 @@ function _reduce_field(A::SMat{T}, g::SRow{T}; new_g::Bool = false) where {T}
 end
 
 function gcdx!(a::ZZRingElem, b::ZZRingElem, c::ZZRingElem, d::ZZRingElem, e::ZZRingElem)
-  @ccall Nemo.libflint.fmpz_xgcd_canonical_bezout(a::Ref{ZZRingElem}, b::Ref{ZZRingElem}, c::Ref{ZZRingElem}, d::Ref{ZZRingElem}, e::Ref{ZZRingElem})::Nothing
+  @ccall libflint.fmpz_xgcd_canonical_bezout(a::Ref{ZZRingElem}, b::Ref{ZZRingElem}, c::Ref{ZZRingElem}, d::Ref{ZZRingElem}, e::Ref{ZZRingElem})::Nothing
   return a, b, c
 end
 
@@ -130,7 +130,7 @@ function reduce(A::SMat{T}, g::SRow{T}; new_g::Bool = false) where {T}
       @hassert :HNF 2  length(g)==0 || g.pos[1] > A[j].pos[1]
     end
   end
- 
+
   if length(g.values) > 0 && is_negative(getindex!(tmp, g.values, 1))
     if !new_g
       g = deepcopy(g)
@@ -155,7 +155,7 @@ modulo $m$ with respect to the symmetric residue system.
 function reduce(A::SMat{T}, g::SRow{T}, m::T; new_g::Bool = false) where {T}
   @hassert :HNF 1 is_upper_triangular(A)
   #assumes A is upper triangular, reduces g modulo A
-  @assert m > 0 
+  @assert m > 0
   g = deepcopy(g)
   mod_sym!(g, m)
 
@@ -184,7 +184,7 @@ function reduce(A::SMat{T}, g::SRow{T}, m::T; new_g::Bool = false) where {T}
       release_tmp(A, tmpb)
       return g
     end
-    
+
     p_v = getindex!(p_v, g.values, 1)
     A_v = getindex!(A_v, A.rows[j].values, 1)
     fl, g_v = divides!(g_v, p_v, A_v)
@@ -291,6 +291,7 @@ function reduce_up(A::SMat{T}, piv::Vector{Int}, with_transform_val::Val{with_tr
 
   @inbounds for red=p-1:-1:1
     # the last argument should be the smallest pivot larger then pos[1]
+    A.nnz -= length(A[red])
     if with_transform
       A[red], new_trafos = reduce_right(A, A[red], max(A[red].pos[1]+1, piv[1]), with_transform_val; limit, new_g = true)
       for t in new_trafos
@@ -300,6 +301,7 @@ function reduce_up(A::SMat{T}, piv::Vector{Int}, with_transform_val::Val{with_tr
     else
       A[red] = reduce_right(A, A[red], max(A[red].pos[1]+1, piv[1]); limit, new_g = true)
     end
+    A.nnz += length(A[red])
   end
   with_transform ? (return trafos) : nothing
 end
@@ -381,7 +383,7 @@ function reduce_full(A::SMat{T}, g::SRow{T, S}, with_transform_val::Val{with_tra
       end
       if _g !== g
         new_g = true
-      else 
+      else
         g = deepcopy(g)
         new_g = true
       end
@@ -409,7 +411,9 @@ function reduce_full(A::SMat{T}, g::SRow{T, S}, with_transform_val::Val{with_tra
       sca = neg!(sca)
       @assert !iszero(sca)
       @assert new_g
+      A.nnz -= length(Aj)
       Hecke.add_scaled_row!(Aj, g, sca, tmpa)
+      A.nnz += length(Aj)
       with_transform ? push!(trafos, sparse_trafo_add_scaled(j, nrows(A) + 1, sca)) : nothing
       @hassert :HNF 1  length(g)==0 || g.pos[1] > A[j].pos[1]
     else
@@ -420,7 +424,9 @@ function reduce_full(A::SMat{T}, g::SRow{T, S}, with_transform_val::Val{with_tra
       c = neg!(c)
       d = div(A_v, x)
       @assert new_g
+      A.nnz -= length(Aj)
       Hecke.transform_row!(Aj, g, a, b, c, d, tmpa, tmpb)
+      A.nnz += length(Aj)
       if with_transform
         push!(trafos, sparse_trafo_para_add_scaled(j, nrA + 1, a, b, c, d))
       end
@@ -429,7 +435,9 @@ function reduce_full(A::SMat{T}, g::SRow{T, S}, with_transform_val::Val{with_tra
       push!(piv, Aj.pos[1])
       if full_hnf
         if with_transform
+          A.nnz -= length(Aj)
           A[j], new_trafos = reduce_right(A, Aj, Aj.pos[1]+1, with_transform_val; limit, new_g = true)
+          A.nnz += length(Aj)
           # We are updating the jth row
           # Have to adjust the transformations
           for t in new_trafos
@@ -438,7 +446,9 @@ function reduce_full(A::SMat{T}, g::SRow{T, S}, with_transform_val::Val{with_tra
           # Now append
           append!(trafos, new_trafos)
         else
+          A.nnz -= length(Aj)
           A[j] = reduce_right(A, Aj, Aj.pos[1]+1, with_transform_val; limit)
+          A.nnz += length(Aj)
         end
       end
 
@@ -459,7 +469,7 @@ function reduce_full(A::SMat{T}, g::SRow{T, S}, with_transform_val::Val{with_tra
   end
   if length(g.values) > 0 && is_negative(getindex!(p_v, g.values, 1))
     scale_row!(g, -1)
-    with_transform ? push!(trafos, sparse_trafo_scale!{ZZRingElem}(nrows(A) + 1, ZZRingElem(-1))) : nothing
+    with_transform ? push!(trafos, sparse_trafo_scale{ZZRingElem}(nrows(A) + 1, ZZRingElem(-1))) : nothing
   end
 
   if A.r == A.c
@@ -480,7 +490,7 @@ function divrem!(q::ZZRingElem, r::ZZRingElem, a::ZZRingElem, b::ZZRingElem)
 end
 
 function reduce_right(A::SMat{T}, b::SRow{T}, start::Int = 1, with_transform_val::Val{with_transform} = Val(false); limit::Int = typemax(Int), new_g::Bool = false) where {T, with_transform}
- 
+
   new_g || (b = deepcopy(b))
   with_transform ? trafos = [] : nothing
   lb = length(b.pos)
@@ -548,7 +558,7 @@ function reduce_right(A::SMat{T}, b::SRow{T}, start::Int = 1, with_transform_val
     end
     j += 1
   end
-  if length(b) > 0 && is_negative(getindex!(A_v, b.values, 1)) 
+  if length(b) > 0 && is_negative(getindex!(A_v, b.values, 1))
     @assert new_g
     scale_row!(b, -1)
     if with_transform
@@ -675,6 +685,7 @@ Compute the Hermite normal form of $A$ using the Kannan-Bachem algorithm.
 """
 function hnf_kannan_bachem(A::SMat{T}, with_transform_val::Val{with_transform} = Val(false); truncate::Bool = false, full_hnf::Bool = true, auto::Bool = false, limit::Int = typemax(Int)) where {T, with_transform}
 
+  trt = rt = UInt64(0)  # help JET to understand these variables are not used uninitialized
   @vprintln :HNF 1 "Starting Kannan Bachem HNF on:"
   @vprint :HNF 1 A
   @vprintln :HNF 1 " with density $(density(A)); truncating $truncate"
@@ -728,12 +739,12 @@ function hnf_kannan_bachem(A::SMat{T}, with_transform_val::Val{with_transform} =
     else
       # Row i was reduced to zero
       with_transform ? push!(trafos, sparse_trafo_move_row(T, nrows(B) + 1, nrows(A))) : nothing
-      new_row = false 
-      if length(q) > 0 
+      new_row = false
+      if length(q) > 0
         push!(B, q)
       end
     end
-   
+
     if limit < ncols(A)
       ws = [x for x = w if x <= limit]
     else
@@ -742,9 +753,9 @@ function hnf_kannan_bachem(A::SMat{T}, with_transform_val::Val{with_transform} =
 
     if new_row && length(ws) == 1
       #do nothing new
-    elseif length(ws) == 0 
+    elseif length(ws) == 0
       stable_piv += 1
-      if stable_piv > 2 && auto && !full_hnf 
+      if stable_piv > 2 && auto && !full_hnf
         @vprintln :HNF 1 "switching to full HNF, at rows $(nrows(B)), and bitsize $(maximum(nbits, B))"
         if with_transform
           @vtime :HNF 1 B, new_trafos = upper_triag_to_hnf!(B, with_transform_val; limit)
@@ -756,7 +767,7 @@ function hnf_kannan_bachem(A::SMat{T}, with_transform_val::Val{with_transform} =
       end
     else
       stable_piv = 0
-      if auto 
+      if auto
         full_hnf && @vprintln :HNF 1 "switching full HNF off again"
         full_hnf = false
       end
@@ -800,6 +811,7 @@ function hnf_kannan_bachem(A::SMat{T}, with_transform_val::Val{with_transform} =
     end
   end
 
+  @hassert :HNF 1 sum([length(r) for r in  B]) == B.nnz
   with_transform ? (return B, trafos) : (return B)
 end
 
@@ -816,7 +828,7 @@ $auto$ if set to true selects a different elemination strategy - here the
 upwards reduction is temporarily switched off.
 
 $limit$ marks the last column where size reduction happens, so
-calling $hnf$ on $hcat(A, identity_matrix(SMat, ZZ, nrows(A)))$ with 
+calling $hnf$ on $hcat(A, identity_matrix(SMat, ZZ, nrows(A)))$ with
 $limit$ set to $ncols(A)$ should produce a non-reduced transformation matrix
 in the right. If $limit$ is not set, the transformation matrix will also be
 partly triangular.

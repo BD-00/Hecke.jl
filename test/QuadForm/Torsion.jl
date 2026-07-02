@@ -8,6 +8,7 @@
   S = lattice(ambient_space(L),basis_matrix(L)[1:1,:])
   @test order(discriminant_group(S)) == 4
   @test discriminant_group(S) === discriminant_group(S)
+  @test order(discriminant_group(S, 3))==1
 
   D4_gram = matrix(ZZ, [[2, 0, 0, -1],
                         [0, 2, 0, -1],
@@ -137,8 +138,10 @@
             0 1//4   0;
             0   0 5//4]
   @test Hecke.gram_matrix_quadratic(n1) == g1
+  @test gram_matrix_bilinear(first(normal_form(AL1; as_bilinear_module=true))) == gram_matrix_quadratic(first(normal_form(Hecke._as_finite_bilinear_module(AL1))))
   n2 = normal_form(AL2)[1]
   @test Hecke.gram_matrix_quadratic(n2) == g1
+  @test gram_matrix_bilinear(first(normal_form(AL2; as_bilinear_module=true))) == gram_matrix_quadratic(first(normal_form(Hecke._as_finite_bilinear_module(AL2))))
   L3 = integer_lattice(gram=matrix(ZZ, [[2,0,0,-1],[0,2,0,-1],[0,0,2,-1],[-1,-1,-1,2]]))
   T=torsion_quadratic_module((1//6)*dual(L3), L3)
   n3 = normal_form(T)[1]
@@ -245,8 +248,15 @@
   k = sub(t,gens(t)[3:4])
   @test order(radical_quadratic(k[1])[1])==2
 
-  # isometry
+  D = discriminant_group(integer_lattice(gram=ZZ[60*5;]))
+  s = sub(D,[10*D[1],30*D[1],60*D[1]])[1]
+  @test order(radical_quadratic(s)[1])==5
+  D = discriminant_group(integer_lattice(gram=diagonal_matrix([4,4,4,4])))
+  s = sub(D,[sum(gens(D))])[1]
+  @test order(radical_quadratic(s)[1])==2
 
+
+  # isometry
   L = integer_lattice(gram=matrix(ZZ, [[2, -1, 0, 0, 0, 0],[-1, 2, -1, -1, 0, 0],[0, -1, 2, 0, 0, 0],[0, -1, 0, 2, 0, 0],[0, 0, 0, 0, 6, 3],[0, 0, 0, 0, 3, 6]]))
   T = discriminant_group(L)
   N, S = normal_form(T)
@@ -404,6 +414,8 @@
   qL = discriminant_group(L)
   a = @inferred id(qL)
   @test iszero(a)
+  @test qL(matrix(QQ, 1, 7, lift(qL[1]))) == qL[1]
+
 
   # totally isotropic check
   V = quadratic_space(QQ, QQ[2 0 -1 0; 0 2 -1 0; -1 -1 2 -1; 0 0 -1 2])
@@ -491,4 +503,17 @@ end
   @test is_bijective(psi)
   phi = @inferred hom(q, q2, elem_type(q2)[])
   @test is_injective(phi)
+end
+
+@testset "Isometric as bilinear modules" begin
+  T1 = torsion_quadratic_module(QQ[4//5 0; 0 1//5])
+  T2 = torsion_quadratic_module(QQ[2//5 0; 0 2//5])
+  @test first(is_isometric_with_isometry(T1, T2; as_bilinear_module=true))
+end
+  
+@testset "Torsion subgroups" begin
+  L = rescale(root_lattice(:A, 4), 18)
+  q = discriminant_group(L)
+  @test first(torsion_subgroup(q, 2)) == first(primary_part(q, 2))
+  @test iszero(gram_matrix_quadratic(first(torsion_subgroup(q, 3))))
 end

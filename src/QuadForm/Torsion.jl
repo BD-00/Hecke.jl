@@ -97,11 +97,12 @@ function torsion_quadratic_module(M::ZZLat, N::ZZLat; gens::Union{Nothing, Vecto
   T.value_module = QmodnZ(_modulus)
   T.value_module_qf = QmodnZ(_modulus_qf)
   T.is_normal = false
+  T.is_normal_bilinear = false
   return T
 end
 
 @doc raw"""
-    discriminant_group(L::ZZLat) -> TorQuadModule
+    discriminant_group(L::ZZLat, [n::Int]) -> TorQuadModule
 
 Return the discriminant group of `L`.
 
@@ -114,17 +115,59 @@ $$D \times D \to \mathbb{Q} / \mathbb{Z} \qquad (x,y) \mapsto \Phi(x,y) + \mathb
 
 If `L` is even, then the discriminant group is equipped with the discriminant
 quadratic form $D \to \mathbb{Q} / 2 \mathbb{Z}, x \mapsto \Phi(x,x) + 2\mathbb{Z}$.
+
+# Input:
+- `n::Int` -- if given, return the ``n``-primary part of the discriminant group
+
+# Examples:
+```jldoctest
+julia> L = rescale(root_lattice(:A,2),10)
+Integer lattice of rank 2 and degree 2
+with gram matrix
+[ 20   -10]
+[-10    20]
+
+julia> discriminant_group(L)
+Finite quadratic module
+  over integer ring
+Abelian group: Z/10 x Z/30
+Bilinear value module: Q/Z
+Quadratic value module: Q/2Z
+Gram matrix quadratic form:
+[ 1//5   1//10]
+[1//10   1//15]
+
+julia> discriminant_group(L, 10)
+Finite quadratic module
+  over integer ring
+Abelian group: (Z/10)^2
+Bilinear value module: Q/Z
+Quadratic value module: Q/2Z
+Gram matrix quadratic form:
+[   1   1//2      0      0]
+[1//2      1      0      0]
+[   0      0   4//5   1//5]
+[   0      0   1//5   2//5]
+
+```
 """
 @attr TorQuadModule function discriminant_group(L::ZZLat)
   @req is_integral(L) "The lattice must be integral"
   if rank(L) == 0
-    T = torsion_quadratic_module(dual(L), L; modulus = one(QQ), modulus_qf = QQ(2))
+    T = torsion_quadratic_module(dual(L), L; modulus = one(QQ), modulus_qf = QQ(2), check=false)
   else
-    T = torsion_quadratic_module(dual(L), L)
+    if iseven(L)
+      modulus_qf = QQ(2)
+    else
+      modulus_qf = QQ(1)
+    end
+    T = torsion_quadratic_module(dual(L), L; modulus=one(QQ), modulus_qf)
   end
   set_attribute!(T, :is_degenerate => false)
   return T
 end
+
+discriminant_group(L::ZZLat, n::IntegerUnion) = primary_part(discriminant_group(L), n)[1]
 
 @doc raw"""
     order(T::TorQuadModule) -> ZZRingElem
@@ -151,6 +194,13 @@ Return the elementary divisors of underlying abelian group of `T`.
 """
 function elementary_divisors(T::TorQuadModule)
   return elementary_divisors(abelian_group(T))
+end
+
+function Base.in(x::TorQuadModuleElem, T::TorQuadModule)
+  P = parent(x)
+  P === T && return true
+  relations(T) == relations(P) || return false
+  return lift(x) in cover(T)
 end
 
 ################################################################################
@@ -246,17 +296,21 @@ function gram_matrix_quadratic(T::TorQuadModule)
   if isdefined(T, :gram_matrix_quadratic)
     return T.gram_matrix_quadratic
   end
-  g = gens(T)
-  r = length(g)
-  G = zero_matrix(QQ, r, r)
+  r = ngens(T)
+  V = ambient_space(cover(T))
+  G = gram_matrix(V)
+  r1 = value_module(T)
+  r2 = value_module_quadratic_form(T)
+  H = T.gens_lift_mat*G*transpose(T.gens_lift_mat)
   for i in 1:r
-    for j in 1:(i - 1)
-      G[i, j] = G[j, i] = lift(g[i] * g[j])
+    H[i,i] = lift(r2(H[i,i]))
+    for j in 1:(i-1)
+      H[i,j] = H[j,i] = lift(r1(H[i,j]))
     end
-    G[i, i] = lift(quadratic_product(g[i]))
   end
-  T.gram_matrix_quadratic = G
-  return G
+
+  T.gram_matrix_quadratic = H
+  return H
 end
 
 ################################################################################
@@ -346,10 +400,17 @@ function (T::TorQuadModule)(v::Vector)
   return T(vv::Vector{QQFieldElem})
 end
 
+function (T::TorQuadModule)(v::QQMatrix)
+  @req ncols(v) == degree(cover(T)) "matrix of wrong length"
+  @req nrows(v) == 1 "matrix of wrong length"
+  vv = change_base_ring(ZZ, solve(_solve_init(cover(T)), v; side = :left))
+  return T(abelian_group(T)(vv * T.proj))
+end
+
 function (T::TorQuadModule)(v::Vector{QQFieldElem})
   @req length(v) == degree(cover(T)) "Vector of wrong length"
   vv = matrix(QQ, 1, length(v), v)
-  vv = change_base_ring(ZZ, solve(basis_matrix(cover(T)), vv; side = :left))
+  vv = change_base_ring(ZZ, solve(_solve_init(cover(T)), vv; side = :left))
   return T(abelian_group(T)(vv * T.proj))
 end
 
@@ -760,11 +821,11 @@ Return the matrix defining the underlying abelian group homomorphism of `f`.
 matrix(f::TorQuadModuleMap) = matrix(abelian_group_homomorphism(f))
 
 @doc raw"""
-    identity_map(T::TorQuadModule) -> TorQuadModuleMap
+    id_hom(T::TorQuadModule) -> TorQuadModuleMap
 
 Return the identity map of `T`.
 """
-function identity_map(T::TorQuadModule)
+function id_hom(T::TorQuadModule)
   map_ab = id_hom(abelian_group(T))
   return TorQuadModuleMap(T, T, map_ab)
 end
@@ -794,13 +855,6 @@ return the trivial map between `T` and `U` (see [`trivial_morphism`](@ref)).
 zero(f::TorQuadModuleMap) = trivial_morphism(domain(f), codomain(f))
 
 @doc raw"""
-    id_hom(T::TorQuadModule) -> TorQuadModuleMap
-
-Alias for [`identity_map`](@ref).
-"""
-id_hom(T::TorQuadModule) = identity_map(T)
-
-@doc raw"""
     inv(f::TorQuadModuleMap) -> TorQuadModuleMap
 
 Given a bijective abelian group homomorphism `f` between two torsion
@@ -817,7 +871,7 @@ end
 
 Given two abelian group homomorphisms $f\colon T \to S$ and
 $g \colon S \to U$ between torsion quadratic modules, return the
-composition $f\circ g\colon T \to U$.
+composition $g\circ f\colon T \to U$.
 """
 function compose(f::TorQuadModuleMap, g::TorQuadModuleMap)
   @req codomain(f) == domain(g) "Codomain of the first map should agree with the domain of the second one"
@@ -993,7 +1047,7 @@ Given an abelian group endomorphism `f` of a torsion quadratic module `T`
 return the $n$-fold self-composition of `f`.
 
 Note that `n` must be non-negative and $f^0$ is by default the identity map
-of the domain of `f` (see [`identity_map`](@ref)).
+of the domain of `f` (see [`id_hom`](@ref)).
 """
 function Base.:^(f::TorQuadModuleMap, n::Integer)
   @req n >= 0 "n must be a positive integer"
@@ -1021,7 +1075,14 @@ end
 
 function evaluate(p::QQPolyRingElem, f::TorQuadModuleMap)
   @req domain(f) === codomain(f) "f must be a self-map"
-  @req all(a -> is_integral(a), coefficients(p)) "p must have integral coefficients"
+  if !all(is_integral, coefficients(p))
+    l = lcm(ZZRingElem[denominator(i) for i in coefficients(p)])
+    e = elementary_divisors(domain(f))[end]
+    R, iR = residue_ring(ZZ, e; cached=false)
+    s = preimage(iR, inv(iR(l)))
+    p = s*l*p
+    @req all(is_integral, coefficients(p)) "The denominator of p must be coprime to the exponent of the domain of f"
+  end
   return evaluate(map_coefficients(ZZ, p, cached = false), f)
 end
 
@@ -1037,13 +1098,22 @@ end
 
 # we test isometry in the semi-regular case: we compare the gram matrices of the
 # quadratic forms associated to the respective normal forms.
-function _isometry_semiregular(T::TorQuadModule, U::TorQuadModule)
+function _isometry_semiregular(
+  T::TorQuadModule,
+  U::TorQuadModule;
+  as_bilinear_module::Bool=false,
+)
   # the zero map for default output
   hz = hom(T, U, zero_matrix(ZZ, ngens(T), ngens(U)))
-  NT, TtoNT = normal_form(T)
-  NU, UtoNU = normal_form(U)
-  gqNT = gram_matrix_quadratic(NT)
-  gqNU = gram_matrix_quadratic(NU)
+  NT, TtoNT = normal_form(T; as_bilinear_module)
+  NU, UtoNU = normal_form(U; as_bilinear_module)
+  if as_bilinear_module
+    gqNT = gram_matrix_bilinear(NT)
+    gqNU = gram_matrix_bilinear(NU)
+  else
+    gqNT = gram_matrix_quadratic(NT)
+    gqNU = gram_matrix_quadratic(NU)
+  end
   if gqNT != gqNU
     return (false, hz)
   end
@@ -1059,11 +1129,20 @@ end
 # "Not yet implemented". If yes, we compare the normal forms of the respective complements
 # which are semi-regular, and if the radicals have the same elementary divisors, we
 # complete the isometry by adding the identity matrix from one radical to the other one.
-function _isometry_degenerate(T::TorQuadModule, U::TorQuadModule)
+function _isometry_degenerate(
+  T::TorQuadModule,
+  U::TorQuadModule;
+  as_bilinear_module::Bool=false,
+)
   # the zero map for default output
   hz = hom(T, U, zero_matrix(ZZ, ngens(T), ngens(U)))
-  rqT, rqTtoT = radical_quadratic(T)
-  rqU, rqUtoU = radical_quadratic(U)
+  if as_bilinear_module
+    rqT, rqTtoT = radical_bilinear(T)
+    rqU, rqUtoU = radical_bilinear(U)
+  else
+    rqT, rqTtoT = radical_quadratic(T)
+    rqU, rqUtoU = radical_quadratic(U)
+  end
   if elementary_divisors(rqT) != elementary_divisors(rqU)
     return (false, hz)
   end
@@ -1074,11 +1153,11 @@ function _isometry_degenerate(T::TorQuadModule, U::TorQuadModule)
     return (false, hz)
   end
   if !boolT
-    return _isometry_non_split_degenerate(T, U)
+    return _isometry_non_split_degenerate(T, U; as_bilinear_module)
   end
   NT = domain(jT)
   NU = domain(jU)
-  bool, isom = _isometry_semiregular(NT, NU)
+  bool, isom = _isometry_semiregular(NT, NU; as_bilinear_module)
   if !bool
     return (false, hz)
   end
@@ -1116,10 +1195,18 @@ end
 
 # This is a fallback function to cover the case where T and U are not semiregular
 # and they both do not split their radical quadratic.
-function _isometry_non_split_degenerate(T::TorQuadModule, U::TorQuadModule)
+function _isometry_non_split_degenerate(
+  T::TorQuadModule,
+  U::TorQuadModule;
+  as_bilinear_module::Bool=false,
+)
   Ts, TstoT = snf(T)
   n = ngens(Ts)
-  u_cand = [[u for u in U if quadratic_product(u) == quadratic_product(t) && order(u) == order(t)] for t in gens(Ts)]
+  if as_bilinear_module
+    u_cand = [[u for u in U if u*u == t*t && order(u) == order(t)] for t in gens(Ts)]
+  else
+    u_cand = [[u for u in U if quadratic_product(u) == quadratic_product(t) && order(u) == order(t)] for t in gens(Ts)]
+  end
   waiting = Vector{TorQuadModuleElem}[[]]
   while !isempty(waiting)
     f = pop!(waiting)
@@ -1144,18 +1231,89 @@ function _isometry_non_split_degenerate(T::TorQuadModule, U::TorQuadModule)
   return (false, hom(T, U, zero_matrix(ZZ, ngens(T), ngens(U))))
 end
 
+function _is_isometric_with_isometry(
+  T::TorQuadModule,
+  U::TorQuadModule;
+  as_bilinear_module::Bool=false,
+  anti_isometry::Bool=false,
+)
+  if !anti_isometry && T === U
+    return (true, id_hom(T))
+  end
+  # the zero map for default output
+  hz = hom(T, U, zero_matrix(ZZ, ngens(T), ngens(U)))
+  if order(T) != order(U)
+    return (false, hz)
+  end
+  @req (modulus_bilinear_form(T) == 1 && modulus_bilinear_form(U) == 1) "Only implemented for torsion quadratic module with bilinear modulus 1"
+  if elementary_divisors(T) != elementary_divisors(U)
+    return (false, hz)
+  end
+
+  boolT = as_bilinear_module ? !is_degenerate(T) : is_semi_regular(T)
+  boolU = as_bilinear_module ? !is_degenerate(U) : is_semi_regular(U)
+  if boolT != boolU
+    return (false, hz)
+  end
+  # if they have no elementary divisors, then they are trivial and therefore isometric
+  if length(elementary_divisors(T)) == 0
+    return (true, hz)
+  end
+  # they should have the same parity
+  if !as_bilinear_module && (modulus_quadratic_form(T) != modulus_quadratic_form(U))
+    return (false, hz)
+  end
+  # the case where there is no quadratic structure
+  mT = as_bilinear_module ? gram_matrix_bilinear(T) : gram_matrix_quadratic(T)
+  mU = as_bilinear_module ? gram_matrix_bilinear(U) : gram_matrix_quadratic(U)
+  if is_zero(mT)
+    is_zero(mU) || return (false, hz)
+    Tabs, TabstoTab = snf(abelian_group(T))
+    Uabs, UabstoUab = snf(abelian_group(U))
+    fabs = hom(Tabs, Uabs, identity_matrix(ZZ, length(elementary_divisors(T))))
+    fab = compose(inv(TabstoTab), compose(fabs, UabstoUab))
+    return true, hom(T, U, matrix(fab))
+  else
+    is_zero(mU) && return (false, hz)
+  end
+
+  if anti_isometry
+    Ue = rescale(U, -1; cached=false)
+    UetoU = hom(Ue, U, U.(lift.(gens(Ue))))
+    if boolT
+      bool, TtoUe = _isometry_semiregular(T, Ue; as_bilinear_module)
+    else
+      bool, TtoUe = _isometry_degenerate(T, Ue; as_bilinear_module)
+    end
+    TtoU = compose(TtoUe, UetoU)
+    if bool
+      @hassert :Lattice 1 all(a -> a*a == -TtoU(a)*TtoU(a), gens(T))
+    end
+    return bool, TtoU
+  else
+    if boolT
+      return _isometry_semiregular(T, U; as_bilinear_module)
+    else
+      return _isometry_degenerate(T, U; as_bilinear_module)
+    end
+  end
+end
+
 @doc raw"""
-    is_isometric_with_isometry(T::TorQuadModule, U::TorQuadModule)
-                                                   -> Bool, TorQuadModuleMap
+    is_isometric_with_isometry(
+      T::TorQuadModule,
+      U::TorQuadModule;
+      as_bilinear_module::Bool=false,
+    ) -> Bool, TorQuadModuleMap
 
-Return whether the torsion quadratic modules `T` and `U` are isometric.
-If yes, it also returns an isometry $T \to U$.
+Return whether the torsion quadratic modules ``T`` and ``U`` are isometric.
+If yes, it also returns an isometry ``T \to U``.
 
-If `T` and `U` are not semi-regular it requires that they both split into a direct
-sum of their respective quadratic radical (see [`radical_quadratic`](@ref)).
+The function requires that both ``T`` and ``U`` have modulus 1: in case one of
+them does not, they should be rescaled (see [`rescale`](@ref)).
 
-It requires that both `T` and `U` have modulus 1: in case one of them do not,
-they should be rescaled (see [`rescale`](@ref)).
+By setting `as_bilinear_module` to `true`, the function ignores the quadratic
+forms on ``T`` and ``U`` (if applicable).
 
 # Examples
 
@@ -1213,60 +1371,29 @@ julia> is_bijective(phi)
 true
 ```
 """
-function is_isometric_with_isometry(T::TorQuadModule, U::TorQuadModule)
-  if T === U
-    return (true, id_hom(T))
-  end
-  # the zero map for default output
-  hz = hom(T, U, zero_matrix(ZZ, ngens(T), ngens(U)))
-  if order(T) != order(U)
-    return (false, hz)
-  end
-  @req (modulus_bilinear_form(T) == 1 && modulus_bilinear_form(U) == 1) "Only implemented for torsion quadratic module with bilinear modulus 1"
-  if elementary_divisors(T) != elementary_divisors(U)
-    return (false, hz)
-  end
-  if is_semi_regular(T) != is_semi_regular(U)
-    return (false, hz)
-  end
-  # if they have no elementary divisors, then they are trivial and therefore isometric
-  if length(elementary_divisors(T)) == 0
-    return (true, hz)
-  end
-  # they should have the same parity
-  if modulus_quadratic_form(T) != modulus_quadratic_form(U)
-    return (false, hz)
-  end
-  # the case where there is no quadratic structure
-  if is_zero(gram_matrix_quadratic(T))
-    is_zero(gram_matrix_quadratic(U)) || return (false, hz)
-    Tabs, TabstoTab = snf(abelian_group(T))
-    Uabs, UabstoUab = snf(abelian_group(U))
-    fabs = hom(Tabs, Uabs, identity_matrix(ZZ, length(elementary_divisors(T))))
-    fab = compose(inv(TabstoTab), compose(fabs, UabstoUab))
-    return true, hom(T, U, matrix(fab))
-  else
-    is_zero(gram_matrix_quadratic(U)) && return (false, hz)
-  end
-  if is_semi_regular(T)
-    return _isometry_semiregular(T, U)
-  else
-    return _isometry_degenerate(T, U)
-  end
+function is_isometric_with_isometry(
+  T::TorQuadModule,
+  U::TorQuadModule;
+  as_bilinear_module::Bool=false,
+)
+  return _is_isometric_with_isometry(T, U; as_bilinear_module)
 end
 
 @doc raw"""
-    is_anti_isometric_with_anti_isometry(T::TorQuadModule, U::TorQuadModule)
-                                                     -> Bool, TorQuadModuleMap
+    is_anti_isometric_with_anti_isometry(
+      T::TorQuadModule,
+      U::TorQuadModule;
+      as_bilinear_module::Bool=false,
+    ) -> Bool, TorQuadModuleMap
 
 Return whether there exists an anti-isometry between the torsion quadratic
-modules `T` and `U`. If yes, it returns such an anti-isometry $T \to U$.
+modules ``T`` and ``U``. If yes, it returns such an anti-isometry ``T \to U``.
 
-If `T` and `U` are not semi-regular it requires that they both split into a direct
-sum of their respective quadratic radical (see [`radical_quadratic`](@ref)).
+The function requires that both ``T`` and ``U`` have modulus 1: in case one of
+them does not, they should be rescaled (see [`rescale`](@ref)).
 
-It requires that both `T` and `U` have modulus 1: in case one of them do not,
-they should be rescaled (see [`rescale`](@ref)).
+By setting `as_bilinear_module` to `true`, the function ignores the quadratic
+forms on ``T`` and ``U`` (if applicable).
 
 # Examples
 
@@ -1334,51 +1461,12 @@ julia> a*a == -phi(a)*phi(a)
 true
 ```
 """
-function is_anti_isometric_with_anti_isometry(T::TorQuadModule, U::TorQuadModule)
-  # the zero map for default output
-  hz = hom(T, U, zero_matrix(ZZ, ngens(T), ngens(U)))
-  if order(T) != order(U)
-    return (false, hz)
-  end
-  @req (modulus_bilinear_form(T) == 1 && modulus_bilinear_form(U) == 1) "Only implemented for torsion quadratic module with bilinear modulus 1"
-  if elementary_divisors(T) != elementary_divisors(U)
-    return (false, hz)
-  end
-  if is_semi_regular(T) != is_semi_regular(U)
-    return (false, hz)
-  end
-  # if they have no elementary divisors, then they are trivial and therefore isometric
-  if length(elementary_divisors(T)) == 0
-    return (true, hz)
-  end
-  # they should have the same parity
-  if modulus_quadratic_form(T) != modulus_quadratic_form(U)
-    return (false, hz)
-  end
-  # the case where there is no quadratic structure
-  if is_zero(gram_matrix_quadratic(T))
-    is_zero(gram_matrix_quadratic(U)) || return (false, hz)
-    Tabs, TabstoTab = snf(abelian_group(T))
-    Uabs, UabstoUab = snf(abelian_group(U))
-    fabs = hom(Tabs, Uabs, identity_matrix(ZZ, length(elementary_divisors(T))))
-    fab = compose(inv(TabstoTab), compose(fabs, UabstoUab))
-    return true, hom(T, U, matrix(fab))
-  else
-    is_zero(gram_matrix_quadratic(U)) && return (false, hz)
-  end
-
-  Ue = rescale(U, -1)
-  UetoU = hom(Ue, U, U.(lift.(gens(Ue))))
-  if is_semi_regular(T)
-    bool, TtoUe = _isometry_semiregular(T, Ue)
-  else
-    bool, TtoUe = _isometry_degenerate(T, Ue)
-  end
-  TtoU = compose(TtoUe, UetoU)
-  if bool
-    @hassert :Lattice 1 all(a -> a*a == -TtoU(a)*TtoU(a), gens(T))
-  end
-  return (bool, TtoU)
+function is_anti_isometric_with_anti_isometry(
+  T::TorQuadModule,
+  U::TorQuadModule;
+  as_bilinear_module::Bool=false,
+)
+  return _is_isometric_with_isometry(T, U; as_bilinear_module, anti_isometry=true)
 end
 
 ################################################################################
@@ -1388,7 +1476,7 @@ end
 ################################################################################
 
 @doc raw"""
-    sub(T::TorQuadModule, generators::Vector{TorQuadModuleElem})
+    sub(T::TorQuadModule, gens::Vector{TorQuadModuleElem})
                                                     -> TorQuadModule, TorQuadModuleMap
 
 Return the submodule of `T` defined by `generators` and the inclusion morphism.
@@ -1405,11 +1493,40 @@ function sub(T::TorQuadModule, gens::Vector{TorQuadModuleElem})
     cover = T.rels
     _gens = nothing
   end
-  S = torsion_quadratic_module(cover, T.rels; gens=_gens, modulus=modulus_bilinear_form(T),
-                               modulus_qf=modulus_quadratic_form(T))
-  imgs = TorQuadModuleElem[T(lift(g)) for g in Hecke.gens(S)]
-  inclusion = hom(S, T, imgs)
+  S = torsion_quadratic_module(cover, T.rels; gens=_gens,
+                               modulus=modulus_bilinear_form(T),
+                               modulus_qf=modulus_quadratic_form(T),
+                               check=false)
+  inclusion = hom(S, T, gens; check=false)
   return S, inclusion
+end
+
+function _sub(T::TorQuadModule, _gens_mat::QQMatrix)
+  V = ambient_space(T.cover)
+  gens_new = [basis_matrix(T.rels); _gens_mat]::QQMatrix
+  cover = lattice(V, gens_new; isbasis = false)
+  S = torsion_quadratic_module(cover, T.rels;
+                               modulus=modulus_bilinear_form(T),
+                               modulus_qf=modulus_quadratic_form(T),
+                               check=false)
+  inclusion = hom(S, T, T.(S.gens_lift); check=false)
+  return S, inclusion
+end
+
+@doc raw"""
+    torsion_subgroup(
+      T::TorQuadModule,
+      n::IntegerUnion,
+    ) -> TorQuadModule, TorQuadModuleMap
+
+Return the subgroup of ``T`` consisting of elements of order dividing ``n``.
+"""
+function torsion_subgroup(
+  T::TorQuadModule,
+  n::IntegerUnion,
+)
+  Sab, j = torsion_subgroup(abelian_group(T), n)
+  return sub(T, TorQuadModuleElem[T(j(s)) for s in gens(Sab)])
 end
 
 @doc raw"""
@@ -1459,19 +1576,21 @@ Gram matrix quadratic form:
 [1//3]
 ```
 """
-function torsion_quadratic_module(q::QQMatrix)
-  @req is_square(q) "Matrix must be a square matrix"
-  @req is_symmetric(q) "Matrix must be symmetric"
+function torsion_quadratic_module(q::QQMatrix; check::Bool=true)
+  if check
+    @req is_square(q) "Matrix must be a square matrix"
+    @req is_symmetric(q) "Matrix must be symmetric"
+  end
 
   d = denominator(q)
   Q = change_base_ring(ZZ, d * q)
   S, U, V = snf_with_transform(Q)
   D = change_base_ring(QQ, U) * q * change_base_ring(QQ, V)
-  L = integer_lattice(1//d * identity_matrix(QQ, nrows(q)); gram = d^2 * q)
+  L = integer_lattice(1//d * identity_matrix(QQ, nrows(q)); gram = d^2 * q, check=false)
   denoms = QQFieldElem[denominator(D[i, i]) for i in 1:ncols(D)]
-  rels = diagonal_matrix(denoms) * U
+  rels = diagonal_matrix(QQ, denoms) * U
   LL = lattice(ambient_space(L), 1//d * change_base_ring(QQ, rels))
-  return torsion_quadratic_module(L, LL; modulus = QQFieldElem(1))
+  return torsion_quadratic_module(L, LL; modulus = QQFieldElem(1), check=false)
 end
 
 TorQuadModule(q::QQMatrix) = torsion_quadratic_module(q)
@@ -1494,24 +1613,31 @@ primary_part(T::TorQuadModule,m::Int) = primary_part(T,ZZ(m))
 
 Return the orthogonal submodule to the submodule `S` of `T`.
 """
-function orthogonal_submodule(T::TorQuadModule, S::TorQuadModule)
-  @assert is_sublattice(cover(T), cover(S)) "The second argument is not a submodule of the first argument"
+function orthogonal_submodule(T::TorQuadModule, S::TorQuadModule; check=true)
+  check && @assert is_sublattice(cover(T), cover(S)) "The second argument is not a submodule of the first argument"
+  K = _orthogonal_submodule_raw(T, S)
+  ortho = K * T.gens_lift_mat
+  return _sub(T, ortho)
+end
+
+function _orthogonal_submodule_raw(T::TorQuadModule, S::TorQuadModule;check=true)
   V = ambient_space(cover(T))
   G = gram_matrix(V)
-  B = basis_matrix(cover(T))
-  C = basis_matrix(cover(S))
-  m = modulus_bilinear_form(T)
-  Y = B * G * transpose(C)
-  # Elements of the ambient module which pair integrally with cover(T)
-  integral = inv(Y) * B
-  # Element of the ambient module which pair in mZZ with cover(T)
-  orthogonal =  m * integral
-  # We have to make sure we get a submodule
-  ortho = intersect(lattice(V, B), lattice(V, orthogonal))
-  Borth = basis_matrix(ortho)
-  gens_orth = [T(vec(collect(Borth[i:i,:]))) for i in 1:nrows(Borth)]
-  filter!(!iszero, gens_orth)
-  return sub(T, gens_orth)
+  mT = modulus_bilinear_form(T)
+  m = exponent(T)
+  R,_ = residue_ring(ZZ, ZZ(m); cached=false)
+  GG = T.gens_lift_mat * G * transpose(S.gens_lift_mat)
+  mul!(GG, inv(mT)*m)
+  Y = map_entries(i->R(numerator(i)), GG)
+  K = kernel(Y; side=:left)
+  A = [order(i) for i in gens(T)]
+  Kz = lift(K)
+  for j in 1:ncols(K)
+    Kz[:,j:j] = reduce_mod(Kz[:,j:j], A[j])
+  end
+  k = [i for i in 1:nrows(Kz) if !is_zero_row(Kz,i)]
+  Kz = Kz[k,:]
+  return Kz
 end
 
 @doc raw"""
@@ -1519,9 +1645,13 @@ end
 
 Return true if the underlying bilinear form is degenerate.
 """
-function is_degenerate(T::TorQuadModule)
-  return get_attribute!(T,:is_degenerate) do
-    return order(orthogonal_submodule(T,T)[1]) != 1
+@attr Bool function is_degenerate(T::TorQuadModule)
+  if is_snf(T) || T.is_normal
+    K = _orthogonal_submodule_raw(T, T)
+    return !iszero(K)
+  else
+    Kb,_ = orthogonal_submodule(T,T)
+    return !isone(order(Kb))
   end
 end
 
@@ -1531,7 +1661,9 @@ end
 Return whether `T` is semi-regular, that is its quadratic radical is trivial
 (see [`radical_quadratic`](@ref)).
 """
-is_semi_regular(T::TorQuadModule) = is_trivial(abelian_group(radical_quadratic(T)[1]))
+@attr Bool function is_semi_regular(T::TorQuadModule)
+  return is_trivial(abelian_group(radical_quadratic(T)[1]))
+end
 
 @doc raw"""
     radical_bilinear(T::TorQuadModule) -> TorQuadModule, TorQuadModuleMap
@@ -1539,7 +1671,7 @@ is_semi_regular(T::TorQuadModule) = is_trivial(abelian_group(radical_quadratic(T
 Return the radical `\{x \in T | b(x,T) = 0\}` of the bilinear form `b` on `T`.
 """
 function radical_bilinear(T::TorQuadModule)
-  return orthogonal_submodule(T,T)
+  return orthogonal_submodule(T, T)
 end
 
 @doc raw"""
@@ -1554,12 +1686,10 @@ function radical_quadratic(T::TorQuadModule)
   F = Native.GF(2; cached=false)
   G2 = matrix(F, nrows(G), 1, F.(diagonal(G)))
   kermat = kernel(G2, side = :left)
-  kermat = lift(kermat)
-  g = gens(Kb)
-  n = length(g)
-  kergen = TorQuadModuleElem[sum(kermat[i,j]*g[j] for j in 1:n) for i in 1:nrows(kermat)]
-  Kq, iq = sub(Kb,kergen)
-  @assert iszero(gram_matrix_quadratic(Kq))
+  kermatZ = lift(kermat)*Kb.gens_lift_mat
+  kermatZ = vcat(kermatZ, 2*Kb.gens_lift_mat)
+  Kq, iq = _sub(Kb, kermatZ)
+  @hassert :Lattice 1 iszero(gram_matrix_quadratic(Kq))
   return Kq, compose(iq,ib)
 end
 
@@ -1571,12 +1701,12 @@ where k is a non-zero rational number.
 If the old form was defined modulo `n`, then the new form is defined
 modulo `n k`.
 """
-function rescale(T::TorQuadModule, k::RingElement)
+function rescale(T::TorQuadModule, k::RingElement; cached=false)
   @req !iszero(k) "Parameter ($k) must be non-zero"
   C = cover(T)
-  V = rescale(ambient_space(C), k)
-  M = lattice(V, basis_matrix(C))
-  N = lattice(V, basis_matrix(T.rels))
+  V = rescale(ambient_space(C), k; cached=false)
+  M = lattice(V, basis_matrix(C); check=false, isbasis=true)
+  N = lattice(V, basis_matrix(T.rels); check=false, isbasis=true)
   gene = ngens(T) == 0 ? nothing : lift.(gens(T))
   return torsion_quadratic_module(M, N; gens = gene,
                                         modulus = abs(k)*modulus_bilinear_form(T),
@@ -1593,27 +1723,38 @@ Let `K` be the radical of the quadratic form of `T`. Then `N = T/K` is
 half-regular. Two half-regular torsion quadratic modules are isometric
 if and only if they have equal normal forms.
 """
-function normal_form(T::TorQuadModule; partial=false)
-  if T.is_normal
+function normal_form(
+  T::TorQuadModule;
+  partial::Bool=false,
+  as_bilinear_module::Bool=false,
+)
+  if !as_bilinear_module && T.is_normal
+    return T, id_hom(T)
+  elseif as_bilinear_module && T.is_normal_bilinear
     return T, id_hom(T)
   end
+
   if is_degenerate(T)
-    K, _ = radical_quadratic(T)
+    K, _ = as_bilinear_module ? radical_bilinear(T) : radical_quadratic(T)
     N = torsion_quadratic_module(cover(T), cover(K); modulus=modulus_bilinear_form(T), modulus_qf=modulus_quadratic_form(T))
-    i = hom(T, N, TorQuadModuleElem[N(lift(g)) for g in gens(T)])
+    i = hom(T, N, TorQuadModuleElem[N(lift(g)) for g in gens(T)]; check=false)
   else
     N = T
-    i = identity_map(T)
+    i = id_hom(T)
   end
   normal_gens = TorQuadModuleElem[]
-  prime_div = prime_divisors(exponent(N))
+  prime_div = sort!(prime_divisors(exponent(N)))
   for p in prime_div
     D_p, I_p = primary_part(N, p)
-    q_p = gram_matrix_quadratic(D_p)
-    if p == 2
-        q_p = q_p * modulus_quadratic_form(D_p)^-1
+    if as_bilinear_module
+      q_p = gram_matrix_bilinear(D_p)
     else
-        q_p = q_p * modulus_bilinear_form(D_p)^-1
+      q_p = gram_matrix_quadratic(D_p)
+    end
+    if !as_bilinear_module && p == 2
+      q_p = q_p * modulus_quadratic_form(D_p)^-1
+    else
+      q_p = q_p * modulus_bilinear_form(D_p)^-1
     end
 
     # the normal form is implemented for p-adic lattices
@@ -1632,10 +1773,10 @@ function normal_form(T::TorQuadModule; partial=false)
     q_pR = map_entries(x->R(ZZ(x)), denom*q_p)
     D = UR * q_pR * transpose(UR)
     D = map_entries(x->R(mod(lift(x),denom)), D)
-    if p != 2
-       # follow the conventions of Miranda-Morrison
-       m = ZZ(modulus_quadratic_form(D_p)//modulus_bilinear_form(D_p))
-       D = R(m)^-1*D
+    if p != 2 && !as_bilinear_module
+      # follow the conventions of Miranda-Morrison
+      m = ZZ(modulus_quadratic_form(D_p)//modulus_bilinear_form(D_p))
+      D = R(m)^-1*D
     end
 
     D1, U1 = _normalize(D, ZZ(p), false)
@@ -1652,16 +1793,22 @@ function normal_form(T::TorQuadModule; partial=false)
   S, j =  sub(N, normal_gens)
   J = compose(i,inv(j))
   if !partial
-    S.is_normal = true
+    if as_bilinear_module
+      S.is_normal_bilinear = true
+    else
+      S.is_normal = true
+    end
   end
   return S, J
 end
 
 @doc raw"""
     _brown_indecomposable(q::MatElem, p::ZZRingElem) ->  ZZRingElem
+
 Return the Brown invariant of the indecomposable form ``q``.
 
-The values are taken from Table 2.1 in [Shim2016]_.
+The values are taken from Table 2.1 in [Shim2016].
+
 INPUT:
 - ``q`` - an indecomposable quadratic form represented by a
   rational `1 \times 1` or `2 \times 2` matrix
@@ -1709,7 +1856,8 @@ function _brown_indecomposable(q::MatElem, p::ZZRingElem)
 end
 
 @doc raw"""
-    brown_invariant(self::TorQuadModule) -> Nemo.zzModRingElem
+    brown_invariant(T::TorQuadModule) -> zzModRingElem
+
 Return the Brown invariant of this torsion quadratic form.
 
 Let `(D,q)` be a torsion quadratic module with values in `Q / 2Z`.
@@ -1746,46 +1894,49 @@ function brown_invariant(T::TorQuadModule)
   return brown
 end
 
+function _as_finite_bilinear_module_with_map(T::TorQuadModule)
+  n = modulus_bilinear_form(T)
+  if n == modulus_quadratic_form(T)
+    return T, id_hom(T)
+  end
+  Tb = torsion_quadratic_module(cover(T), relations(T); modulus=n, modulus_qf=n)
+  p = hom(T, Tb, identity_matrix(ZZ, ngens(T)))
+  return Tb, p
+end
+
 function _as_finite_bilinear_module(T::TorQuadModule)
   n = modulus_bilinear_form(T)
   if n == modulus_quadratic_form(T)
     return T
   end
-  return torsion_quadratic_module(cover(T), relations(T); modulus = n, modulus_qf = n)
+  return torsion_quadratic_module(cover(T), relations(T); modulus=n, modulus_qf=n)
 end
 
-@doc raw"""
-    genus(T::TorQuadModule, signature_pair::Tuple{Int, Int};
-                            parity::RationalUnion = modulus_quadratic_form(T))
-                                                                    -> ZZGenus
-
-Return the genus of an integer lattice whose discriminant group has the bilinear
-form of `T`, the given `signature_pair` and the given `parity`.
-
-The argument `parity` is one of the following: either `parity == 1` for genera
-of odd lattices, or `parity == 2` for even lattices. By default, `parity` is
-set to be as the parity of the quadratic form on `T`
-
-If no such genus exists, raise an error.
-
-# Reference
-[Nik79](@cite) Corollary 1.9.4 and 1.16.3.
-"""
-function genus(T::TorQuadModule, signature_pair::Tuple{Int, Int}; parity::RationalUnion = modulus_quadratic_form(T))
-  @req modulus_bilinear_form(T) == 1 "Modulus for the bilinear form must be 1"
-  @req modulus_quadratic_form(T) == 1 || modulus_quadratic_form(T) == 2 "Modulus for the quadratic form must be 1 or 2"
-  @req parity == 1 || parity == 2 "Parity must be 1 or 2"
+function _is_genus_with_genus(
+  T::TorQuadModule,
+  signature_pair::Tuple{Int, Int};
+  parity::RationalUnion=modulus_quadratic_form(T),
+)
+  if !is_one(modulus_bilinear_form(T))
+    return false, zero_integer_genus(), "Modulus for the bilinear form must be 1"
+  end
+  if !(modulus_quadratic_form(T) == 1 || modulus_quadratic_form(T) == 2)
+    return false, zero_integer_genus(), "Modulus for the quadratic form must be 1 or 2"
+  end
+  if !(parity == 1 || parity == 2)
+    return false, zero_integer_genus(), "Parity must be 1 or 2"
+  end
   s_plus = signature_pair[1]
   s_minus = signature_pair[2]
   rank = s_plus + s_minus
   if s_plus < 0 || s_minus < 0
-    error("signatures must be non-negative")
+    return false, zero_integer_genus(), "Signatures must be non-negative"
   end
   if length(elementary_divisors(T)) > rank
-    error("this discriminant form and signature do not define a genus")
+    return false, zero_integer_genus(), "This discriminant form and pair of signatures do not define a genus"
   end
   if rank == 0 && order(T) == 1
-    return genus(zero_matrix(ZZ,0,0))
+    return true, zero_integer_genus(), ""
   end
   disc = order(T)
   determinant = ZZ(-1)^s_minus * disc
@@ -1864,30 +2015,26 @@ function genus(T::TorQuadModule, signature_pair::Tuple{Int, Int}; parity::Ration
         ]
     end
   else
-    if modulus_quadratic_form(T) == 2
-      # the form is even
-      block0 = [b for b in _blocks(sym2[1]) if b[4] == 0]
+    # the form is even
+    block0 = [b for b in _blocks(sym2[1]) if b[4] == 0]
 
-      # if the jordan block of scale 2 is even we know it
-      d = sym2[2][3]::Int
-      o = sym2[2][4]::Int
-      t = sym2[2][5]::Int
-      if o == 0
-        block1 = [sym2[2]]
-      else
-        # the block is odd and we know det and oddity mod 4
-        block1 = [b for b in _blocks(sym2[2])
-                if b[4] == o
-                && mod(b[3] - d, 4) == 0
-                && mod(b[5] - t, 4) == 0
-                && mod(b[3] - d, 8) == mod(b[5] - t, 8) # if the oddity is altered by 4 then so is the determinant
-                ]
-      end
-      # this is completely determined
-      block2 = [sym2[3]]
+    # if the jordan block of scale 2 is even we know it
+    d = sym2[2][3]::Int
+    o = sym2[2][4]::Int
+    t = sym2[2][5]::Int
+    if o == 0
+      block1 = [sym2[2]]
     else
-      error("this is not a discriminant form of a ZLattice")
+      # the block is odd and we know det and oddity mod 4
+      block1 = [b for b in _blocks(sym2[2])
+              if b[4] == o
+              && mod(b[3] - d, 4) == 0
+              && mod(b[5] - t, 4) == 0
+              && mod(b[3] - d, 8) == mod(b[5] - t, 8) # if the oddity is altered by 4 then so is the determinant
+              ]
     end
+    # this is completely determined
+    block2 = [sym2[3]]
   end
   # figure out which symbol defines a genus and return that
   for b0 in block0
@@ -1897,33 +2044,99 @@ function genus(T::TorQuadModule, signature_pair::Tuple{Int, Int}; parity::Ration
         local_symbols[1] = ZZLocalGenus(2, copy(sym2))
         genus = ZZGenus(signature_pair, local_symbols)
         if _isglobal_genus(genus)
-          return genus
+          return true, genus, ""
         end
       end
     end
   end
-  error("this discriminant form and signature do not define a genus")
+  return false, zero_integer_genus(), "This discriminant form and and pair of signatures do not define a genus"
 end
 
 @doc raw"""
-    is_genus(T::TorQuadModule, signature_pair::Tuple{Int, Int};
-                               parity::RationalUnion = modulus_quadratic_form(T)) -> Bool
+    is_genus_with_genus(
+      T::TorQuadModule,
+      signature_pair::Tuple{Int, Int};
+      parity::RationalUnion=modulus_quadratic_form(T),
+    ) -> Bool, ZZGenus
 
-Return if there is an integral lattice whose discriminant form has the bilinear
-form of `T`, whose signatures match `signature_pair` and which is of parity
-`parity`.
+Return whether there is an integral lattice whose discriminant form is
+isomorphic to ``T``, whose signatures match `signature_pair` and which is
+of parity `parity`. If it is the case, the corresponding genus is given as
+second output.
+
+If no such genus exists, the second output is set to be the genus of the zero
+lattice by default.
+
+# Input
+The argument `parity` is one of the following: 
+- either `parity == 1` for genera of odd lattices and `T` is regarded as a torsion bilinear form with modulus ``1``;
+- or `parity == 2` for even lattices and `T` is regarded as a torsion quadratic form with modulus ``2``. 
+By default, `parity` is set as the modulus of the quadratic form on `T`. 
+
+# Reference
+[Nik79](@cite) Corollary 1.9.4 and 1.16.3.
+"""
+function is_genus_with_genus(
+  T::TorQuadModule,
+  signature_pair::Tuple{Int, Int};
+  parity::RationalUnion=modulus_quadratic_form(T),
+)
+  return _is_genus_with_genus(T, signature_pair; parity)[1:2]
+end
+
+@doc raw"""
+    genus(
+      T::TorQuadModule,
+      signature_pair::Tuple{Int, Int};
+      parity::RationalUnion=modulus_quadratic_form(T),
+    ) -> ZZGenus
+
+Return the genus of an integer lattice whose discriminant form is isomorphic
+to `T`, whose signature is `signature_pair` and of parity `parity`.
 
 The argument `parity` is one of the following: either `parity == 1` for genera
 of odd lattices, or `parity == 2` for even lattices. By default, `parity` is
 set to be as the parity of the quadratic form on `T`
+
+If no such genus exists, raise an `ArgumentError`.
+
+# Reference
+[Nik79](@cite) Corollary 1.9.4 and 1.16.3.
 """
-function is_genus(T::TorQuadModule, signature_pair::Tuple{Int, Int}; parity::RationalUnion = modulus_quadratic_form(T))
-  try
-    genus(T, signature_pair; parity)
-    return true
-  catch
-    return false
-  end
+function genus(
+  T::TorQuadModule,
+  signature_pair::Tuple{Int, Int};
+  parity::RationalUnion=modulus_quadratic_form(T),
+)
+  flag, GT, m = _is_genus_with_genus(T, signature_pair; parity)
+  @req(flag, m)
+  return GT
+end
+
+@doc raw"""
+    is_genus(
+      T::TorQuadModule,
+      signature_pair::Tuple{Int, Int};
+      parity::RationalUnion = modulus_quadratic_form(T),
+    ) -> Bool
+
+Return whether there is an integral lattice whose discriminant form is
+isomorphic to `T`, whose signatures match `signature_pair` and which is
+of parity `parity`.
+
+The argument `parity` is one of the following: either `parity == 1` for genera
+of odd lattices, or `parity == 2` for even lattices. By default, `parity` is
+set to be as the parity of the quadratic form on `T`.
+
+# Reference
+[Nik79](@cite) Corollary 1.9.4 and 1.16.3.
+"""
+function is_genus(
+  T::TorQuadModule,
+  signature_pair::Tuple{Int, Int};
+  parity::RationalUnion=modulus_quadratic_form(T),
+)
+  return first(_is_genus_with_genus(T, signature_pair; parity))
 end
 
 function _is_genus_brown(T::TorQuadModule, signature_pair::Tuple{Int, Int})
@@ -2015,14 +2228,23 @@ function +(T::TorQuadModule, U::TorQuadModule)
   return S
 end
 
-function _biproduct(x::Vector{TorQuadModule}; proj = true)
+function _biproduct(
+  x::Vector{TorQuadModule};
+  proj::Bool=true,
+  cached::Bool=false,
+  as_bilinear_module::Bool=false,
+)
   mbf = modulus_bilinear_form(x[1])
-  mqf = modulus_quadratic_form(x[1])
   @req all(q -> modulus_bilinear_form(q) == mbf, x) "All torsion quadratic modules must have the same bilinear modulus"
-  @req all(q -> modulus_quadratic_form(q) == mqf, x) "All torsion quadratic modules must have the same quadratic modulus"
+  if !as_bilinear_module
+    mqf = modulus_quadratic_form(x[1])
+    @req all(q -> modulus_quadratic_form(q) == mqf, x) "All torsion quadratic modules must have the same quadratic modulus"
+  else
+    mqf = mbf
+  end
   cs = cover.(x)
   rs = relations.(x)
-  C, injC, projC = biproduct(cs)
+  C, injC, projC = biproduct(cs; cached)
   R = lattice(ambient_space(C), block_diagonal_matrix(basis_matrix.(rs)))
   gensinj = Vector{Vector{QQFieldElem}}[]
   gensproj = Vector{Vector{QQFieldElem}}[]
@@ -2032,7 +2254,7 @@ function _biproduct(x::Vector{TorQuadModule}; proj = true)
     gene = [injC[i](lift(a)) for a in gens(x[i])]
     push!(gensinj, gene)
   end
-  S = torsion_quadratic_module(C, R; gens = reduce(vcat, gensinj), modulus = mbf, modulus_qf = mqf)
+  S = torsion_quadratic_module(C, R; gens=reduce(vcat, gensinj), modulus=mbf, modulus_qf=mqf)
   for i in 1:length(x)
     T = x[i]
     iT = hom(T, S, S.(gensinj[i]))
@@ -2053,69 +2275,108 @@ function _biproduct(x::Vector{TorQuadModule}; proj = true)
 end
 
 @doc raw"""
-    direct_sum(x::Vararg{TorQuadModule}) -> TorQuadModule, Vector{TorQuadModuleMap}
-    direct_sum(x::Vector{TorQuadModule}) -> TorQuadModule, Vector{TorQuadModuleMap}
+    direct_sum(
+      x::Union{Vector{TorQuadModule}, Vararg{TorQuadModule}};
+      as_bilinear_module::Bool=false
+    ) -> TorQuadModule, Vector{TorQuadModuleMap}
 
 Given a collection of torsion quadratic modules $T_1, \ldots, T_n$, return
-their direct sum $T := T_1\oplus \ldots \oplus T_n$, together with the
-injections $T_i \to T$.
+their direct sum $T := T_1\oplus \ldots \oplus T_n$ as finite abelian groups,
+together with the injections $T_i \to T$.
 
-For objects of type `TorQuadModule`, finite direct sums and finite direct products
-agree and they are therefore called biproducts.
+If `as_bilinear_module` is set to `true`, the $T_i$'s are considered as torsion
+bilinear modules, i.e. their quadratic forms are ignored (if they exist).
+
+For abelian groups, finite direct sums and finite direct products agree and
+they are therefore called biproducts.
 If one wants to obtain `T` as a direct product with the projections $T \to T_i$,
 one should call `direct_product(x)`.
 If one wants to obtain `T` as a biproduct with the injections $T_i \to T$ and the
 projections $T \to T_i$, one should call `biproduct(x)`.
+
+!!! warning
+    The projections $T\to T_i$ are group homomomorphisms but do not define
+    morphisms of torsion quadratic modules.
 """
-function direct_sum(x::Vector{TorQuadModule})
-  T, inj, = _biproduct(x, proj=false)
+function direct_sum(
+  x::Vector{TorQuadModule};
+  cached::Bool=false,
+  as_bilinear_module::Bool=false,
+)
+  T, inj, = _biproduct(x; proj=false, cached, as_bilinear_module)
   return T, inj
 end
 
-direct_sum(x::Vararg{TorQuadModule}) = direct_sum(collect(x))
+direct_sum(x::Vararg{TorQuadModule}; cached::Bool=false, as_bilinear_module::Bool=false) = direct_sum(collect(x); cached, as_bilinear_module)
 
 @doc raw"""
-    direct_product(x::Vararg{TorQuadModule}) -> TorQuadModule, Vector{TorQuadModuleMap}
-    direct_product(x::Vector{TorQuadModule}) -> TorQuadModule, Vector{TorQuadModuleMap}
+    direct_product(
+      x::Union{Vector{TorQuadModule}, Vararg{TorQuadModule}};
+      as_bilinear_module::Bool=false,
+    ) -> TorQuadModule, Vector{TorQuadModuleMap}
 
 Given a collection of torsion quadratic modules $T_1, \ldots, T_n$, return
-their direct product $T := T_1\times \ldots \times T_n$, together with the
-projections $T \to T_i$.
+their direct product $T := T_1\times \ldots \times T_n$ as abelian groups,
+together with the projections $T \to T_i$.
 
-For objects of type `TorQuadModule`, finite direct sums and finite direct products
-agree and they are therefore called biproducts.
+If `as_bilinear_module` is set to `true`, the $T_i$'s are considered as torsion
+bilinear modules, i.e. their quadratic forms are ignored (if they exist).
+
+For abelian groups, finite direct sums and finite direct products agree and
+they are therefore called biproducts.
 If one wants to obtain `T` as a direct sum with the inctions $T_i \to T$,
 one should call `direct_sum(x)`.
 If one wants to obtain `T` as a biproduct with the injections $T_i \to T$ and the
 projections $T \to T_i$, one should call `biproduct(x)`.
+
+!!! warning
+    The projections $T\to T_i$ are group homomomorphisms but do not define
+    morphisms of torsion quadratic modules.
 """
-function direct_product(x::Vector{TorQuadModule})
-  T, _, proj = _biproduct(x)
+function direct_product(
+  x::Vector{TorQuadModule};
+  cached::Bool=false,
+  as_bilinear_module::Bool=false,
+)
+  T, _, proj = _biproduct(x; cached, as_bilinear_module)
   return T, proj
 end
 
-direct_product(x::Vararg{TorQuadModule}) = direct_product(collect(x))
+direct_product(x::Vararg{TorQuadModule}; cached::Bool=false, as_bilinear_module::Bool=false) = direct_product(collect(x); cached, as_bilinear_module)
 
 @doc raw"""
-    biproduct(x::Vararg{TorQuadModule}) -> TorQuadModule, Vector{TorQuadModuleMap}, Vector{TorQuadModuleMap}
-    biproduct(x::Vector{TorQuadModule}) -> TorQuadModule, Vector{TorQuadModuleMap}, Vector{TorQuadModuleMap}
+    biproduct(
+      x::Union{Vector{TorQuadModule}, Vararg{TorQuadModule}};
+      as_bilinear_module::Bool=false,
+    ) -> TorQuadModule, Vector{TorQuadModuleMap}, Vector{TorQuadModuleMap}
 
 Given a collection of torsion quadratic modules $T_1, \ldots, T_n$, return
-their biproduct $T := T_1\oplus \ldots \oplus T_n$, together with the
-injections $T_i \to T$ and the projections $T \to T_i$.
+their biproduct $T := T_1\oplus \ldots \oplus T_n$ as abelian groups, together
+with the injections $T_i \to T$ and the projections $T \to T_i$.
 
-For objects of type `TorQuadModule`, finite direct sums and finite direct products
-agree and they are therefore called biproducts.
+If `as_bilinear_module` is set to `true`, the $T_i$'s are considered as torsion
+bilinear modules, i.e. their quadratic forms are ignored (if they exist).
+
+For abelian groups, finite direct sums and finite direct products agree and
+they are therefore called biproducts.
 If one wants to obtain `T` as a direct sum with the inctions $T_i \to T$,
 one should call `direct_sum(x)`.
 If one wants to obtain `T` as a direct product with the projections $T \to T_i$,
 one should call `direct_product(x)`.
+
+!!! warning
+    The projections $T\to T_i$ are group homomomorphisms but do not define
+    morphisms of torsion quadratic modules.
 """
-function biproduct(x::Vector{TorQuadModule})
-  return _biproduct(x)
+function biproduct(
+  x::Vector{TorQuadModule};
+  cached::Bool=false,
+  as_bilinear_module::Bool=false,
+)
+  return _biproduct(x; cached, as_bilinear_module)
 end
 
-biproduct(x::Vararg{TorQuadModule}) = biproduct(collect(x))
+biproduct(x::Vararg{TorQuadModule}; cached::Bool=false, as_bilinear_module::Bool=false) = biproduct(collect(x); cached, as_bilinear_module)
 
 ###############################################################################
 #
@@ -2253,7 +2514,11 @@ end
 #
 ################################################################################
 
-function _is_isometry_epsilon(f::TorQuadModuleMap, epsilon)
+function _is_isometry_epsilon(
+  f::TorQuadModuleMap,
+  epsilon,
+  _bilinear::Bool=false,
+)
   !is_bijective(f) && return false
   T = domain(f)
   k = ngens(T)
@@ -2265,19 +2530,19 @@ function _is_isometry_epsilon(f::TorQuadModuleMap, epsilon)
         return false
       end
     end
-    if quadratic_product(a) != epsilon * quadratic_product(f(a))
+    if !_bilinear && quadratic_product(a) != epsilon * quadratic_product(f(a))
       return false
     end
   end
   return true
 end
 
-function is_isometry(f::TorQuadModuleMap)
-  return _is_isometry_epsilon(f, 1)
+function is_isometry(f::TorQuadModuleMap; as_bilinear_module::Bool=false)
+  return _is_isometry_epsilon(f, 1, as_bilinear_module)
 end
 
-function is_anti_isometry(f::TorQuadModuleMap)
-  return _is_isometry_epsilon(f, -1)
+function is_anti_isometry(f::TorQuadModuleMap; as_bilinear_module::Bool=false)
+  return _is_isometry_epsilon(f, -1, as_bilinear_module)
 end
 
 ################################################################################
@@ -2302,6 +2567,8 @@ function submodules(T::TorQuadModule; kw...)
   A = abelian_group(T)
   return (sub(T, T.(StoA.(gens(S)))) for (S, StoA) in subgroups(A; kw..., fun = (x, y) -> sub(x, y, false)))
 end
+
+subgroups(T::TorQuadModule; kw...) = submodules(T; kw...)
 
 @doc raw"""
     stable_submodules(T::TorQuadModule, act::Vector{TorQuadModuleMap}; kw...)

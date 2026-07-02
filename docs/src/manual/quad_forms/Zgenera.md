@@ -59,6 +59,7 @@ norm(G::ZZGenus)
 primes(G::ZZGenus)
 is_integral(G::ZZGenus)
 ```
+
 ### Discriminant group
 [`discriminant_group(::ZZGenus)`](@ref)
 
@@ -71,7 +72,7 @@ is_elementary_with_prime(G::ZZGenus)
 is_elementary(G::ZZGenus, p::Union{Integer, ZZRingElem})
 ```
 
-### local Symbol
+### Local symbol
 ```@docs
 local_symbol(G::ZZGenus, p)
 ```
@@ -83,6 +84,7 @@ quadratic_space(G::ZZGenus)
 rational_representative(G::ZZGenus)
 representative(G::ZZGenus)
 representatives(G::ZZGenus)
+class_number(G::ZZGenus)
 mass(G::ZZGenus)
 rescale(::ZZGenus, ::RationalUnion)
 ```
@@ -136,5 +138,10 @@ direct_sum(S1::ZZLocalGenus, S2::ZZLocalGenus)
 ### Embeddings/Representations
 ```@docs
 represents(G1::ZZLocalGenus, G2::ZZLocalGenus)
+```
+
+## Canonical symbols
+```@docs
+canonical_symbol
 ```
 

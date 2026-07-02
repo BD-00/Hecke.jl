@@ -125,6 +125,12 @@ morphism_type(::Type{T}, ::Type{S}) where {T <: AbstractAssociativeAlgebra{FqFie
 
 morphism_type(A::Type{T}) where {T <: AbstractAssociativeAlgebra} = morphism_type(A, A)
 
+morphism_type(A::Type{T}, B::AbstractAssociativeAlgebra{S}) where {T, S} = morphism_type(A, typeof(B))
+
+morphism_type(A::AbstractAssociativeAlgebra{T}, B::Type{S}) where {T, S} = morphism_type(typeof(A), B)
+
+morphism_type(A::AbstractAssociativeAlgebra, B::AbstractAssociativeAlgebra) = morphism_type(typeof(A), typeof(B))
+
 ################################################################################
 #
 #  Basis
@@ -143,13 +149,20 @@ function basis(A::AbstractAssociativeAlgebra)
     return A.basis::Vector{elem_type(A)}
   end
   B = Vector{elem_type(A)}(undef, dim(A))
-  for i in 1:dim(A)
-    z = Vector{elem_type(base_ring(A))}(undef, dim(A))
-    for j in 1:dim(A)
-      z[j] = zero(base_ring(A))
+  if A isa GroupAlgebra && A.sparse
+    for g in group(A)
+      i = __elem_index(A, g)
+      B[i] = A(g)
     end
-    z[i] = one(base_ring(A))
-    B[i] = A(z)
+  else
+    for i in 1:dim(A)
+      z = Vector{elem_type(base_ring(A))}(undef, dim(A))
+      for j in 1:dim(A)
+        z[j] = zero(base_ring(A))
+      end
+      z[i] = one(base_ring(A))
+      B[i] = A(z)
+    end
   end
   A.basis = B
   return B::Vector{elem_type(A)}
@@ -640,7 +653,7 @@ function __primitive_element(A::S) where {T <: FinFieldElem, S <: AbstractAssoci
   f = minpoly(a)
   while degree(f) < d
     a = rand(A)
-    f = minpoly(a)
+    f = minpoly(parent(f), a)
   end
   return a, f
 end
@@ -1053,7 +1066,7 @@ field extension.
     # Strategy (see Ford's seperable algebras)
     # If I understand it correctly, a semi-simple K-algebra is separable
     # if and only if the center is a separable K-algebra
-    
+
     # Maybe as follows?
     # C, = center(A)
     # return is_separable(C) && is_semisimple(A)
@@ -1255,45 +1268,45 @@ end
 #
 ################################################################################
 
-function _skolem_noether(h::AbsAlgAssMor)
-  A = domain(h)
-  @req A === codomain(h) "Morphism must be an isomorphism"
-  @req is_simple(A) "Algebra must be simple"
-  @req is_central(A) "Algebra must be central"
-  # for b, consider the map f_b : A -> A, x -> b * x - x * h(b)
-  # we look for something in the intersection ker(f_b), where b runs through
-  # a basis of A. We are tad more clever and consider only the restriction
-  # on the kernel (intersection) we found so far
-  #
-  # Also if we hit something one-dimensional, we are done
-  B = basis(A)
-  C = B
-  Cmat = basis_matrix(C)
-  for b in B
-    M = basis_matrix(elem_type(A)[b * c - c * h(b) for c in C])
-    K = kernel(M, side = :left)
-    Cmat = K * Cmat
-    C = elem_type(A)[A(Cmat[i, :]) for i in 1:nrows(Cmat)]
-    if length(C) == 1
-      break
-    end
+"""
+    skolem_noether_conjugator(emb1, emb2; check) -> NCRingElem
+
+Compute a conjugating element as guaranteed by the Skolem-Noether theorem.
+
+Given two embeddings of a subalgebra `embⱼ: U → S`, compute an element
+`x∈S` such that `x emb₂(u) x⁻¹ = emb₁(u)` for `u∈U`.
+"""
+function skolem_noether_conjugator(
+  emb1::Map{U, S},
+  emb2::Map{U, S};
+  check::Bool = true,
+) where {U, T, S<:AbstractAssociativeAlgebra{T}}
+  if check
+    @req codomain(emb1) == codomain(emb2) "Codomains of embeddings must be identical"
+    @req domain(emb1) == domain(emb2) "Domains of embeddings must be identical"
+    @req is_simple(domain(emb1)) "Domain of embedding must be simple"
+    @req is_simple(codomain(emb1)) "Codomain of embedding must be simple"
+    @req is_central(codomain(emb1)) "Codomain of embedding must be central"
   end
-  if length(C) == 1
-    a = C[1]
-    fl, _ = is_invertible(a)
-    @assert fl
-    return a
-  else
-    for i in 1:length(C)
-      a = C[i]
-      fl, _ = is_invertible(a)
-      if fl
-        return a
-      end
-    end
-    # do some random combination
-    error("Not impelemented yet")
+
+  alg = codomain(emb1)
+  ker = basis(alg)
+  ker_mat = basis_matrix(ker)
+  for x in basis(domain(emb1))
+    bb = basis_matrix(elem_type(alg)[emb1(x) * y - y * emb2(x) for y in ker])
+    K = kernel(bb, side=:left)
+    ker_mat = K * ker_mat
+    ker = elem_type(alg)[alg(ker_mat[i, :]) for i in 1:number_of_rows(ker_mat)]
   end
+  sn = ker[1]
+  while !first(is_invertible(sn))
+    cc = [rand(base_ring(alg), -length(ker):length(ker)) for _ in 1:length(ker)]
+    sn = sum(cc .* ker)
+  end
+  for x in basis(domain(emb1))
+    @assert sn * emb2(x) * inv(sn) == emb1(x)
+  end
+  return sn
 end
 
 ################################################################################

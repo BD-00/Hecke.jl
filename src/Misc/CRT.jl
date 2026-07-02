@@ -563,9 +563,9 @@ Base.isempty(me::modular_env) = !isdefined(me, :ce)
 
 function show(io::IO, me::modular_env)
   if isempty(me)
-    println("modular environment for p=$(me.p), using $(0) ideals")
+    print(io, "modular environment for p=$(me.p), using $(0) ideals")
   else
-    println("modular environment for p=$(me.p), using $(me.ce.n) ideals")
+    print(io, "modular environment for p=$(me.p), using $(me.ce.n) ideals")
   end
 end
 
@@ -583,7 +583,16 @@ function modular_init(K::AbsSimpleNumField, p::ZZRingElem; lazy::Bool = false, d
   me = modular_env()
   pp = Int(p)
   me.Fpx = polynomial_ring(residue_ring(ZZ, Int(p), cached = false)[1], "_x", cached=false)[1]
-  fp = me.Fpx(K.pol)
+  fp = try
+       Nemo.fmpq_poly_to_nmod_poly_raw!(me.Fpx(), defining_polynomial(K))
+       catch e
+         if isa(e, Nemo.FlintException) && e.type == Nemo.FLINT_IMPINV
+           #indicates a denominator in a coefficient divisible by p
+           throw(BadPrime(p))
+         end
+         rethrow(e)
+       end
+
   if lazy
     if !is_squarefree(fp)
       throw(BadPrime(p))

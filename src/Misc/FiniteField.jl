@@ -64,7 +64,7 @@ end
 function _nf_to_fq!(a::FqFieldElem, b::AbsSimpleNumFieldElem, K::FqField)#, a_tmp::FpPolyRingElem)
   # AbsSimpleNumFieldElem -> QQPolyRingElem
   z = QQPolyRingElem()
-  ccall((:nf_elem_get_fmpq_poly, libantic), Nothing,
+  ccall((:nf_elem_get_fmpq_poly, libflint), Nothing,
         (Ref{QQPolyRingElem}, Ref{AbsSimpleNumFieldElem}, Ref{AbsSimpleNumField}), z, b, parent(b))
   z.parent = Globals.Qx
   # QQPolyRingElem -> ZZPolyRingElem, ZZRingElem
@@ -134,7 +134,7 @@ function primitive_element(F::T; n_quo::Int = -1) where T <: Union{FqPolyRepFiel
     end
     n, k = ppio(n, ZZRingElem(n_quo))
   end
-  primefactors_n = collect(keys(factor(n).fac))
+  primefactors_n = prime_divisors(n)
 
   x = rand(F)^k
   while iszero(x)
@@ -172,7 +172,7 @@ function unit_group(F::T; n_quo::Int = -1) where T <: FinField
     inv = invmod(nnpart, npart)
   end
 
-  G = abelian_group(Int[k])
+  G = abelian_group([k])
   ex = div(order(F) - 1, npart)
   function disc_log(x)
     @assert typeof(x) == elem_type(F)
@@ -189,10 +189,11 @@ function unit_group(F::T; n_quo::Int = -1) where T <: FinField
         end
         el *= g
       end
-      return G([mod(c*inv, k)])
+      dl = mod(c*inv, k)
     else
-      return G([mod(inv*disc_log_bs_gs(g, y, npart), k)])
+      dl = mod(inv*disc_log_bs_gs(g, y, npart), k)
     end
+    return G([dl])
   end
   mG = FiniteFieldMultGrpMap{T, elem_type(F)}(G, F, g, disc_log)
   return G, mG
@@ -321,7 +322,7 @@ end
 function splitting_field(f::PolyRingElem{<:FinFieldElem}; do_roots::Bool = false)
   lf = factor(f)
   k = base_ring(f)
-  d = reduce(lcm, [degree(x) for x = keys(lf.fac)], init = 1)
+  d = reduce(lcm, [degree(x) for (x, _) in lf], init = 1)
   if isa(k,  Nemo.fpField) || isa(k, Nemo.fqPolyRepField)
     K = GF(Int(characteristic(k)), absolute_degree(k)*d)
   else
@@ -335,3 +336,23 @@ function splitting_field(f::PolyRingElem{<:FinFieldElem}; do_roots::Bool = false
   end
   return K
 end
+
+@doc raw"""
+    disc_log(b::T, x::T) where {T <: FinFieldElem}
+
+Return an integer `s` such that $b^s = x$.
+If no such `x` exists, an exception is thrown.
+
+# Examples
+```jldoctest
+julia> F = GF(3,4); a = gen(F)^21;
+
+julia> disc_log(gen(F), a)
+21
+```
+"""
+function disc_log(b::T, x::T) where {T <: FinFieldElem}
+  @assert parent(b) === parent(x)
+  return Hecke.disc_log_bs_gs(b, x, order(parent(b)))
+end
+

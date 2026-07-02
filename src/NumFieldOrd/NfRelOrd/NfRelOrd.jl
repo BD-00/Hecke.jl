@@ -232,38 +232,44 @@ function show(io::IO, S::NfRelOrdSet)
   print(io, S.nf)
 end
 
-function show(io::IO, O::RelNumFieldOrder)
+function show(io::IO, ::MIME"text/plain", O::RelNumFieldOrder)
   compact = get(io, :compact, false)
-  if compact
-    if is_maximal_known_and_maximal(O)
-      print(io, "Relative maximal order with pseudo-basis ")
+  io = pretty(io)
+  if is_maximal_known_and_maximal(O)
+    println(io, "Maximal order")
+  else
+    println(io, "Order")
+  end
+  print(io, Indent(), "of ", Lowercase())
+  show(IOContext(io, :collapsenf => true), MIME"text/plain"(), nf(O))
+  println(io, Dedent())
+  print(io, "with pseudo-basis")
+  print(io, Indent())
+  pb = pseudo_basis(O, copy = false)
+  for i = 1:degree(O)
+    print(io, "\n(")
+    print(io, pb[i][1])
+    print(io, ", ")
+    print(io, pb[i][2])
+    print(io, ")")
+  end
+  print(io, Dedent())
+end
+
+function show(io::IO, O::RelNumFieldOrder)
+  @show_name(io, O)
+  @show_special(io, O)
+  prefix = is_maximal_known_and_maximal(O) ? "Maximal order" : "Order"
+  if is_terse(io)
+    if !is_simple(nf(O))
+      print(io, prefix, " of relative non-simple number field")
     else
-      print(io, "Relative order with pseudo-basis ")
-    end
-    pb = pseudo_basis(O, copy = false)
-    for i = 1:degree(O)
-      print(io, "($(pb[i][1])) * ")
-      show(IOContext(io, :compact => true), pb[i][2])
-      if i != degree(O)
-        print(io, ", ")
-      end
+      print(io, prefix, " of relative number field")
     end
   else
-    if is_maximal_known_and_maximal(O)
-      print(io, "Relative maximal order of ")
-    else
-      print(io, "Relative order of ")
-    end
-    println(io, nf(O))
-    print(io, "with pseudo-basis ")
-    pb = pseudo_basis(O, copy = false)
-    for i = 1:degree(O)
-      print(io, "\n(")
-      print(io, pb[i][1])
-      print(io, ", ")
-      show(IOContext(io, :compact => true), pb[i][2])
-      print(io, ")")
-    end
+    io = pretty(io)
+    print(io, prefix, " of ")
+    print(io, Lowercase(), nf(O))
   end
 end
 
@@ -273,27 +279,34 @@ end
 #
 ################################################################################
 
+function _discriminant_via_equation_order_simple_base_field(F::AbsSimpleNumField, field_degree::Int, abs_poly::AbstractArray{Generic.Poly{T}}) where T
+  OF = maximal_order(F)
+  d = mapreduce(x -> OF(discriminant(x))^(div(field_degree, degree(x))), *, abs_poly)
+  return ideal(OF, d)
+end
+
+function _discriminant_via_trace_matrix(O::RelNumFieldOrder{T, S, U}) where {T, S, U}
+  d = det(trace_matrix(O, copy = false))
+
+  pb = pseudo_basis(O, copy = false)
+  a = mapreduce(x -> x[2], *, pb)^2
+
+  disc = d*a
+  return numerator(simplify(disc))
+end
+
 function assure_has_discriminant(O::RelNumFieldOrder{AbsSimpleNumFieldElem, AbsSimpleNumFieldOrderFractionalIdeal, RelSimpleNumFieldElem{AbsSimpleNumFieldElem}})
   if isdefined(O, :disc_abs)
     return nothing
   end
+
   if is_equation_order(O)
     K = nf(O)
-    F = base_field(K)
-    OF = maximal_order(F)
-    d = OF(discriminant(K.pol))
-    O.disc_abs = ideal(OF, d)
+    O.disc_abs = _discriminant_via_equation_order_simple_base_field(base_field(K), degree(K), [K.pol])
     return nothing
   end
-  d = det(trace_matrix(O, copy = false))
-  pb = pseudo_basis(O, copy = false)
-  a = pb[1][2]^2
-  for i = 2:degree(O)
-    a *= pb[i][2]^2
-  end
-  disc = d*a
-  simplify(disc)
-  O.disc_abs = numerator(disc)
+
+  O.disc_abs = _discriminant_via_trace_matrix(O)
   return nothing
 end
 
@@ -301,30 +314,14 @@ function assure_has_discriminant(O::RelNumFieldOrder{AbsSimpleNumFieldElem, AbsS
   if isdefined(O, :disc_abs)
     return nothing
   end
+
   if is_equation_order(O)
     K = nf(O)
-    F = base_field(K)
-    OF = maximal_order(F)
-    pols = K.pol
-    Fx, _ = polynomial_ring(F, "x", cached = false)
-    pol = to_univariate(Fx, pols[1])
-    d = OF(discriminant(pol))^(div(degree(K), degree(pol)))
-    for i = 2:length(pols)
-      pol = to_univariate(Fx, pols[i])
-      d *= OF(discriminant(pol))^(div(degree(K), degree(pol)))
-    end
-    O.disc_abs = ideal(OF, d)
+    O.disc_abs = _discriminant_via_equation_order_simple_base_field(base_field(K), degree(K), K.abs_pol)
     return nothing
   end
-  d = det(trace_matrix(O, copy = false))
-  pb = pseudo_basis(O, copy = false)
-  a = pb[1][2]^2
-  for i = 2:degree(O)
-    a *= pb[i][2]^2
-  end
-  disc = d*a
-  simplify(disc)
-  O.disc_abs = numerator(disc)
+
+  O.disc_abs = _discriminant_via_trace_matrix(O)
   return nothing
 end
 
@@ -332,15 +329,8 @@ function assure_has_discriminant(O::RelNumFieldOrder{T, S, U}) where {T, S, U}
   if isdefined(O, :disc_rel)
     return nothing
   end
-  d = det(trace_matrix(O, copy = false))
-  pb = pseudo_basis(O, copy = false)
-  a = pb[1][2]^2
-  for i = 2:degree(O)
-    a *= pb[i][2]^2
-  end
-  disc = d*a
-  simplify(disc)
-  O.disc_rel = numerator(disc)
+
+  O.disc_rel = _discriminant_via_trace_matrix(O)
   return nothing
 end
 
@@ -960,7 +950,7 @@ function relative_order(O::AbsSimpleNumFieldOrder, m::NumFieldHom{AbsSimpleNumFi
     els = elem_type(L)[m(x) for x in B]
     return add_to_order(E, els)
   else
-    return _order(elem_type(L)[mp(x) for x in B])
+    return _order(elem_type(L)[m(x) for x in B])
   end
 end
 

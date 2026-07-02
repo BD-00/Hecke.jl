@@ -229,10 +229,15 @@ function change_base_ring(mC::MapClassGrp, O::AbsSimpleNumFieldOrder)
   return mD
 end
 
+function AbstractAlgebra.show_map_head(io::IO, mC::MapClassGrp)
+  print(io, "Class group map")
+end
+
 function show(io::IO, mC::MapClassGrp)
   @show_name(io, mC)
-  println(io, "ClassGroup map of ")
-  show(IOContext(io, :compact => true), codomain(mC))
+  io = pretty(io)
+  print(io, "Class group map of ", Lowercase())
+  show(terse(io), codomain(mC))
 end
 
 function class_group(c::ClassGrpCtx, O::AbsSimpleNumFieldOrder = order(c); redo::Bool = false)
@@ -617,7 +622,7 @@ function reduce_mod_units(a::Vector{FacElem{AbsSimpleNumFieldElem, AbsSimpleNumF
     bd = maximum(sqrt(sum((B[i,j]::ArbFieldElem)^2 for j=1:ncols(B)))::ArbFieldElem for i=1:nrows(B))
     bd = bd/root(U.tentative_regulator, length(U.units))
     if isfinite(bd)
-      s = ccall((:arb_bits, libarb), Int, (Ref{ArbFieldElem}, ), bd)
+      s = ccall((:arb_bits, libflint), Int, (Ref{ArbFieldElem}, ), bd)
       prec = max(s, prec)
       prec = 1<<nbits(prec)
     else
@@ -759,6 +764,9 @@ function coprime_deterministic(a::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSi
       continue
     end
     ant_val = anti_uniformizer(p)
+#    @assert valuation(p, p) == 1
+#    @assert valuation(ant_val, p) == -1
+#    @assert valuation(norm(ant_val), minimum(p)) == -valuation(norm(p), minimum(p))
     found = false
     ind = 1
     for i = 1:length(primes)
@@ -794,7 +802,15 @@ function coprime_deterministic(a::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSi
     end
     mo = mo*moduli[i]
   end
-  res = mod(res, minimum(m, copy = false))
+# seems to be wrong...and was always wrong. adjusting by m can change the
+# critical valuations, again
+#  m2 = minimum(m, copy = false)^2
+#  if is_defining_polynomial_nice(nf(OK))
+#    res = mod(res, m2)
+#  else
+#    d = denominator(res, OK)
+#    res = elem_in_nf(OK([x % m2 for x = coordinates(OK(d*res))]))//d
+#  end
   I = res*a
   I = simplify(I)
   return I.num, res*I.den

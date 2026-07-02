@@ -219,7 +219,7 @@ end
   @test absolute_degree(K) == 2
   K, r = splitting_field(t^6-2, do_roots = true)
   @test length(r) == 2
-  
+
   K = splitting_field(t^6-t-1)
   @test degree(K) == 6
 
@@ -228,6 +228,26 @@ end
 
   @test absolute_degree(E) == 30
   @test length(r) == 5
-end  
+end
 
+let
+  F = GF(3,4)
+  a = gen(F)
+  for i in 1:10
+    i = rand(0:3^4 - 1)
+    b = a^i
+    m = disc_log(a, b)
+    # a is not promised to be primitive
+    @test a^m == b
+  end
+end
+
+let # #2237
+  F = GF(37)
+  R,t = F[:t]
+  f = t^14 + 26*t^13 + 18*t^12 + 9*t^11 + 30*t^10 + 4*t^9 + 16*t^8 + 29*t^7 + 34*t^6 + 23*t^5 + 8*t^4 + 28*t^3 + 10*t^2 + 11*t + 32
+  L, mL = Hecke.field_extension(f)
+  U, mU = unit_group(L)
+  @test order(U) == ZZ(37)^14 - 1
+end
 

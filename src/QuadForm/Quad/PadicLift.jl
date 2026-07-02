@@ -1,8 +1,15 @@
-function _val(m::zzModRingElem, p)
+function _val(m::zzModRingElem, p::Int)
   if m == 0
     return inf
   end
-  return valuation(lift(m), p)
+  return remove(Int(m.data), p)[1]
+end
+
+function _val(m::zzModRingElem, p::ZZRingElem)
+  if m == 0
+    return inf
+  end
+  return valuation(Int(m.data), p)
 end
 
 
@@ -354,8 +361,8 @@ function weak_approximation(V::QuadSpace, target::Vector{Tuple{QQMatrix,ZZRingEl
   end
 
   # CRT on the reflection vectors
-  @label crt
   fudge = 2*dim(V)+10
+  @label crt
   crt_prec = [i[3]+fudge for i in target]
   refsQQ = []
   for i in 1:maxlength
@@ -368,7 +375,6 @@ function weak_approximation(V::QuadSpace, target::Vector{Tuple{QQMatrix,ZZRingEl
     push!(refsQQ, v)
   end
   f = prod([reflection(gramV, v) for v in refsQQ])
-
   # increase overall precision if we fail
   for (fp, p, vp) in target
     deltap = f - fp

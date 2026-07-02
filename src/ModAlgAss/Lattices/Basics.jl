@@ -177,7 +177,7 @@ function intersect(L::T, M::T) where {T <: ModAlgAssLat}
   @req L.base_ring === M.base_ring "Lattices must be defined over the same order"
   @req L.V === M.V "Lattices must have same ambient module"
   BM = basis_matrix(M)
-  BN = basis_matrix(N)
+  BN = basis_matrix(L)
   dM = denominator(BM)
   dN = denominator(BN)
   d = lcm(dM, dN)
@@ -260,7 +260,7 @@ end
 
 function index(L::T, M::T) where {T <: ModAlgAssLat}
   t = basis_matrix(L) * basis_matrix_inverse(M)
-  @req !isone(denominator(t)) "First lattice not contained in second lattice"
+  @req isone(denominator(t)) "First lattice not contained in second lattice"
   return abs(det(t))
 end
 
@@ -292,7 +292,7 @@ function lattice(O::AlgAssAbsOrd, v::Vector{<:Vector})
     h = hom(EW, EV, basis_matrix(imgs))
     for b in basis(EW)
       for bb in basis(EW)
-        @assert h(b * bb) == h(b) * h(bb)
+        @hassert :ModLattice h(b * bb) == h(b) * h(bb)
       end
     end
     _transport_refined_wedderburn_decomposition_forward(h)

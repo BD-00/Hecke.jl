@@ -382,7 +382,7 @@ function mul!(c::GroupAlgebraElem{T, S}, a::GroupAlgebraElem{T, S}, b::GroupAlge
     for j in 1:d
       k = mA[i, j]
       _v = v[k]
-      if _ismutabletype(T)
+      if ismutabletype(T)
         _v = addmul!(_v, ca[i], cb[j])
       else
         v[k] = addmul!(_v, ca[i], cb[j])
@@ -391,12 +391,6 @@ function mul!(c::GroupAlgebraElem{T, S}, a::GroupAlgebraElem{T, S}, b::GroupAlge
   end
 
   return c
-end
-
-if VERSION <= v"1.7"
-  _ismutabletype(::Type{T}) where {T} = T.mutable
-else
-  _ismutabletype(::Type{T}) where {T} = ismutabletype(T)
 end
 
 function mul!(c::AssociativeAlgebraElem{T}, a::AssociativeAlgebraElem{T}, b::AssociativeAlgebraElem{T}) where {T}
@@ -714,7 +708,7 @@ function (A::GroupAlgebra{T, S, R})(d::Dict{R, <: Any}) where {T, S, R}
   end
 end
 
-function (A::GroupAlgebra{T, S, R})(x0::Pair{R, <: Any}, x::Vararg{U}) where {T, S, R, U <: Pair{R, <: Any}}
+function (A::GroupAlgebra{T, S, R})(x0::Pair{R}, x::Pair{R}...) where {T, S, R}
   return A(Dict(x0, x...))
 end
 
@@ -735,21 +729,22 @@ function (A::MatAlgebra)(a::MatAlgebraElem)
 end
 
 # For polynomial substitution
-for T in subtypes(AbstractAssociativeAlgebra)
-  @eval begin
-    function (A::$T)(a::Union{Integer, ZZRingElem, Rational{<: Integer}})
-      return A(base_ring(A)(a))
-    end
 
-    #function (A::$T{S})(a::S) where {S <: RingElem}
-    #  return a*one(A)
-    #end
-  end
+function (A::AbstractAssociativeAlgebra)(a::Union{Integer, ZZRingElem, Rational{<: Integer}})
+  return A(base_ring(A)(a))
 end
+
+#function (A::AbstractAssociativeAlgebra{S})(a::S) where {S <: RingElem}
+#  return a*one(A)
+#end
 
 (A::AbstractAssociativeAlgebra{T})(x::T) where {T <: RingElem} = x * one(A)
 
 (A::AbstractAssociativeAlgebra{T})(x::T) where {T <: AssociativeAlgebraElem} = x * one(A)
+
+# resolve ambiguity
+(A::AbstractAssociativeAlgebra{ZZRingElem})(x::ZZRingElem) = x * one(A)
+
 
 ################################################################################
 #
@@ -839,14 +834,11 @@ Returns the minimal polynomial of $a$ as a polynomial over
 `base_ring(algebra(a))`.
 """
 function Generic.minpoly(a::AbstractAssociativeAlgebraElem)
-  M = representation_matrix(a)
-  R = polynomial_ring(base_ring(parent(a)), "x", cached=false)[1]
-  return minpoly(R, a)
+  return minpoly(representation_matrix(a))
 end
 
 function Generic.minpoly(R::PolyRing, a::AbstractAssociativeAlgebraElem)
-  M = representation_matrix(a)
-  return minpoly(R, M)
+  return minpoly(R, representation_matrix(a))
 end
 
 @doc raw"""
@@ -856,9 +848,11 @@ Returns the characteristic polynomial of $a$ as a polynomial over
 `base_ring(algebra(a))`.
 """
 function charpoly(a::AbstractAssociativeAlgebraElem)
-  M = representation_matrix(a)
-  R = polynomial_ring(base_ring(parent(a)), "x", cached = false)[1]
-  return charpoly(R, M)
+  return charpoly(representation_matrix(a))
+end
+
+function charpoly(R::PolyRing, a::AbstractAssociativeAlgebraElem)
+  return charpoly(R, representation_matrix(a))
 end
 
 function _reduced_charpoly_simple(a::AbstractAssociativeAlgebraElem, R::PolyRing)
@@ -1003,7 +997,7 @@ end
 
 function _addmul!(M::FqMatrix, i, j, a::FqFieldElem, b::FqFieldElem, temp = base_ring(M)())
   GC.@preserve M begin
-    c = Nemo.fq_default_mat_entry_ptr(M, i, j)
+    c = mat_entry_ptr(M, i, j)
     mul!(temp, a, b)
     ccall((:fq_default_add, libflint), Nothing, (Ptr{FqFieldElem}, Ptr{FqFieldElem}, Ref{FqFieldElem}, Ref{FqField}), c, c, temp, base_ring(M))
   end
@@ -1281,7 +1275,7 @@ function jordan_chevalley_decomposition(x::AbstractAssociativeAlgebraElem)
       m[i + 1, l + 1] = coeff(h, l)
     end
   end
-  v = [zero(QQ) for k in 1:degree(ggpgcd)]
+  v = zeros_array(QQ, degree(ggpgcd))
   if length(v) > 0
     v[1] = 1
   end

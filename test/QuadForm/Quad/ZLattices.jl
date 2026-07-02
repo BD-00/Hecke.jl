@@ -232,10 +232,22 @@ end
   @test length(ADE) == 2
   @test all(R -> R[2] == 1, ADE)
 
+  let
+    L = integer_lattice(gram = ZZ[1 0 0; 0 2 0; 0 0 3]);
+    @test hnf(basis_matrix(root_sublattice(L))) == ZZ[1 0 0; 0 1 0]
+    @test basis_matrix(root_sublattice(L; length = [2])) == ZZ[0 1 0]
+    @test basis_matrix(root_sublattice(L; length = [1])) == ZZ[1 0 0]
+  end
+
   # isometry testing
   C1 = root_lattice(:A, 2)
   C1m = rescale(C1,-1)
   @test is_isometric(C1m, C1m)
+  L1 = integer_lattice(gram=QQ[126 16; 16 4])
+  L2 = integer_lattice(gram=QQ[14 2; 2 18])
+  @test genus(L1)==genus(L2)
+  @test !is_isometric(L1,L2)
+
   # automorphisms
   C2 = (1//3)*C1
 
@@ -320,17 +332,13 @@ end
     X = _random_invertible_matrix(n, -3:3)
     @assert abs(det(X)) == 1
     L2 = integer_lattice(gram = X * G * transpose(X))
-    b, T = is_isometric_with_isometry(L, L2, ambient_representation = false)
+    b, T = is_isometric_with_isometry(L, L2)
     @test b
     @test T * gram_matrix(L2) * transpose(T) == gram_matrix(L)
     L2 = integer_lattice(X, gram = G)
-    b, T = is_isometric_with_isometry(L, L2, ambient_representation = false)
+    b, T = is_isometric_with_isometry(L, L2)
     @test b
     @test T * gram_matrix(L2) * transpose(T) == gram_matrix(L)
-    b, T = is_isometric_with_isometry(L, L2, ambient_representation = true)
-    @test b
-    @test T * gram_matrix(ambient_space(L2)) * transpose(T) ==
-    gram_matrix(ambient_space(L))
   end
 
   D = lattice_database()
@@ -342,7 +350,7 @@ end
     X = change_base_ring(QQ, _random_invertible_matrix(n, -3:3))
     @assert abs(det(X)) == 1
     L2 = integer_lattice(gram = X * gram_matrix(L) * transpose(X))
-    b, T = is_isometric_with_isometry(L, L2, ambient_representation = false)
+    b, T = is_isometric_with_isometry(L, L2)
     @test b
     @test T * gram_matrix(L2) * transpose(T) == gram_matrix(L)
   end
@@ -354,7 +362,7 @@ end
     X = change_base_ring(QQ, _random_invertible_matrix(n, -3:3))
     @assert abs(det(X)) == 1
     L2 = integer_lattice(gram = X * gram_matrix(L) * transpose(X))
-    b, T = is_isometric_with_isometry(L, L2, ambient_representation = false, bacher_depth = 1)
+    b, T = is_isometric_with_isometry(L, L2, bacher_depth = 1)
     @test b
     @test T * gram_matrix(L2) * transpose(T) == gram_matrix(L)
   end
@@ -373,6 +381,7 @@ end
   L = integer_lattice(gram=G)
   @test norm(L) == 0
   @test scale(L) == 0
+  @test level(L) == 1
 
 
   #orthogonal submodule of a lattice
@@ -382,6 +391,7 @@ end
   submod = orthogonal_submodule(L, S)
   @test  basis_matrix(submod) == matrix(QQ, 1, 3, [1 1 -2])
 
+  @test !is_indefinite(L)
   @test is_definite(L)
   @test is_positive_definite(L)
   @test !is_negative_definite(L)
@@ -596,7 +606,8 @@ end
   L = representative(integer_genera((2,1), -1)[1])
   LL = lll(L)
   @test L == LL
-  @test rescale(L, -1) == lll(rescale(L, -1))
+  Lm = rescale(L, -1)
+  @test Lm == lll(Lm)
 
   L = representative(integer_genera((3,11), 1)[2])
   LL = lll(L)
@@ -660,6 +671,19 @@ end
 
   L2 = @inferred overlattice(glue)
   @test L2 == L  # We found back our initial overlattice
+  L = integer_lattice(QQ[3 0]; gram=QQ[-2 1; 1 -2])
+  D = discriminant_group(L)
+  M = overlattice(L, sub(D,[6*i for i in gens(D)])[1])
+  M1 = overlattice(L, [6*D[1]])
+  @test M==M1
+  @test is_sublattice(M, L)
+  @test length(overlattices(L))==2
+  @test length(overlattices(L;indices=[3]))==1
+
+
+  L = integer_lattice(gram=ZZ[4;])
+  @test length(overlattices(L;even=true))==1
+  @test length(overlattices(L;even=false))==2
 
   # primary and elementary lattices
 
@@ -710,6 +734,19 @@ end
   L2 = integer_lattice(gram=ZZ[6 3 0; 3 6 0; 0 0 2])
   @test genus(L1)==genus(L2)
   @test !Hecke.is_isometric(L1, L2)
+
+  # A previously buggy example:
+  G = matrix(QQ, 3, 3 ,[-2, 18, 7, 18, -2, 2, 7, 2, -2]);
+  L1 = integer_lattice(gram = G);
+
+  G = matrix(QQ, 3, 3 ,[-2, 7, 18, 7, -2, 2, 18, 2, -2]);
+  L2 = integer_lattice(gram = G);
+  @test is_isometric(L1,L2)
+
+  # Fix 2271
+  M = integer_lattice(;gram=QQ[-1 0 0; 0 2 0; 0 0 64])
+  L = integer_lattice(;gram=QQ[-2 0 0; 0 4 2; 0 2 17])
+  @test !is_isometric(L, M)
 end
 
 @testset "direct sums" begin
@@ -820,4 +857,56 @@ end
   q2 = discriminant_group(L2)
   @test rank(L + L2) == 0
   @test order(q + q2) == 1
+end
+
+@testset "Vectors of square and divisibility" begin
+  # Nonregular symplectic involution on K3^[2]-type ihs manifolds
+  B = matrix(QQ, 23, 23 ,[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1])
+  G = matrix(QQ, 23, 23 ,[-4, -4, -4, -6, 6, -2, -2, 4, 0, -6, 2, -2, 3, -1, 0, 3, -5, 6, 1, -1, -10, -11, -1, -4, -18, -12, -6, 16, -2, -4, 6, 4, -8, 16, 2, 11, -3, 8, 15, 2, 21, 4, 1, -7, -8, -2, -4, -12, -10, -6, 12, -2, -4, 6, 2, -8, 8, 0, 7, -3, 4, 9, -3, 14, 3, 0, -11, -12, -2, -6, -6, -6, -14, 4, -4, -4, 4, -6, -14, -6, -8, -6, -11, -9, -6, -18, -2, -3, -5, -28, -30, -2, 6, 16, 12, 4, -26, 0, 2, -12, -12, 4, -26, -6, -27, -13, -21, -30, -14, -38, -12, -6, -5, -5, 1, -2, -2, -2, -4, 0, -4, -2, 0, -2, -6, -2, -4, -4, -6, -6, -4, -8, -2, -3, -3, -10, -12, -1, -2, -4, -4, -4, 2, -2, -4, 2, -2, -6, -2, -2, -2, -6, -4, -2, -8, 0, -1, -2, -12, -13, -2, 4, 6, 6, 4, -12, 0, 2, -8, -4, 4, -8, -2, -12, -6, -8, -12, -2, -16, -6, -2, 4, 4, 1, 0, 4, 2, -6, -12, -2, -2, -4, -12, -8, -20, -8, -20, -16, -18, -22, -20, -24, -9, -7, -23, -24, -1, -6, -8, -8, -14, 4, -6, -6, 4, -8, -20, -8, -10, -9, -16, -13, -10, -22, -4, -5, -7, -35, -38, -3, 2, 16, 8, -6, -26, -2, -2, -8, -20, -8, -42, -14, -37, -23, -32, -42, -34, -48, -15, -11, -34, -35, -1, -2, 2, 0, -8, -6, -4, -2, -2, -8, -10, -14, -10, -15, -13, -15, -16, -18, -15, -7, -6, -22, -24, -1, 3, 11, 7, -6, -27, -4, -2, -12, -20, -9, -37, -15, -36, -29, -34, -39, -33, -48, -18, -12, -32, -34, -1, -1, -3, -3, -11, -13, -6, -6, -6, -16, -16, -23, -13, -29, -26, -27, -29, -28, -29, -14, -11, -38, -41, -3, 0, 8, 4, -9, -21, -6, -4, -8, -18, -13, -32, -15, -34, -27, -28, -37, -34, -36, -16, -12, -36, -39, -2, 3, 15, 9, -6, -30, -4, -2, -12, -22, -10, -42, -16, -39, -29, -37, -44, -36, -53, -19, -13, -35, -37, -1, -5, 2, -3, -18, -14, -8, -8, -2, -20, -22, -34, -18, -33, -28, -34, -36, -42, -35, -15, -14, -55, -59, -4, 6, 21, 14, -2, -38, -2, 0, -16, -24, -4, -48, -15, -48, -29, -36, -53, -35, -60, -21, -13, -29, -30, 0, 1, 4, 3, -3, -12, -3, -1, -6, -9, -5, -15, -7, -18, -14, -16, -19, -15, -21, -10, -6, -15, -16, -1, -1, 1, 0, -5, -6, -3, -2, -2, -7, -7, -11, -6, -12, -11, -12, -13, -14, -13, -6, -6, -17, -18, -1, -10, -7, -11, -28, -5, -10, -12, 4, -23, -35, -34, -22, -32, -38, -36, -35, -55, -29, -15, -17, -78, -82, -7, -11, -8, -12, -30, -5, -12, -13, 4, -24, -38, -35, -24, -34, -41, -39, -37, -59, -30, -16, -18, -82, -88, -7, -1, -2, -2, -2, 1, -1, -2, 1, -1, -3, -1, -1, -1, -3, -2, -1, -4, 0, -1, -1, -7, -7, -2])
+  L = integer_lattice(B, gram = G)
+  f = matrix(QQ, degree(L), degree(L), [-1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0; 0 -1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0; 0 0 -1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0; 0 0 0 -1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0; 0 0 0 0 -1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0; 0 0 0 0 0 -1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0; 0 0 0 0 0 0 -1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0; 0 0 0 0 0 0 0 -1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0; 0 0 0 0 0 0 0 0 -1 0 0 0 0 0 0 0 0 0 0 0 0 0 0; 0 0 0 0 0 0 0 0 0 -1 0 0 0 0 0 0 0 0 0 0 0 0 0; 0 0 0 0 0 0 0 0 0 0 -1 0 0 0 0 0 0 0 0 0 0 0 0; 0 0 0 0 0 0 0 0 0 0 0 -1 0 0 0 0 0 0 0 0 0 0 0; 0 -1 0 0 -1 0 0 -1 0 0 -1 -1 1 0 0 0 0 0 0 0 0 0 0; 0 -1 -1 0 -1 0 -1 -1 -1 0 0 -1 0 1 0 0 0 0 0 0 0 0 0; 0 0 0 0 -1 -1 -1 0 -1 0 0 -1 0 0 1 0 0 0 0 0 0 0 0; 0 0 0 0 -1 0 0 -1 0 -1 -1 0 0 0 0 1 0 0 0 0 0 0 0; -1 0 -1 -1 -1 -1 -1 0 0 0 -1 0 0 0 0 0 1 0 0 0 0 0 0; 0 0 0 0 -1 0 0 -1 -1 0 -1 0 0 0 0 0 0 1 0 0 0 0 0; 0 0 0 0 0 -1 0 -1 -1 0 0 0 0 0 0 0 0 0 1 0 0 0 0; 0 0 0 0 0 -1 0 0 -1 0 0 0 0 0 0 0 0 0 0 1 0 0 0; -1 0 -1 -1 0 0 -1 0 -1 -1 -1 0 0 0 0 0 0 0 0 0 1 0 0; -1 0 -1 -1 0 -1 -1 0 -1 -1 -1 0 0 0 0 0 0 0 0 0 0 1 0; 0 0 0 0 0 0 -1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1])
+  C = coinvariant_lattice(L, f) # This is the D_12^+(2) lattice
+  l = vectors_of_square_and_divisibility(L, C, [(2, 1), (10, 2)])
+  @test length(l) == 12
+  @test all(a -> a[2:3] == (10, 2), l)
+
+  E8 = rescale(root_lattice(:E, 8), 1//2)
+  l = vectors_of_square_and_divisibility(E8, Dict(1//2 => [1]))
+  @assert length(l) == 120 # Number of roots in E_8
+end
+
+@testset "Fix extended ADE lattices" begin
+  for n in 1:6
+    _, v = Hecke.extended_ade(:A, n)
+    @test all(isone, v)
+  end
+  for n in 4:10
+    _, v = Hecke.extended_ade(:D, n)
+    @test all(isone, view(v, 1:1, 1:3))
+    @test all(==(2), view(v, 1:1, 4:n))
+    @test isone(v[1, n+1])
+  end
+end
+
+@testset "Enumeration of even root lattices" begin
+  rl = Vector{ZZLat}[root_lattices(i) for i in 1:9]
+  @test length.(rl) == [1, 2, 3, 6, 9, 16, 24, 40, 58]
+
+  rs6 = Set.(root_symbols(6))
+  rl6 = Set.(first.(root_lattice_recognition.(root_lattices(6))))
+  @test issetequal(rs6, rl6)
+end
+
+@testset "Neighbors" begin
+  L = integer_lattice(gram = matrix(QQ, 3, 3, [2, 1, -1, 1, 2, -1, -1, -1, 8]))
+  N = neighbours(L, 3)
+  @test length(N) == 2
+  @test !is_isometric(N[1], N[2])
+  @test index(L, intersect(L, N[1])) == 3
+  @test index(L, intersect(L, N[2])) == 3
+end
+
+@testset "Shortest vectors sublattice" begin
+  L = integer_lattice(gram = matrix(QQ, 3, 3, [2,0,0,0,2,1,0,1,6]))
+  @test shortest_vectors_sublattice(L) == lattice(ambient_space(L), ZZ[1 0 0; 0 1 0])
 end

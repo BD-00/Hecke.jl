@@ -255,4 +255,28 @@
   A = Hecke.QuaternionAlgebra(QQ, QQ(-1), QQ(-1))
   M = matrix_algebra(QQ, A, 2)
   @test isone(inv(one(M)))
+
+  # An aliasing bug causing a crash, fixed in PR 1951
+  Qx, x = QQ[:x]
+  K, a = number_field(x^4 + 3 * x^2 + 1, :a)
+  c = [K[0 0 -1 0; 1//2*a^3+a-1//2 -1//2*a^3-a+1//2 1 0; 0 0 0 0; 0 0 0 0],
+       K[0 0 0 -1; 1//2*a^3+a+1//2 1//2*a^3+a+1//2 0 1; 0 0 0 0; 0 0 0 0]]
+  matrix_algebra(K, c)
+
+  let # iteration
+    k = GF(9)
+    m = matrix_algebra(k, 2)
+    c = @inferred collect(m)
+    @test length(c) == 9^4
+    @test allunique(c)
+    m = matrix_algebra(k, 0)
+    c = @inferred collect(m)
+    @test c == [zero(m)]
+  end
+
+  let # 2208
+    b1 = matrix(QQ, [1 0 0 0; 0 1 0 0; 0 0 1 0; 0 0 0 1]); b2 = matrix(QQ, [0 1 -1 -1; 0 2 0 0; 0 0 2 0; 0 0 0 2]);
+    QR = matrix_algebra(QQ, [b1,b2]);
+    @test is_one(Hecke.denominator_of_structure_constant_table(QR) )
+  end
 end

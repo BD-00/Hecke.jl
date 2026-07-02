@@ -19,7 +19,7 @@ function _local_factor_dyadic(L::HermLat, p)
   val = div(valscale, 2)
   if !iszero(val)
     s = elem_in_nf(uniformizer(p))
-    L = rescale(L, s^(-val))
+    L = rescale(L, s^(-val);cached=false)
   end
 
   G = _genus_symbol_kirschmer(L, p)::Vector{Tuple{Int, Int, Bool, Int, elem_type(K)}}
@@ -158,7 +158,7 @@ function _local_factor_generic(L::HermLat, p)
     @assert all(sign(t, rlp[i]) == sign(sa, rlp[i]) for i in 1:length(rlp))
     ss = ss * t
   end
-  L = rescale(L, ss)
+  L = rescale(L, ss; cached=false)
 
   chain = typeof(L)[L]
   ok, LL = is_maximal_integral(L, p)
@@ -244,7 +244,7 @@ function local_factor(L::HermLat, p)
     mi = ncols(G[i])
     ri = sum(ncols(G[j]) for j in (i + 1):length(s); init = 0)
     if ram
-      N = N - div(s[i], 2) * mi^2
+      N = N - fdiv(ZZ(s[i]), ZZ(2)) * mi^2 # s[i] might be negative, so choose the right division
       if isodd(s[i])
         N = N - (mi + 1) * div(mi, 2)
         f = divexact(f, group_order("Sp", mi, q))
@@ -310,12 +310,16 @@ end
 
 Given a definite hermitian lattice `L`, return the mass of its genus.
 """
-function mass(L::HermLat)
+@attr QQFieldElem function mass(L::HermLat)
   @req is_definite(L) "Lattice must be definite"
   m = rank(L)
   if m == 0
     return one(QQFieldElem)
   end
+  # rescale integral
+  s = denominator(scale(L))
+  L = rescale(L, s; cached=false)
+
 
   lm = local_mass(L)
 
