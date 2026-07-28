@@ -1,5 +1,11 @@
 #Hecke.mod changed locally in GenOrd/Ideal.jl!!!
 
+################################################################################
+#
+#  1+p/1+p^k
+#
+################################################################################
+
 #rational function fields over Fp
 
 @doc raw"""
@@ -238,7 +244,7 @@ end
 
 #TODO: How to distinguish GenOrdIdl for function and number fields in type declarations?
 
-function one_unit_quotient(P::Hecke.GenOrdIdl, k::Int)
+function one_unit_quotient(P::Hecke.GenOrdIdl, k::Int)::Tuple{Vector{Hecke.GenOrdElem}, ZZMatrix}
   @req k > 0 "k must be greater than zero"
   @req is_prime(P) "P must be a prime ideal"
 
@@ -316,6 +322,7 @@ function group_extension(P::Hecke.GenOrdIdl, a::Int, b::Int, _gens_right, _rels_
   @assert valuation(ideal(gen_I), P) == a #test
   
   P_pow_b = P^b
+  Mb = basis_matrix(P_pow_b)
   P_pow_diff = P^(b-a)
   M = basis_matrix(P_pow_diff)
   if f!= n #test
@@ -359,8 +366,8 @@ function group_extension(P::Hecke.GenOrdIdl, a::Int, b::Int, _gens_right, _rels_
     @assert iszero(y) || !(y in P^b) #test, change if y not zero
     #Given the isomorphism O/P^(b-a) -> P^a/P^b, z -> gen_I * z, 
     #compute a preimage of y = gen_I * z mod P^(b-a) via (Mrep|M) * (coord(z),_)^T = y:
-    A = vcat(Mrep, M)
-    coord_y = [numerator(x) for x in coordinates(y)]
+    A = vcat(Mrep, Mb)
+    coord_y = [numerator(x) for x in coordinates(y)] #TODO: base_ring(O).(coordinates(y))
     for v in coordinates(y) #test
       @assert isone(denominator(v))
     end
@@ -370,10 +377,9 @@ function group_extension(P::Hecke.GenOrdIdl, a::Int, b::Int, _gens_right, _rels_
     w = gen_I*z
     @assert w in P^a#test
     @assert iszero(w) || !(w in P^b)#test
-    @assert w - y in P^(b-a) #test
+    @assert w - y in P^b #test
     if iszero(z)
-      @show i, 0#test
-      @assert y in P^b#test -> prblem here!!!
+      @assert y in P^b
       Hecke.test_relation(_gens, _rels, i, P^b)
       continue
     end
@@ -391,9 +397,11 @@ function group_extension(P::Hecke.GenOrdIdl, a::Int, b::Int, _gens_right, _rels_
       d_i = degree(M[j,j])
       z_i = z_coord[j]
       @assert degree(z_i) < d_i #test
-      coeff_i = coefficients(z_i) #order: constant coeff to leading coeff
+      #coefficients of coordinate to B[j] in k:
+      #TODO: coeff_i = coefficients(z_i) #order: constant coeff to leading coeff
       _i = 0 #test whether generators are matching
-      for h_j in coeff_i
+      for s in 0:d_i-1 #Problem with gen_idx when deg(h_j) < d_i using coefficients()
+        h_j = coeff(z_i, s)
         #@show gen_idx, 1
         if iszero(h_j)
           gen_idx += l
@@ -403,8 +411,6 @@ function group_extension(P::Hecke.GenOrdIdl, a::Int, b::Int, _gens_right, _rels_
           for Fp_idx in 0:l-1
             #@show gen_idx, 2
             @assert _gens[gen_idx] == _gens_left[gen_idx-nc] #test
-            #@show _gens[gen_idx]
-            #@show 1+Fp_basis[Fp_idx+1]*x^_i*gen_I*B[i]
             @assert _gens[gen_idx] == 1+Fp_basis[Fp_idx+1]*x^_i*gen_I*B[j] #test whether generators are matching
             lambda = coeff(h_j, Fp_idx)
             !iszero(lambda) && (_rels[i, gen_idx] = lift(ZZ, lambda))
@@ -413,17 +419,327 @@ function group_extension(P::Hecke.GenOrdIdl, a::Int, b::Int, _gens_right, _rels_
         end
         _i += 1 #test whether generators are matching
       end
+      #gen_idx += d_i - length(coeff_i) #when using coefficients()
     end
     Hecke.test_relation(_gens, _rels, i, P_pow_b) #test 
-    Hecke.test_relation_matrix(_gens, _rels[1:i, :], P_pow_b)
+    #Hecke.test_relation_matrix(_gens, _rels[1:i, :], P_pow_b) #test
   end
   Hecke.test_relation_matrix(_gens, _rels, P_pow_b)
   return _gens, _rels
 end
 
+### Sparse version ###
+function one_unit_quotient(::Type{SMat}, P::Hecke.GenOrdIdl, k::Int)::Tuple{Vector{Hecke.GenOrdElem}, SMat}
+  @req k > 0 "k must be greater than zero"
+  @req is_prime(P) "P must be a prime ideal"
+
+  O = order(P)
+  n = degree(O)
+
+  k == 1 && return Hecke.GenOrdElem[], zero_matrix(ZZ, 0, 0) #trivial group
+
+  B = basis(O)
+
+  Fx = base_ring(O)
+  x = gen(Fx)
+  Fq = base_ring(Fx)
+  p = characteristic(Fq)
+  Fp_basis = basis(Fq) #[1, o, o^2, ...] indexed by 0, 1, 2, ... when using coeff(a, i) 
+  l = degree(Fq) #q = p^l
+
+  f = degree(P)
+  gen_P = P.gen_two
+  @assert isone(valuation(ideal(gen_P), P)) #test
+  
+  M = basis_matrix(P)
+  if f!= n #test
+    @assert isone(M[f+1, f+1])
+  end
+  d = 0
+  _gens = Hecke.GenOrdElem[]
+  for i = 1:f
+    d_i = degree(M[i, i])
+    omega_i = gen_P*B[i]
+    append!(_gens, [1+c*x^j*omega_i for j in 0:d_i-1 for c in Fp_basis]) #TODO: test and write better
+    d += d_i
+  end
+  
+  _rels = diagonal_matrix(SMat, ZZ, p, d*l) #TODO: make sure that p in ZZ
+  Hecke.test_relation_matrix(_gens, _rels, P^2)
+
+  #for k = 2, 1+P/1+P^k can be computed directly:
+  k == 2 && return _gens, _rels
+
+  steps = Int(ceil(log2(k)))
+
+  b = 2
+  for i in 2:steps-1
+    #compute 1+P/1+P^(2^i)
+    a=b
+    b*=2
+    _gens, _rels = Hecke.group_extension(P, a, b, _gens, _rels)
+    Hecke.test_relation_matrix(_gens, _rels, P^b) #test
+  end
+  _gens, _rels = group_extension(P, b, k, _gens, _rels)
+  Hecke.test_relation_matrix(_gens, _rels, P^k) #test
+  return _gens, _rels #TODO: output snf here?
+end
+
+function group_extension(::Type{SMat}, P::Hecke.GenOrdIdl, a::Int, b::Int, _gens_right, _rels_right)
+  @req a < b <= 2*a "b must lie between a and 2*a (not necess. strictly)"
+  
+  @show a,b #test
+  
+  O = order(P)
+  n = degree(O)
+
+  B = basis(O)
+
+  Fx = base_ring(O)
+  x = gen(Fx)
+  Fq = base_ring(Fx)
+  p = characteristic(Fq)
+  Fp_basis = basis(Fq) #[1, o, o^2, ...] indexed by 0, 1, 2, ... when using coeff(a, i) 
+  l = degree(Fq) #q = p^l
+
+  f = degree(P)
+  gen_I = P.gen_two^a
+  @assert valuation(ideal(gen_I), P) == a #test
+  
+  P_pow_b = P^b
+  Mb = basis_matrix(P_pow_b)
+  P_pow_diff = P^(b-a)
+  M = basis_matrix(P_pow_diff)
+  if f!= n #test
+    @assert isone(M[f+1, f+1]) 
+  end
+  d = 0
+  _gens_left = Hecke.GenOrdElem[]
+  for i = 1:f
+    d_i = degree(M[i, i])
+    omega_i = gen_I*B[i]
+    _gens_left = append!(_gens_left, [1+c*x^j*omega_i for j in 0:d_i-1 for c in Fp_basis]) #TODO: test and write better
+    d += d_i
+  end
+  
+  _rels_left = diagonal_matrix(SMat, ZZ, p, d*l) #TODO: make sure that p in ZZ
+  _rels = block_diagonal_matrix([_rels_right, _rels_left])
+  _gens = append!(_gens_right, _gens_left) #changes _gens_right!!!
+
+  #Compose relation on the right to an element in 1+P^a and translate to the left mod P^b, so
+  #for gens g_1,...,g_m and entries r_1, ..., r_m compute \prod g_j^r_j mod P^b:
+  nr, nc = size(_rels_right)#TODO: check whether nc necessary
+  @assert _rels[1:nr, 1:nc] == _rels_right #test
+  #Hecke.test_relation_matrix(_gens, _rels[nc+1:end, :], P^b) #test, syntax doesn't work for sparse matrices
+  for i = nc+1:nr #test
+    Hecke.test_relation(_gens, _rels, i, P^b)
+  end
+  Mrep = representation_matrix(gen_I) #representation matrix for x -> (gen_P)^a * x
+  y = one(O)
+  for i = 1:nr
+    @show i
+    y = one(O)
+    for idx = 1:length(_rels_right[i].pos)
+      r_j = _rels_right[i].values[idx]
+      y*=mod(_gens_right[j]^r_j, P_pow_b)
+    end
+
+    #Go over to P^a/P^b:
+    y = mod(y-1, P_pow_b)
+    iszero(y) && Hecke.test_relation(_gens, _rels, i, P^b)#test
+    #iszero(y) && continue #correct??? y = 0 mod P^b <=> z = 0 mod P^(b-a)
+    @assert y in P^a #test
+    @assert iszero(y) || !(y in P^b) #test, change if y not zero
+    #Given the isomorphism O/P^(b-a) -> P^a/P^b, z -> gen_I * z, 
+    #compute a preimage of y = gen_I * z mod P^(b-a) via (Mrep|M) * (coord(z),_)^T = y:
+    A = vcat(Mrep, Mb)
+    coord_y = [numerator(x) for x in coordinates(y)]
+    for v in coordinates(y) #test
+      @assert isone(denominator(v))
+    end
+    vec_z = solve(A, coord_y)[1:n]
+    z = O(vec_z) #preimage of y in O
+    z = mod(z, P_pow_diff) #z mod P^(b-a)
+    w = gen_I*z
+    @assert w in P^a#test
+    @assert iszero(w) || !(w in P^b)#test
+    @assert w - y in P^b #test
+    if iszero(z)
+      @assert y in P^b
+      Hecke.test_relation(_gens, _rels, i, P^b)
+      continue
+    end
+
+    #Complete relation in _rels[i,:] w.r.t. _gens_left:
+    z_coord = [numerator(x) for x in coordinates(-z)]
+    for v in coordinates(-z) #test
+      @assert isone(denominator(v))
+    end
+    for j = f+1:n #test
+      @assert z_coord[j] == 0
+    end
+    gen_idx = nc+1 #iterate over _left_gens in (the right part of) _gens
+    for j = 1:f
+      d_i = degree(M[j,j])
+      z_i = z_coord[j]
+      @assert degree(z_i) < d_i #test
+      #coefficients of coordinate to B[j] in k:
+      #TODO: coeff_i = coefficients(z_i) #order: constant coeff to leading coeff
+      _i = 0 #test whether generators are matching
+      for s in 0:d_i-1 #Problem with gen_idx when deg(h_j) < d_i using coefficients()
+        h_j = coeff(z_i, s)
+        #@show gen_idx, 1
+        if iszero(h_j)
+          gen_idx += l
+          _i += 1
+          continue
+        else
+          for Fp_idx in 0:l-1
+            #@show gen_idx, 2
+            @assert _gens[gen_idx] == _gens_left[gen_idx-nc] #test
+            @assert _gens[gen_idx] == 1+Fp_basis[Fp_idx+1]*x^_i*gen_I*B[j] #test whether generators are matching
+            lambda = coeff(h_j, Fp_idx)
+            !iszero(lambda) && (_rels[i, gen_idx] = lift(ZZ, lambda))
+            gen_idx +=1
+          end
+        end
+        _i += 1 #test whether generators are matching
+      end
+      #gen_idx += d_i - length(coeff_i) #when using coefficients()
+    end
+    Hecke.test_relation(_gens, _rels, i, P_pow_b) #test 
+    #Hecke.test_relation_matrix(_gens, _rels[1:i, :], P_pow_b) #test
+  end
+  Hecke.test_relation_matrix(_gens, _rels, P_pow_b)
+  return _gens, _rels
+end
+
+################################################################################
+#
+#  (O/P^k)*
+#
+################################################################################
+
+#Compute the multiplicative group (O/P^k)* using the exact sequence 1 -> 1+P/1+P^k -> (O/P^k)* -> (O/P)* -> 1.
+
+#Order of (O/P)* is q^deg(P)-1, where deg(P) = f(P|<min(P)>)*deg(min(P)).
+#Note that degree(p) outputs the inertia degree.
+
+
+#Find generator g\in O with <g mod p> = (O/P)*:
+
+#Find a random element in O\P that is reduced mod P
+#Idea: Coordinates c_i = 0 for i > inertia degree and deg(c_i) < deg(min(P)) otherwise (see diagonal of basis_matrix(P)) 
+function rand_elem_mod_P(P::GenOrdIdl, minP = minimum(P))
+  #TODO: type assertions
+  O = order(P)
+  n = degree(O)
+  f = degree(P)
+  dmin = degree(minP)
+  R = parent(minP) #Fq[x]
+  _coord = [rand(R, 0:dmin-1) for _ in 1:f]
+  return O(_coord)
+end
+
+
+function primitive_elem_residue_field(P::GenOrdIdl)
+  O = order(P)
+  minP = minimum(P)
+  dmin = degree(minP)
+  f = degree(P)
+  d = f*dmin
+  q = size(constant_field(O.F))
+  M = q^d-1 #order of (O/P)*
+  fM = factor(M)
+
+  root_found = false
+  counter = 0
+  while counter < 10 #TODO: check probability of success
+    @show counter += 1
+    root_found = true
+    g = rand_elem_mod_P(P, minP)
+    
+    #is_primitive_root(g), inspired by Misc/UnitsModM.jl
+    for (p,_) in fM
+      if powermod(g,divexact(M,p), P) == 1 #too slow :/ -> square and multiply
+        root_found = false
+        break
+      end
+    end
+    if root_found
+      return true, g
+    end
+  end
+  return false, zero(O)
+end
+
+#TODO: generator with "good" properties?
+
+#Given element a in 1+P \subseteq O mod P^k, find it's representation in the ZZ-module.
+
+
+#Use 1 -> 1+P/1+P^k -> (O/P^k)* -> (O/P)* -> 1 and g\in O to find missing relation.
+
+
+
+################################################################################
+#
+#  Auxiliary
+#
+################################################################################
+
+
+### auxiliary stuff TODO: move to Sparse ###
+function diagonal_matrix(::Type{SMat}, R::Ring, x::T, n::Int)::SMat{T} where T
+  A = sparse_matrix(R)
+  A.c = n
+  for i in 1:n
+    push!(A, sparse_row(R, [(i, x)]))
+  end
+  return A
+end
+
+#compute mod(f^e, I) using square and multiply
+#inspired by powermod in GenOrd/GenOrd.jl
+function Hecke.powermod(a::Hecke.GenOrdElem, e::ZZRingElem, I::Hecke.GenOrdIdl)
+  @assert e > 0 #negative exponents not needed for the moment
+  r = one(parent(a))
+  e == 0 && return r
+  for i = bits(e)
+    r *= r
+    if i
+      r *= a
+    end
+    r = mod(r, I)
+  end
+  return r
+end
+
+#=
+function pow(I::Hecke.GenOrdIdl, e::ZZRingElem)#only better for high exponents
+  @assert e > 0 #negative exponents not needed for the moment
+  O = order(I)
+  J = ideal(O, O(1)) #TODO: better syntax available?
+  e == 0 && return J
+  for i = bits(e)
+    J *= J
+    if i
+      J *= I
+    end
+  end
+  return J
+end
+=#
+
+################################################################################
+#
+#  Test functions
+#
+################################################################################
+
 #test whether relation = 1 mod I
 function test_relation(_gens::Vector{<:Hecke.GenOrdElem}, _rels::ZZMatrix, i::Int, I)
-  @show i
+  #@show i
   y = one(parent(_gens[1]))
   for j = 1:size(_rels)[2]
       y*=_gens[j]^_rels[i, j]
@@ -436,7 +752,7 @@ function test_relation_matrix(_gens::Vector{<:Hecke.GenOrdElem}, _rels::ZZMatrix
   y = one(parent(_gens[1]))
   m, n = size(_rels)
   for i = 1:m
-    @show i
+    #@show i
     y = one(parent(_gens[1]))
     for j = 1:n
         y*=_gens[j]^_rels[i, j]
@@ -445,6 +761,34 @@ function test_relation_matrix(_gens::Vector{<:Hecke.GenOrdElem}, _rels::ZZMatrix
   end
 end
 
+
+### Sparse tests ###
+#test whether relation = 1 mod I
+function test_relation(_gens::Vector{<:Hecke.GenOrdElem}, _rels::SMat{ZZRingElem}, i::Int, I)
+  y = one(parent(_gens[1]))
+  for idx in 1:length(_rels[i].pos)
+      j = _rels[i].pos[idx]
+      y*=_gens[j]^_rels[i].values[idx]
+  end
+  @assert isone(mod(y, I))
+end
+
+#test whether relation = 1 mod I
+function test_relation_matrix(_gens::Vector{<:Hecke.GenOrdElem}, _rels::SMat{ZZRingElem}, I)
+  y = one(parent(_gens[1]))
+  m = nrows(_rels)
+  for i = 1:m
+    y = one(parent(_gens[1]))
+    for idx in 1:length(_rels[i].pos)
+        j = _rels[i].pos[idx]
+        y*=_gens[j]^_rels[i].values[idx]
+    end
+    @assert isone(mod(y, I))
+  end
+end
+
+
+### Polynomial tests ###
 #check whether polynomial described by the relation in row i is congruent to 1 mod f^a
 function test_relation(_gens::Vector{T}, _rels::ZZMatrix, i::Int, f_pow_a) where T <: PolyRingElem{<:FinFieldElem}
   l = length(_gens)
