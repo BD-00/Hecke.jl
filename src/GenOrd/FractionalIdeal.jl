@@ -47,27 +47,20 @@ end
 #
 ################################################################################
 
-function assure_has_basis_matrix(a::GenOrdFracIdl)
-  if isdefined(a, :basis_matrix)
-    return nothing
-  end
-  if !isdefined(a, :num)
-    error("Not a valid fractional ideal")
-  end
+function assure_has_basis_matrix(a::GenOrdFracIdl{S, T}) where {S, T}
+  isdefined(a, :basis_matrix) && return nothing
+  isdefined(a, :num) || error("Not a valid fractional ideal")
 
-  k = base_field(function_field(order(a)))
-
+  k = base_field(field(order(a)))::base_field_type(S)
   a.basis_matrix = divexact(change_base_ring(k, basis_matrix(numerator(a; copy = false))), k(denominator(a)))
   return nothing
 end
 
-function Hecke.basis_matrix(x::GenOrdFracIdl; copy::Bool = true)
+function Hecke.basis_matrix(x::GenOrdFracIdl{S, T}; copy::Bool = true) where {S, T}
   assure_has_basis_matrix(x)
-  if copy
-    return deepcopy(x.basis_matrix)
-  else
-    return x.basis_matrix
-  end
+
+  M = x.basis_matrix::dense_matrix_type(elem_type(base_field_type(S)))
+  return copy ? deepcopy(M) : M
 end
 
 
@@ -114,8 +107,8 @@ function assure_has_numerator_and_denominator(a::GenOrdFracIdl{S, T}) where {S, 
     error("Not a valid fractional ideal")
   end
 
-  B, d = integral_split(basis_matrix(a, copy = false), coefficient_ring(order(a)))
-  a.num = GenOrdIdl(order(a), B)
+  B, d = integral_split(basis_matrix(a; copy = false), coefficient_ring(order(a)))
+  a.num = ideal(order(a), B)
   a.den = d::elem_type(T)
   return nothing
 end
@@ -158,6 +151,8 @@ Base.in(x::GenOrdElem, A::GenOrdFracIdl) = data(x) in A
 
 
 function Base.prod(a::GenOrdFracIdl{S, T}, b::GenOrdFracIdl{S, T}) where {S, T}
+  @req order(a) === order(b) "Ideals must have same order"
+
   A = numerator(a; copy = false)*numerator(b; copy = false)
   return GenOrdFracIdl(A, denominator(a; copy = false)*denominator(b; copy = false))
 end
@@ -167,22 +162,24 @@ function Base.:*(a::GenOrdFracIdl{S, T}, b::GenOrdFracIdl{S, T}) where {S, T}
 end
 
 function Base.:(+)(a::GenOrdFracIdl{S, T}, b::GenOrdFracIdl{S, T}) where {S, T}
+  @req order(a) === order(b) "Ideals must have same order"
+
   den_a, den_b = denominator(a; copy=false), denominator(b; copy=false)
   d = lcm(den_a, den_b)
 
-  I  = order(a)(divexact(d, den_a)) * numerator(a; copy=false)
-  J  = order(b)(divexact(d, den_b)) * numerator(b; copy=false)
-
+  I = _ideal_by_scaling_matrix(divexact(d, den_a), numerator(a; copy=false))
+  J = _ideal_by_scaling_matrix(divexact(d, den_b), numerator(b; copy=false))
   return GenOrdFracIdl(I + J, d)
 end
 
 function Base.intersect(a::GenOrdFracIdl{S, T}, b::GenOrdFracIdl{S, T}) where {S, T}
+  @req order(a) === order(b) "Ideals must have same order"
+
   den_a, den_b = denominator(a; copy=false), denominator(b; copy=false)
   d = lcm(den_a, den_b)
 
-  I  = order(a)(divexact(d, den_a)) * numerator(a; copy=false)
-  J  = order(b)(divexact(d, den_b)) * numerator(b; copy=false)
-
+  I = _ideal_by_scaling_matrix(divexact(d, den_a), numerator(a; copy=false))
+  J = _ideal_by_scaling_matrix(divexact(d, den_b), numerator(b; copy=false))
   return GenOrdFracIdl(intersect(I, J), d)
 end
 
@@ -263,29 +260,51 @@ end
 #
 ################################################################################
 
-function Base.:*(A::GenOrdIdl, B::GenOrdFracIdl)
+function Base.:*(A::GenOrdIdl{S, T}, B::GenOrdFracIdl{S, T}) where {S, T}
+  @req order(A) === order(B) "Ideals must have same order"
   return GenOrdFracIdl(A*numerator(B; copy = false), denominator(B; copy = false))
 end
 
-function Base.:*(A::GenOrdFracIdl, B::GenOrdIdl)
+function Base.:*(A::GenOrdFracIdl{S, T}, B::GenOrdIdl{S, T}) where {S, T}
+  @req order(A) === order(B) "Ideals must have same order"
   return GenOrdFracIdl(numerator(A; copy = false)*B, denominator(A; copy = false))
 end
 
-function Base.:*(x::GenOrdElem, y::GenOrdFracIdl)
-  #parent(x) !== order(y) && error("GenOrds of element and ideal must be equal")
-  return GenOrdIdl(parent(x), x) * y
+function Base.:*(x::GenOrdElem, I::GenOrdFracIdl)
+  O = order(I)
+  @req parent(x) === O "Element and ideal must belong to the same order"
+
+  if _is_in_base_field(x)
+    c, den = integral_split(coeff(data(x), 0), base_ring(O))
+    @assert is_one(den)
+
+    num = _ideal_by_scaling_matrix(c, numerator(I; copy = false))
+    return GenOrdFracIdl(num, denominator(I; copy = false))
+  end
+
+  return ideal(O, x) * I
 end
 
-function Base.:*(f::Generic.FunctionFieldElem, O::GenOrd)
-  @assert parent(f) == O.F
-  f_num, f_denom = integral_split(f, O)
-  return GenOrdFracIdl(ideal(O, f_num), f_denom)
+function Base.:*(x::FieldElem, O::GenOrd)
+  @req parent(x) === field(O) "Element must lie in the field of the order"
+  x_num, x_denom = integral_split(x, O)
+  return GenOrdFracIdl(ideal(O, x_num), x_denom)
 end
 
+function Base.:*(c::Generic.RationalFunctionFieldElem, I::GenOrdFracIdl)
+  @req parent(c) === base_field(function_field(order(I))) "scalar must lie in the base field of the function field"
+  return GenOrdFracIdl(order(I), c * basis_matrix(I; copy = false))
+end
 
+# multiplying by field element always returns fractional ideal (for type stability)
+function Base.:*(c::Generic.RationalFunctionFieldElem, I::GenOrdIdl)
+  return c * fractional_ideal(I)
+end
 
-Base.:*(x::GenOrdFracIdl, y::GenOrdElem) = y * x
-Base.:*(x::GenOrd, y::Generic.FunctionFieldElem) = y * x
+Base.:*(I::GenOrdFracIdl, x::GenOrdElem) = x * I
+Base.:*(O::GenOrd, f::FieldElem) = f * O
+Base.:*(I::GenOrdFracIdl, c::Generic.RationalFunctionFieldElem) = c * I
+Base.:*(I::GenOrdIdl, c::Generic.RationalFunctionFieldElem) = c * I
 
 ################################################################################
 #
@@ -372,8 +391,15 @@ function Hecke.colon(I::GenOrdFracIdl, J::GenOrdIdl)
 end
 
 function inv(A::GenOrdFracIdl)
+  # inv(N/d) = d * inv(N): factor the scalar denominator out
+  #   instead of routing the whole fractional ideal through colon
+  #   which involves O(denominator) and extra ideal arithmetic
   O = order(A)
-  return colon(O(1)*O, A)
+  k = base_field(field(O))
+
+  invN = inv(numerator(A; copy = false))
+  M = k(denominator(A; copy = false)) * basis_matrix(invN; copy = false)
+  return GenOrdFracIdl(O, M)
 end
 
 Base.://(I::GenOrdFracIdl, J::GenOrdFracIdl) = colon(I, J)
