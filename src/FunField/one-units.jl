@@ -244,7 +244,7 @@ end
 
 #TODO: How to distinguish GenOrdIdl for function and number fields in type declarations?
 
-function one_unit_quotient(P::Hecke.GenOrdIdl, k::Int)::Tuple{Vector{Hecke.GenOrdElem}, ZZMatrix}
+function one_unit_quotient(P::Hecke.GenOrdIdl, k::Int)::Tuple{Vector{<:GenOrdElem}, ZZMatrix}
   @req k > 0 "k must be greater than zero"
   @req is_prime(P) "P must be a prime ideal"
 
@@ -267,9 +267,11 @@ function one_unit_quotient(P::Hecke.GenOrdIdl, k::Int)::Tuple{Vector{Hecke.GenOr
   @assert isone(valuation(ideal(gen_P), P)) #test
   
   M = basis_matrix(P)
+  #=
   if f!= n
     @assert isone(M[f+1, f+1]) #test (n only needed here)
   end
+  =#
   d = 0
   _gens = Hecke.GenOrdElem[]
   for i = 1:f
@@ -280,7 +282,7 @@ function one_unit_quotient(P::Hecke.GenOrdIdl, k::Int)::Tuple{Vector{Hecke.GenOr
   end
   
   _rels = diagonal_matrix(p, d*l) #TODO: make sure that p in ZZ
-  Hecke.test_relation_matrix(_gens, _rels, P^2)
+  #Hecke.test_relation_matrix(_gens, _rels, P^2)
 
   #for k = 2, 1+P/1+P^k can be computed directly:
   k == 2 && return _gens, _rels
@@ -293,18 +295,17 @@ function one_unit_quotient(P::Hecke.GenOrdIdl, k::Int)::Tuple{Vector{Hecke.GenOr
     a=b
     b*=2
     _gens, _rels = Hecke.group_extension(P, a, b, _gens, _rels)
-    Hecke.test_relation_matrix(_gens, _rels, P^b) #test
+    #Hecke.test_relation_matrix(_gens, _rels, P^b) #test
   end
   _gens, _rels = group_extension(P, b, k, _gens, _rels)
-  Hecke.test_relation_matrix(_gens, _rels, P^k) #test
+  #Hecke.test_relation_matrix(_gens, _rels, P^k) #test
   return _gens, _rels #TODO: output snf here?
 end
 
 function group_extension(P::Hecke.GenOrdIdl, a::Int, b::Int, _gens_right, _rels_right)
   @req a < b <= 2*a "b must lie between a and 2*a (not necess. strictly)"
   
-  @show a,b #test
-  
+  @show a,b
   O = order(P)
   n = degree(O)
 
@@ -319,7 +320,7 @@ function group_extension(P::Hecke.GenOrdIdl, a::Int, b::Int, _gens_right, _rels_
 
   f = degree(P)
   gen_I = P.gen_two^a
-  @assert valuation(ideal(gen_I), P) == a #test
+  #@assert valuation(ideal(gen_I), P) == a #test
   
   P_pow_b = P^b
   Mb = basis_matrix(P_pow_b)
@@ -344,12 +345,12 @@ function group_extension(P::Hecke.GenOrdIdl, a::Int, b::Int, _gens_right, _rels_
   #Compose relation on the right to an element in 1+P^a and translate to the left mod P^b, so
   #for gens g_1,...,g_m and entries r_1, ..., r_m compute \prod g_j^r_j mod P^b:
   nr, nc = size(_rels_right)
-  @assert _rels[1:nr, 1:nc] == _rels_right #test
-  Hecke.test_relation_matrix(_gens, _rels[nc+1:end, :], P^b) #test
+  #@assert _rels[1:nr, 1:nc] == _rels_right #test
+  #Hecke.test_relation_matrix(_gens, _rels[nc+1:end, :], P^b) #test
   Mrep = representation_matrix(gen_I) #representation matrix for x -> (gen_P)^a * x
   y = one(O)
   for i = 1:nr
-    @show i
+    #@show i
     y = one(O)
     for j = 1:nc
       r_j = _rels_right[i,j]
@@ -360,7 +361,7 @@ function group_extension(P::Hecke.GenOrdIdl, a::Int, b::Int, _gens_right, _rels_
 
     #Go over to P^a/P^b:
     y = mod(y-1, P_pow_b)
-    iszero(y) && Hecke.test_relation(_gens, _rels, i, P^b)#test
+    #iszero(y) && Hecke.test_relation(_gens, _rels, i, P^b)#test
     #iszero(y) && continue #correct??? y = 0 mod P^b <=> z = 0 mod P^(b-a)
     @assert y in P^a #test
     @assert iszero(y) || !(y in P^b) #test, change if y not zero
@@ -368,7 +369,7 @@ function group_extension(P::Hecke.GenOrdIdl, a::Int, b::Int, _gens_right, _rels_
     #compute a preimage of y = gen_I * z mod P^(b-a) via (Mrep|M) * (coord(z),_)^T = y:
     A = vcat(Mrep, Mb)
     coord_y = Fx.(coordinates(y))
-    @assert coord_y == [numerator(x) for x in coordinates(y)] #test
+    #@assert coord_y == [numerator(x) for x in coordinates(y)] #test
     vec_z = solve(A, coord_y)[1:n]
     z = O(vec_z) #preimage of y in O
     z = mod(z, P_pow_diff) #z mod P^(b-a)
@@ -384,15 +385,17 @@ function group_extension(P::Hecke.GenOrdIdl, a::Int, b::Int, _gens_right, _rels_
 
     #Complete relation in _rels[i,:] w.r.t. _gens_left:
     z_coord = Fx.(coordinates(-z))
+    #=
     @assert z_coord == [numerator(x) for x in coordinates(-z)] #test
     for j = f+1:n #test
       @assert z_coord[j] == 0
     end
+    =#
     gen_idx = nc+1 #iterate over _left_gens in (the right part of) _gens
     for j = 1:f
       d_i = degree(M[j,j])
       z_i = z_coord[j]
-      @assert degree(z_i) < d_i #test
+      #@assert degree(z_i) < d_i #test
       #coefficients of coordinate to B[j] in k:
       #TODO: coeff_i = coefficients(z_i) #order: constant coeff to leading coeff
       _i = 0 #test whether generators are matching
@@ -420,127 +423,13 @@ function group_extension(P::Hecke.GenOrdIdl, a::Int, b::Int, _gens_right, _rels_
     Hecke.test_relation(_gens, _rels, i, P_pow_b) #test 
     #Hecke.test_relation_matrix(_gens, _rels[1:i, :], P_pow_b) #test
   end
-  Hecke.test_relation_matrix(_gens, _rels, P_pow_b)
-  return _gens, _rels
-end
-
-#returns abstract maps together with map and preimage map (disc_log)
-function one_unit_quotient_with_maps(P::Hecke.GenOrdIdl, k::Int)::Tuple{Vector{Hecke.GenOrdElem}, ZZMatrix}
-  @req k > 0 "k must be greater than zero"
-  @req is_prime(P) "P must be a prime ideal"
-
-  O = order(P)
-  n = degree(O)
-
-  #TODO: k == 1 && return Hecke.GenOrdElem[], zero_matrix(ZZ, 0, 0) #trivial group
-
-  B = basis(O)
-
-  Fx = base_ring(O)
-  x = gen(Fx)
-  Fq = base_ring(Fx)
-  p = characteristic(Fq)
-  Fp_basis = basis(Fq) #[1, o, o^2, ...] indexed by 0, 1, 2, ... when using coeff(a, i) 
-  l = degree(Fq) #q = p^l
-
-  f = degree(P)
-  gen_P = P.gen_two
-  @assert isone(valuation(ideal(gen_P), P)) #test
-  
-  M = basis_matrix(P)
-  if f!= n
-    @assert isone(M[f+1, f+1]) #test (n only needed here)
-  end
-  d = 0
-  _gens = Hecke.GenOrdElem[]
-  for i = 1:f
-    d_i = degree(M[i, i])
-    omega_i = gen_P*B[i]
-    append!(_gens, [1+c*x^j*omega_i for j in 0:d_i-1 for c in Fp_basis]) #TODO: test and write better
-    d += d_i
-  end
-  
-  _rels = diagonal_matrix(p, d*l) #TODO: make sure that p in ZZ
-  Hecke.test_relation_matrix(_gens, _rels, P^2)
-
-  G = abelian_group(_rels)
-  #for k = 2, 1+P/1+P^k can be computed directly:
-  k == 2 && return _gens, _rels
-
-  steps = Int(ceil(log2(k)))
-
-  b = 2
-  for i in 2:steps-1
-    #compute 1+P/1+P^(2^i)
-    a=b
-    b*=2
-    _gens, _rels = Hecke.group_extension(P, a, b, _gens, _rels)
-    Hecke.test_relation_matrix(_gens, _rels, P^b) #test
-  end
-  _gens, _rels = group_extension(P, b, k, _gens, _rels)
-  Hecke.test_relation_matrix(_gens, _rels, P^k) #test
-  return _gens, _rels #TODO: output snf here?
-end
-
-function group_extension_with_maps(P::Hecke.GenOrdIdl, a::Int, b::Int, _gens_right, _rels_right)
-  @req a < b <= 2*a "b must lie between a and 2*a (not necess. strictly)"
-  
-  @show a,b #test
-  
-  f = degree(P)
-  O = order(P)
-  n = degree(O)
-
-  B = basis(O)
-
-  Fx = base_ring(O)
-  x = gen(Fx)
-  Fq = base_ring(Fx)
-  p = characteristic(Fq)
-  Fp_basis = basis(Fq) #[1, o, o^2, ...] indexed by 0, 1, 2, ... when using coeff(a, i) 
-  l = degree(Fq) #q = p^l
-
-  
-  gen_I = P.gen_two^a
-  @assert valuation(ideal(gen_I), P) == a #test
-  
-  if f!= n #test
-    @assert isone(M[f+1, f+1]) 
-  end
-
-  #TODO: check correctness:
-  d = degree(minimum(P))*(b-a)
-  _gens_left = [1+c*x^j*omega_i for i in 1:f for j in 0:d_i-1 for c in Fp_basis]
-  
-  _rels_left = diagonal_matrix(p, d*l) #TODO: make sure that p in ZZ
-  _rels = block_diagonal_matrix([_rels_right, _rels_left])
-  _gens = append!(_gens_right, _gens_left) #changes _gens_right!!!
-
-  #Compose relation on the right to an element in 1+P^a and translate to the left mod P^b, so
-  #for gens g_1,...,g_m and relation r = [r_1, ..., r_m] compute \prod g_j^r_j mod P^b:
-  nr, nc = size(_rels_right)
-  @assert _rels[1:nr, 1:nc] == _rels_right #test
-  Hecke.test_relation_matrix(_gens, _rels[nc+1:end, :], P^b) #test
-  #Mrep = representation_matrix(gen_I) #representation matrix for x -> (gen_P)^a * x
-  y = one(O)
-  for i = 1:nr
-    @show i
-    y = _map_abgroup_of_a_to_b(view(_rels_right, i, :), P, b, _gens_right)
-    
-    #Compute inverse of y in 1+P^a/1+P^b knowing that (1+z)^(-1) = 1-z:
-    y = 2-y
-
-    disc_log(y, P, a, b, _gens_left, view(rels, i, length(_gens)))
-    
-    Hecke.test_relation(_gens, _rels, i, P_pow_b) #test 
-  end
-  Hecke.test_relation_matrix(_gens, _rels, P_pow_b)
+  #Hecke.test_relation_matrix(_gens, _rels, P_pow_b)
   return _gens, _rels
 end
 
 #=
 ### Sparse version ###
-function one_unit_quotient(::Type{SMat}, P::Hecke.GenOrdIdl, k::Int)::Tuple{Vector{Hecke.GenOrdElem}, SMat}
+function one_unit_quotient(::Type{SMat}, P::Hecke.GenOrdIdl, k::Int)::Tuple{Vector{<:GenOrdElem}, SMat}
   @req k > 0 "k must be greater than zero"
   @req is_prime(P) "P must be a prime ideal"
 
@@ -652,7 +541,7 @@ function group_extension(::Type{SMat}, P::Hecke.GenOrdIdl, a::Int, b::Int, _gens
     y = one(O)
     for idx = 1:length(_rels_right[i].pos)
       r_j = _rels_right[i].values[idx]
-      y*=mod(_gens_right[j]^r_j, P_pow_b)
+      y*=mod(_gens_right[j]^r_j, P_pow_b) #use powermod
     end
 
     #Go over to P^a/P^b:
@@ -726,10 +615,126 @@ function group_extension(::Type{SMat}, P::Hecke.GenOrdIdl, a::Int, b::Int, _gens
 end
 =#
 
+#returns abstract maps together with map and preimage map (disc_log)
+function one_unit_quotient_with_maps(P::Hecke.GenOrdIdl, k::Int)::Tuple{Vector{Hecke.GenOrdElem}, ZZMatrix}
+  @req k > 0 "k must be greater than zero"
+  @req is_prime(P) "P must be a prime ideal"
+
+  O = order(P)
+  n = degree(O)
+
+  #TODO: k == 1 && return Hecke.GenOrdElem[], zero_matrix(ZZ, 0, 0) #trivial group
+
+  B = basis(O)
+
+  Fx = base_ring(O)
+  x = gen(Fx)
+  Fq = base_ring(Fx)
+  p = characteristic(Fq)
+  Fp_basis = basis(Fq) #[1, o, o^2, ...] indexed by 0, 1, 2, ... when using coeff(a, i) 
+  l = degree(Fq) #q = p^l
+
+  f = degree(P)
+  gen_P = P.gen_two
+  @assert isone(valuation(ideal(gen_P), P)) #test
+  
+  M = basis_matrix(P)
+  if f!= n
+    @assert isone(M[f+1, f+1]) #test (n only needed here)
+  end
+  d = 0
+  _gens = Hecke.GenOrdElem[]
+  for i = 1:f
+    d_i = degree(M[i, i])
+    omega_i = gen_P*B[i]
+    append!(_gens, [1+c*x^j*omega_i for j in 0:d_i-1 for c in Fp_basis]) #TODO: test and write better
+    d += d_i
+  end
+  
+  _rels = diagonal_matrix(p, d*l) #TODO: make sure that p in ZZ
+  Hecke.test_relation_matrix(_gens, _rels, P^2)
+
+  G = abelian_group(_rels)
+  G.rels = _rels
+  
+  #for k = 2, 1+P/1+P^k can be computed directly:
+  k == 2 && return _gens, _rels
+
+  steps = Int(ceil(log2(k)))
+
+  b = 2
+  for i in 2:steps-1
+    #compute 1+P/1+P^(2^i)
+    a=b
+    b*=2
+    _gens, _rels = Hecke.group_extension(P, a, b, _gens, _rels)
+    Hecke.test_relation_matrix(_gens, _rels, P^b) #test
+  end
+  _gens, _rels = group_extension(P, b, k, _gens, _rels)
+  Hecke.test_relation_matrix(_gens, _rels, P^k) #test
+  return _gens, _rels #TODO: output snf here?
+end
+
+function group_extension_with_maps(P::Hecke.GenOrdIdl, a::Int, b::Int, _gens_right, _rels_right)
+  @req a < b <= 2*a "b must lie between a and 2*a (not necess. strictly)"
+  
+  @show a,b #test
+  
+  f = degree(P)
+  O = order(P)
+  n = degree(O)
+
+  B = basis(O)
+
+  Fx = base_ring(O)
+  x = gen(Fx)
+  Fq = base_ring(Fx)
+  p = characteristic(Fq)
+  Fp_basis = basis(Fq) #[1, o, o^2, ...] indexed by 0, 1, 2, ... when using coeff(a, i) 
+  l = degree(Fq) #q = p^l
+
+  
+  gen_I = P.gen_two^a
+  @assert valuation(ideal(gen_I), P) == a #test
+  
+  if f!= n #test
+    @assert isone(M[f+1, f+1]) 
+  end
+
+  #TODO: check correctness:
+  d = degree(minimum(P))*(b-a)
+  _gens_left = [1+c*x^j*omega_i for i in 1:f for j in 0:d_i-1 for c in Fp_basis]
+  
+  _rels_left = diagonal_matrix(p, length(_gens_left)) #TODO: make sure that p in ZZ
+  _rels = block_diagonal_matrix([_rels_right, _rels_left])
+  _gens = append!(_gens_right, _gens_left) #changes _gens_right!!!
+
+  #Compose relation on the right to an element in 1+P^a and translate to the left mod P^b, so
+  #for gens g_1,...,g_m and relation r = [r_1, ..., r_m] compute \prod g_j^r_j mod P^b:
+  nr, nc = size(_rels_right)
+  @assert _rels[1:nr, 1:nc] == _rels_right #test
+  Hecke.test_relation_matrix(_gens, _rels[nc+1:end, :], P^b) #test
+  #Mrep = representation_matrix(gen_I) #representation matrix for x -> (gen_P)^a * x
+  y = one(O)
+  for i = 1:nr
+    @show i
+    y = _map_abgroup_of_a_to_b(view(_rels_right, i, :), P, b, _gens_right)
+    
+    #Compute inverse of y in 1+P^a/1+P^b knowing that (1+z)^(-1) = 1-z:
+    y = 2-y
+
+    disc_log(y, P, a, b, _gens_left, view(rels, i, length(_gens)))
+    
+    Hecke.test_relation(_gens, _rels, i, P_pow_b) #test 
+  end
+  Hecke.test_relation_matrix(_gens, _rels, P_pow_b)
+  return _gens, _rels
+end
+
 #disclogs
 
 #1+P^a/1+P^b -> "G"
-function disc_log(x::GenOrdElem, P::GenOrdIdl, a::Int, b::Int, gens::Vector{GenOrdElem}, g::Union{Vector{ZZRingElem}, Nemo.MatrixView{ZZMatrix, ZZRingElem}})
+function disc_log(x::GenOrdElem, P::GenOrdIdl, a::Int, b::Int, gens::Vector{<:GenOrdElem}, g::Union{Vector{ZZRingElem}, Nemo.MatrixView{ZZMatrix, ZZRingElem}})
   @req x-1 in P^a "x not in 1 + P^a" #TODO: check whether necessary
   _ngens = length(gens)
 
@@ -743,8 +748,10 @@ function disc_log(x::GenOrdElem, P::GenOrdIdl, a::Int, b::Int, gens::Vector{GenO
 
   gen_I = P.gen_two^a
   P_pow_b = P^b
+
   Mrep = representation_matrix(gen_I) #representation matrix for x -> (gen_P)^a * x
   Mb = basis_matrix(P_pow_b)
+  P_pow_diff = P^(b-a)
 
   #Go over to P^a/P^b:
   x = mod(x-1, P_pow_b)
@@ -786,27 +793,180 @@ function disc_log(x::GenOrdElem, P::GenOrdIdl, a::Int, b::Int, gens::Vector{GenO
   return g
 end
 
+
+
+#with context:
+
+function one_unit_quotient_with_ctx(P::Hecke.GenOrdIdl, k::Int)::Tuple{FinGenAbGroup, Generic.MapWithSection, Vector{<:GenOrdElem}}
+  if k == 2
+    return one_unit_quotient_a_b(P, 1, 2)
+  else
+    O = P.order
+    b = k
+    r = ceil(Int,log2(k))-1 #max r with 2^r < k
+    a = 2^r
+
+    #1+P/1+P^b from 1+P^a/1+P^b and 1+P/1+P^a
+    G1, iso1, gens1 = Hecke.one_unit_quotient_a_b(P, a, b)
+    G2, iso2, gens2 = Hecke.one_unit_quotient_with_ctx(P, a)
+
+    func_mod_a = x->mod(x, P^a)
+    func_mod_b = x->mod(x, P^b)
+
+    #1+P^a/1+P^b -> 1+P/1+P^b
+    mu1 = Hecke.map_with_preimage_from_func(func_mod_b, func_mod_b, O, O)
+    #1+P/1+P^b -> 1+P/1+P^a
+    mu2 = Hecke.map_with_preimage_from_func(func_mod_a, func_mod_b, O, O)
+    
+    func = x-> Hecke.map_G_mod_b(x, P, b, gens2)
+    ctx = Hecke.B_from_A_and_C(G1, G2, mu1, mu2, iso1, iso2, gens1, gens2, func)
+    return ctx.G3, ctx.iso3, ctx.gens3
+  end
+end
+
+#Gomputes G ≅ 1+P^a/1+P^b with generators and respective isomorphisms.
+function one_unit_quotient_a_b(P, a, b)
+  @show a,b
+  #Abelian group and generators:
+  gens, rels = gens_and_rels_a_b(P, a, b)
+  G = abelian_group(rels)
+  G.rels = rels
+
+  #G -> 1+P^a/1+P^b:
+  func = x-> map_G_mod_b(x, P, b, gens)
+
+  #1+P^a/1+P^b -> G
+  preim = x -> disc_log_a_b(x, P, a, b, G, gens)
+
+  iso = map_with_preimage_from_func(func, preim, G, P.order)
+
+  return G, iso, gens
+end
+
+function gens_and_rels_a_b(P, a, b)
+  @req a < b <= 2*a "b must lie between a and 2*a (not necess. strictly)"
+  
+  f = degree(P)
+  O = order(P)
+  n = degree(O)
+
+  B = basis(O)
+
+  Fx = base_ring(O)
+  x = gen(Fx)
+  Fq = base_ring(Fx)
+  p = characteristic(Fq)
+  Fp_basis = basis(Fq) #[1, o, o^2, ...] indexed by 0, 1, 2, ... when using coeff(a, i) 
+  l = degree(Fq) #q = p^l
+
+  
+  gen_I = P.gen_two^a
+  @assert valuation(ideal(gen_I), P) == a #test
+
+  #TODO: check correctness:
+  d = degree(minimum(P))*(b-a)
+  gens = [1+c*x^j*gen_I*B[i] for i in 1:f for j in 0:d-1 for c in Fp_basis]
+  
+  rels = diagonal_matrix(p, length(gens)) #TODO: make sure that p in ZZ
+
+  return gens, rels
+end
+
+#G -> 1+P^a/1+P^b, works for all a<b
+function map_G_mod_b(x::Union{FinGenAbGroupElem, Nemo.MatrixView{ZZMatrix, ZZRingElem}}, P::GenOrdIdl, b::Int, gens::Vector{<:GenOrdElem})
+  P_pow_b = P^b
+  _ngens = length(gens)
+  y = one(P.order)
+  
+  #Note that inv(1+x) = 1-x in 1+P^a/1+P^b
+  #y = 1+x => -y+2 = 1-x
+  for i in 1:_ngens
+    e = x[i]
+    if e > 0 #TODO: problem for e < 0
+      y = mod(y*powermod(gens[i], e, P_pow_b), P_pow_b)
+    elseif e < 0
+      y = mod(y*powermod(-gens[i]+2, -e, P_pow_b), P_pow_b)
+    end
+  end
+  return y
+end
+
+#1+P^a/1+P^b -> G
+function disc_log_a_b(x::GenOrdElem, P::GenOrdIdl, a::Int, b::Int, G::FinGenAbGroup, gens::Vector{<:GenOrdElem})
+  @req x-1 in P^a "x not in 1 + P^a" #TODO: check whether necessary
+  _ngens = length(gens)
+
+  #TODO: prime dependent part outside in a struct
+  O = order(P)
+  n = degree(O)
+  Fx = base_ring(O)
+  Fq = base_ring(Fx)
+  l = degree(Fq)
+
+  f = degree(P)
+
+  gen_I = P.gen_two^a
+  P_pow_b = P^b
+  Mrep = representation_matrix(gen_I) #representation matrix for x -> (gen_P)^a * x
+  Mb = basis_matrix(P_pow_b)
+  P_pow_diff = P^(b-a)
+
+  #Go over to P^a/P^b:
+  x = mod(x-1, P_pow_b)
+
+  #Given the isomorphism O/P^(b-a) -> P^a/P^b, y -> gen_I * y, 
+  #compute a preimage of x = gen_I * y mod P^(b-a) via
+  #(Mrep | M) * (coord(y),_)^T = coord(x):
+  A = vcat(Mrep, Mb)
+  x_coord = Fx.(coordinates(x))
+  vec_y = solve(A, x_coord)[1:n]
+  y = mod(O(vec_y), P_pow_diff) #in O/P^(b-a)
+  iszero(y) && return G()
+
+  #Compute the image of y under O/P^(b-a) -> G by decomposing coord(y):
+  y_coord = Fx.(coordinates(y))
+
+  d = degree(minimum(P))*(b-a) #TODO: check correctness
+
+  g = zeros(ZZ, _ngens)
+  idx = 1
+  for j = 1:f #iterate over coordinates in Fq[x]
+    y_j = y_coord[j]
+    @assert degree(y_j) < d #test
+    for s in 0:d-1 #iterate over powers of x
+      h_s = coeff(y_j, s) #coefficient in Fq
+      if iszero(h_s)
+        idx += l
+      else
+        for Fp_idx in 0:l-1 #elem in Fq as Fp-vector
+          lambda = coeff(h_s, Fp_idx)
+          if !iszero(lambda)
+            g[idx] = lift(ZZ, lambda)
+          end
+          idx += 1
+        end
+      end
+    end
+  end
+  @assert idx == _ngens+1
+  return G(g)
+end
+
+
 #"abelian_group(1+P/1+P^a)" -> 1+P/1+P^b
 
 #TODO: rename
-function _map_abgroup_of_a_to_b(elem::Union{Vector{ZZRingElem}, Nemo.MatrixView{ZZMatrix, ZZRingElem}}, P::GenOrdIdl, b::Int, gens::Vector{GenOrdElem})::GenOrdElem
+function _map_abgroup_of_a_to_b(elem::Union{Vector{ZZRingElem}, Nemo.MatrixView{ZZMatrix, ZZRingElem}}, P::GenOrdIdl, b::Int, gens::Vector{<:GenOrdElem})::GenOrdElem
   x = one(P.order)
   P_pow_b = P^b
   n = length(gens)
   for j in 1:n
     e = elem[j]
     if e != 0
-      x*=powermod(gens[j], e, P_pow_b)
+      x*=powermod(gens[j], e, P_pow_b) #TODO add mod P^b around mul
     end
   end
   return x
-end
-
-#Create abstract abelian group and map G->1+P^a/1+P^b with preimages from gens and rels
-
-function abelian_group_and_maps(gens::Vector{GenOrdElem}, rels::ZZMatrix, a::Int, b::Int)
-  G = abelian_group(rels)
-  @assert ngens(G) == length(gens)
 end
 
 ################################################################################

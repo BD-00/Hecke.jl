@@ -10,7 +10,7 @@ mutable struct ShExSequCtx{S, T} #TODO: declaration here with param U for maps
   iso1::Generic.MapWithSection #discrete logarithm in A
   iso2::Generic.MapWithSection #discrete logarithm in B
   iso3::Generic.MapWithSection #discrete logarithm in C
-  function ShExSequCtx(G1::S, G2::S, gens1::T, gens2::T) where {S<:FinGenAbGroup, T<:Vector}
+  function ShExSequCtx(G1::S, G2::S, gens1::T, gens2::T) where {S<:FinGenAbGroup, T<:Vector{<:GenOrdElem}}
     r = new{S, T}()
     r.G1 = G1
     r.G2 = G2
@@ -30,39 +30,42 @@ end
 
 
 #TODO: rename to group extension?
-function B_from_A_and_C(G1, G2, mu1, mu2, iso1, iso2, gens1, gens2, func::Function)
-  @assert mu1.codomain == mu2.domain
-  @assert length(gens1) == ncols(G1.rels) && length(gens2) == ncols(G2.rels)
+function B_from_A_and_C(G1, G2, mu1, mu2, iso1, iso2, gens1, gens2, func)#::Function) where {S<:FinGenAbGroup, T<:Generic.MapWithSection, U<:Vector{<:GenOrdElem}}
+  @assert codomain(mu1) == domain(mu2)
+  @assert length(gens1) == ncols(G1.rels)
+  @assert length(gens2) == ncols(G2.rels)
   Ctx = ShExSequCtx(G1, G2, gens1, gens2)
   Ctx.mu1 = mu1
   Ctx.mu2 = mu2
   Ctx.iso1 = iso1
   Ctx.iso2 = iso2
-  A, B , C = mu1.domain, mu1.codomain, mu2.codomain #TODO: necessary???
+  A, B , C = domain(mu1), codomain(mu1), codomain(mu2) #TODO: necessary???
 
   #Compose relation matrix from existing ones:
-  rels = block_diagonal_matrix(G2.rels, G1.rels)
+  rels = block_diagonal_matrix([G2.rels, G1.rels])
   preim_gens2 = [mu2.section(c) for c in gens2]
   im_gens1 = [mu1(a) for a in gens1]
   Ctx.gens3 = vcat(preim_gens2, im_gens1)
 
   #Extend relations of G2:
   len = length(im_gens1) #number of gens in A
-  r2, c2 = length(G2.rels)
+  r2, c2 = size(G2.rels)
   for i in 1:r2
     #relation in G2 -> elem in B via preimages of generators of C in B
-    b = func(preim_gens2, view(G2.rels, i, 1:c2))
+    b = func(view(G2.rels, i, 1:c2))
     a = mu1.section(b) #preimage under mu1
+    #TODO: take inverse of a to get positive coefficients in rel matrix?
     g_a = iso1.section(a) #preimage under iso1 (g_a in image by construction)
     for j = 1:len
       if !iszero(g_a[j]) #improvement with pointer possible?
-        rels[i, j] = -g_a[j]
+        rels[i, c2+j] = -g_a[j] #TODO: negative entries wanted??
       end
     end
   end
   
   #Construct abelian group from relation matrix:
   Ctx.G3 = abelian_group(rels)
+  Ctx.G3.rels = rels
 
   #Compute isomorphism between G3 and B:
   iso3_func = x->func(x.coeff) #G3 -> B
