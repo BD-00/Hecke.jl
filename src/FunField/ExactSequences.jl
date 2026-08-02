@@ -4,13 +4,13 @@ mutable struct ShExSequCtx{S, T} #TODO: declaration here with param U for maps
   G3::S
   mu1::Generic.MapWithSection #A->B with preimage (even though some might not exist)
   mu2::Generic.MapWithSection #B->C with preimage
-  gens1::T #generators in A 
-  gens2::T #generators in B
-  gens3::T #generators in C
+  gens1::T1 #generators in A 
+  gens2::T2 #generators in B
+  gens3::T3 #generators in C
   iso1::Generic.MapWithSection #discrete logarithm in A
   iso2::Generic.MapWithSection #discrete logarithm in B
   iso3::Generic.MapWithSection #discrete logarithm in C
-  function ShExSequCtx(G1::S, G2::S, gens1::T, gens2::T) where {S<:FinGenAbGroup, T<:Vector{<:GenOrdElem}}
+  function ShExSequCtx(G1::S, G2::S, gens1::T1, gens2::T2) where {S<:FinGenAbGroup, T<:Vector}
     r = new{S, T}()
     r.G1 = G1
     r.G2 = G2
@@ -28,9 +28,9 @@ end
 #func mapping a relation in G2 to an element in B
 #we compute G ≅ B.
 
-
+#TODO: check for superfluous maps (e.g. mu2?)
 #TODO: rename to group extension?
-function B_from_A_and_C(G1, G2, mu1, mu2, iso1, iso2, gens1, gens2, func)#::Function) where {S<:FinGenAbGroup, T<:Generic.MapWithSection, U<:Vector{<:GenOrdElem}}
+function B_from_A_and_C(G1, G2, mu1, mu2, iso1, iso2, gens1, gens2, func)#::Function) where {S<:FinGenAbGroup, T<:Generic.MapWithSection, U<:Vector}
   @assert codomain(mu1) == domain(mu2)
   @assert length(gens1) == ncols(G1.rels)
   @assert length(gens2) == ncols(G2.rels)
