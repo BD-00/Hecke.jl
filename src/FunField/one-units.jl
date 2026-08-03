@@ -818,8 +818,13 @@ function one_unit_quotient_with_ctx(P::Hecke.GenOrdIdl, k::Int)::Tuple{FinGenAbG
     #1+P/1+P^b -> 1+P/1+P^a
     mu2 = Hecke.map_with_preimage_from_func(func_mod_a, func_mod_b, O, O)
     
-    func = x-> Hecke.map_G_mod_b(x, P, b, gens2)
-    ctx = Hecke.B_from_A_and_C(G1, G2, mu1, mu2, iso1, iso2, gens1, gens2, func)
+    #Function to compute gens^r mod P^b
+    func = (r, gens) -> Hecke.map_G_mod_b(r, P, b, gens)
+
+    #operation in 1+P/1+P^b
+    oper = (x,y) -> func_mod_b(x*y)
+
+    ctx = Hecke.B_from_A_and_C(G1, G2, mu1, mu2, iso1, iso2, gens1, gens2, func, oper)
     return ctx.G3, ctx.iso3, ctx.gens3
   end
 end
@@ -833,7 +838,7 @@ function one_unit_quotient_a_b(P, a, b)
   G.rels = rels
 
   #G -> 1+P^a/1+P^b:
-  func = x-> map_G_mod_b(x, P, b, gens)
+  func = x-> map_G_a_mod_b(x, P, b, gens)
 
   #1+P^a/1+P^b -> G
   preim = x -> disc_log_a_b(x, P, a, b, G, gens)
@@ -854,7 +859,7 @@ function gens_and_rels_a_b(P, a, b)
 
   Fx = base_ring(O)
   x = gen(Fx)
-  Fq = base_ring(Fx)
+  Fq = constant_field(O.F)
   p = characteristic(Fq)
   Fp_basis = basis(Fq) #[1, o, o^2, ...] indexed by 0, 1, 2, ... when using coeff(a, i) 
   l = degree(Fq) #q = p^l
@@ -872,8 +877,9 @@ function gens_and_rels_a_b(P, a, b)
   return gens, rels
 end
 
-#G -> 1+P^a/1+P^b, works for all a<b
-function map_G_mod_b(x::Union{FinGenAbGroupElem, Nemo.MatrixView{ZZMatrix, ZZRingElem}}, P::GenOrdIdl, b::Int, gens::Vector{<:GenOrdElem})
+#TODO: wrong for b>2a!!!!!!
+#G -> 1+P^a/1+P^b, works for b<2a, else other inverse needed
+function map_G_a_mod_b(x::Union{FinGenAbGroupElem, Nemo.MatrixView{ZZMatrix, ZZRingElem}}, P::GenOrdIdl, b::Int, gens::Vector{<:GenOrdElem})
   P_pow_b = P^b
   _ngens = length(gens)
   y = one(P.order)
@@ -891,16 +897,40 @@ function map_G_mod_b(x::Union{FinGenAbGroupElem, Nemo.MatrixView{ZZMatrix, ZZRin
   return y
 end
 
+#G -> 1+P/1+P^b
+function map_G_mod_b(x::Union{FinGenAbGroupElem, Nemo.MatrixView{ZZMatrix, ZZRingElem}}, P::GenOrdIdl, b::Int, gens::Vector{<:GenOrdElem})
+  P_pow_b = P^b
+  _ngens = length(gens)
+  y = one(P.order)
+  
+  #Note that inv(1+x) = 1-x in 1+P^a/1+P^b
+  #y = 1+x => -y+2 = 1-x
+  for i in 1:_ngens
+    e = x[i]
+    if e == 0
+      continue
+    else
+      @assert e > 0 #TODO: problem for e < 0
+      y = mod(y*powermod(gens[i], e, P_pow_b), P_pow_b)
+    #elseif e < 0
+      #compute inverse using disclogs:
+
+     # y = mod(y*powermod(-gens[i]+2, -e, P_pow_b), P_pow_b)
+    end
+  end
+  return y
+end
+
 #1+P^a/1+P^b -> G
 function disc_log_a_b(x::GenOrdElem, P::GenOrdIdl, a::Int, b::Int, G::FinGenAbGroup, gens::Vector{<:GenOrdElem})
-  @req x-1 in P^a "x not in 1 + P^a" #TODO: check whether necessary
+  @req iszero(mod((x-1), P^a)) "x not in 1 + P^a" #TODO: check whether necessary
   _ngens = length(gens)
 
   #TODO: prime dependent part outside in a struct
   O = order(P)
   n = degree(O)
   Fx = base_ring(O)
-  Fq = base_ring(Fx)
+  Fq = constant_field(O.F)
   l = degree(Fq)
 
   f = degree(P)
@@ -1064,9 +1094,9 @@ end
 #compute mod(f^e, I) using square and multiply
 #inspired by powermod in GenOrd/GenOrd.jl
 function Hecke.powermod(a::Hecke.GenOrdElem, e::ZZRingElem, I::Hecke.GenOrdIdl)
-  @assert e > 0 #negative exponents not needed for the moment
   r = one(parent(a))
   e == 0 && return r
+  @assert e >= 0 #negative exponents not needed for the moment
   for i = bits(e)
     r *= r
     if i
@@ -1120,6 +1150,17 @@ function test_relation_matrix(_gens::Vector{<:Hecke.GenOrdElem}, _rels::ZZMatrix
         y*=_gens[j]^_rels[i, j]
     end
     @assert isone(mod(y, I))
+  end
+end
+
+
+#with ctx
+function test_relation_matrix(rels, gens, func::Function)
+  r, c = size(rels)
+  len = length(gens)
+  @assert c == len
+  for i = 1:r
+    @assert isone(func(@view(rels[i, :]), gens))
   end
 end
 
