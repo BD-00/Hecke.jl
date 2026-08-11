@@ -33,3 +33,16 @@ function Hecke.invmod(x::GenOrdElem, I::GenOrdIdl)
   y = mod(O(y_coord), I)
   return y
 end
+
+function Hecke.ramified_primes(O::GenOrd)
+  return Hecke.prime_divisors(discriminant(O))
+end
+
+function prime_divisors(f::FqPolyRingElem)
+  is_constant(f) && throw(DomainError("Argument must be non-constant"))
+  FqPolyRingElem[p for (p, e) in factor(f) if !is_constant(p)] #type precise enough?
+end
+
+function prime_divisors(f::KInftyElem)
+  is_constant(f) && throw(DomainError("Argument must be non-constant"))
+  KInftyElem[p for (p, e) in factor(f) if !is_zero(degree(p))] #TODO. better alternative for is_constant
