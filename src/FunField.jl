@@ -5,6 +5,7 @@ include("FunField/Factor.jl")
 include("FunField/HessQR.jl")
 include("FunField/IntClsZx.jl")
 
+include("FunField/Auxiliary.jl")
 include("FunField/one-units.jl")
 include("FunField/ExactSequences.jl")
 include("FunField/RayClassGrp.jl")
