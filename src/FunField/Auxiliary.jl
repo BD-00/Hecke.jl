@@ -43,6 +43,8 @@ function prime_divisors(f::FqPolyRingElem)
   FqPolyRingElem[p for (p, e) in factor(f) if !is_constant(p)] #type precise enough?
 end
 
+#mistake here!!!
 function prime_divisors(f::KInftyElem)
-  is_constant(f) && throw(DomainError("Argument must be non-constant"))
-  KInftyElem[p for (p, e) in factor(f) if !is_zero(degree(p))] #TODO. better alternative for is_constant
+  degree(f) == 0 && throw(DomainError("Argument must be non-constant"))
+  KInftyElem[p for (p, e) in factor(f) if degree(p) != 0] #TODO. better alternative for is_constant
+end
