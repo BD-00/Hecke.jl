@@ -2,6 +2,8 @@ module pRational
 
 using ..Hecke
 
+import Nemo
+
 import Hecke:
   @sprintf,
   IntegerUnion,
@@ -94,7 +96,7 @@ function _mod(Zell2x, u::FacElem, dpoly, dpolymodl, Zellx; D = Dict{AbsSimpleNum
   res = one(Zell2x)
   w = Zellx()
   for (b, e) in u
-    v = get!(D, b) do
+    v0 = get!(D, b) do
       _mod(Zell2x, b, dpoly, dpolymodl, Zellx)
     end
     if e < 0
@@ -111,7 +113,7 @@ function _mod(Zell2x, u::FacElem, dpoly, dpolymodl, Zellx; D = Dict{AbsSimpleNum
         twowinv2 = 2*winv2
         Hecke.mul!(winv2, winv2, winv2)
         Hecke.mod!(winv2, winv2, dpoly)
-        Hecke.mul!(winv2, winv2, v)
+        Hecke.mul!(winv2, winv2, v0)
         Hecke.mod!(winv2, winv2, dpoly)
         _v = sub!(twowinv2, twowinv2, winv2)
         #_v = mod(2*winv2 - v * winv2^2, dpoly)
@@ -122,6 +124,8 @@ function _mod(Zell2x, u::FacElem, dpoly, dpolymodl, Zellx; D = Dict{AbsSimpleNum
         _v
       end
       e = -e
+    else
+      v = v0
     end
     res = Hecke.mul!(res, res, powermod(v, e, dpoly))
     res = Hecke.mod!(res, res, dpoly)
@@ -237,7 +241,7 @@ function _schirokauer_map_data_generic(K, u::Vector, ell; OK = lll(maximal_order
       return _schirokauer_map_data_generic(K, u, ell, ZZ(ell)^2, OK)
     end
   catch e
-    if !(e isa ErrorException && (e.msg == "Problem in the FLINT-Subsystem" || e.msg == "Impossible inverse in invmod"))
+    if !(e isa ErrorException && (e.msg == "Problem in the FLINT-Subsystem" || e.msg == "Impossible inverse in invmod" || e.msg == "not yet implemented"))
       rethrow(e)
     end
     return _schirokauer_map_data_really_really_generic(K, u, ZZ(ell), ZZ(ell)^2, OK)
@@ -245,6 +249,7 @@ function _schirokauer_map_data_generic(K, u::Vector, ell; OK = lll(maximal_order
 end
 
 function _schirokauer_map_data_generic(K, u::Vector, ell, ell2, OK)
+  # slightly unstable typewise, since we either use fpMatrix or FqMatrix
   d = degree(K)
   a = gen(K)
   #r = Hecke.unit_group_rank(K)
@@ -272,7 +277,11 @@ function _schirokauer_map_data_generic(K, u::Vector, ell, ell2, OK)
     u_mod_ell2 = [_mod(Zell2x, u[i], gmodell2, gmodell, Zellx) for i in 1:length(u)]
   end
 
-  M = zero_matrix(Hecke.Nemo.Native.GF(ell), r, d)
+  if fits(Int, ell)
+    M = zero_matrix(Hecke.Nemo.Native.GF(ell), r, d)
+  else
+    M = zero_matrix(Hecke.GF(ell), r, d)
+  end
   oldnorm = zero(ZZ)
   new_norm = false
   curj = 0
@@ -287,7 +296,11 @@ function _schirokauer_map_data_generic(K, u::Vector, ell, ell2, OK)
       new_norm = false
     end
     #@info "new_norm: $(new_norm)"
-    F, mF = Hecke.ResidueFieldSmall(OK, P)
+    if fits(Int, ell)
+      F, mF = Hecke.ResidueFieldSmall(OK, P)
+    else
+      F, mF = Hecke.residue_field(OK, P)
+    end
     mFF = Hecke.extend(mF, K)
     mFF_easy = Hecke.extend_easy(mF, K)
     for i in 1:length(u)
@@ -510,7 +523,7 @@ function _p_maximal_units(K::AbsSimpleNumField, p; OK = lll(maximal_order(K)), G
   U, mU = unit_group_fac_elem(OK; GRH)
   us = mU.(gens(U))
   C, mC = Hecke.multiplicative_group(identity.(us); task = :modulo_tor, support = ideal_type(OK)[]);
-  mCp = _psaturation(mC, p)
+  mCp = mC # this is pmaximal
   # we always enlarge by the torsion unit (to be on the safe side)
   return push!(mCp.(gens(domain(mCp))), FacElem(torsion_units_generator(Hecke.nf(OK))))
 end
@@ -612,14 +625,14 @@ julia> is_quasi_p_rational(K, 13)
 false
 ```
 """
-function is_quasi_p_rational(K::Union{pRationalityTestGenericCtx, AbsSimpleNumField}, p; GRH::Bool = false)
+function is_quasi_p_rational(K::Union{pRationalityTestGenericCtx, AbsSimpleNumField}, p::IntegerUnion; GRH::Bool = false)
   @req is_prime(p) "p ($p) must be prime"
-  fl, = _is_quasi_p_rational(K, p; GRH)
+  fl, = _is_quasi_p_rational(K, Nemo.flintify(p); GRH)
   return fl
 end
 
 # is_quasi_p_rational, but also return the p-maximal unit group for later use
-function _is_quasi_p_rational(K::Union{pRationalityTestGenericCtx, AbsSimpleNumField}, p::IntegerUnion; GRH::Bool = false)
+function _is_quasi_p_rational(K::Union{pRationalityTestGenericCtx, AbsSimpleNumField}, p; GRH::Bool = false)
   OK = lllmaximal_order(K)
   dK = discriminant(OK)
   us = _p_maximal_units(K, p; OK = OK)
@@ -673,7 +686,10 @@ false
 """
 function is_p_rational(K::Union{pRationalityTestGenericCtx, AbsSimpleNumField}, p::IntegerUnion; GRH::Bool = false)
   @req is_prime(p) "p ($p) must be prime"
+  return _is_p_rational(K, Nemo.flintify(p); GRH)
+end
 
+function _is_p_rational(K::Union{pRationalityTestGenericCtx, AbsSimpleNumField}, p; GRH::Bool = false)
   OK = lllmaximal_order(K)
 
   # (1)
