@@ -411,26 +411,6 @@ end
 
 ################################################################################
 #
-#  Divisor of degree one
-#
-################################################################################
-
-#returns a divisor of degree one
-function divisor_of_degree_one(F::Generic.AbsSimpleFunctionField)
-  
-  poly_deg = 1 #degree of polynomials we iterate over
-  place_deg = 1 #degree of place we try to find
-  deg_gcd = 0 #gcd of currently found places (0 until first place is found)
-
-  #extra loop for degree 1 polys, since irreducible ones are trivial
-
-
-end
-
-
-
-################################################################################
-#
 #  Tests
 #
 ################################################################################
