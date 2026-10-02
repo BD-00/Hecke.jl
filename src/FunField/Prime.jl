@@ -39,7 +39,7 @@ end
 
 ####################
 #
-#Improvements:
+#  Improvements:
 #
 ####################
 
@@ -116,6 +116,7 @@ function divisor_of_degree_one(F::Generic.AbsSimpleFunctionField)
     end
   end
   
+  #look at places over degree > 1 polynomials
   poly_deg = 2 #degree of polynomials we iterate over
   while deg_gcd > 1
     @show deg_gcd, poly_deg
