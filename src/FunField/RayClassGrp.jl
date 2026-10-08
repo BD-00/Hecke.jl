@@ -259,7 +259,8 @@ function class_group_p(F::Generic.AbsSimpleFunctionField)
   J_fin = codifferent(Ofin)
 
   Oinf = infinite_maximal_order(F)
-  x = gen(base_ring(F))
+  kx = base_ring(F)
+  x = gen(kx)
   J_inf = (1//x)^2 * codifferent(Oinf)
 
   RRCtx = Hecke._riemann_roch_space_with_ctx(J_fin, J_inf, F)
@@ -313,17 +314,37 @@ function class_group_p(F::Generic.AbsSimpleFunctionField)
   end
 
 
-  #find a such that p*D = (a)
-  P = prime_decomposition(Ofin, numerator(x))[1][1] #naive, TODO: Div of deg 1
-  candidate_space = riemann_roch_space(genus(F)*p.d*divisor(P)) #candidates for a
+  #find a such that p*D = (a):
+  D_one = Hecke.divisor_of_degree_one(F) #divisor of degree one
+  candidates_ctx = Hecke.riemann_roch_space_with_ctx(genus(F)*p.d*D_one) #candidates for a
   #da/dx for a in basis of candidates
-  candidate_dx = [nth_derivative(a, 1) for a in candidate_space]
-  len = length(candidate_space)
-  for b in kernel_gens #solve a*b=a'
-    M = matrix(F, 1, len, b.*candidate_space-candidate_dx)
-    Mker = kernel(M, side = :right)
+  candidates_dx = [nth_derivative(a, 1) for a in candidates_ctx.gens]
+  len = length(candidates_ctx.gens)
+  coordinate_dict = Dict{Int, Vector}()
+  Rfin = coefficient_ring(Ofin)
+  l = one(Rfin) #lcm
+  max_degs = Int[]
+  for b in RRCtx.gens
+    for i in 1:len
+      w = candidates_ctx.gens[i]-b*candidates_dx[i]
+      c = coordinates(w)
+      coordinate_dict[i] = c
+      max_deg = maximum(map(x->degree(numerator(x))-degree(denominator(x)), c))
+      push!(max_degs, max_deg)
+      l = lcm(mapreduce(denominator, lcm, c), l)
+    end
+    max_deg = maximum(max_degs) + degree(l)
+    t = gen(Rfin)
+    B = [t^i for i in 0:max_deg]
+    M = zeros(Fp, len, max_deg*degree(Fq))
+    for i in 1:len
+      coordinate_dict[i].*=l
+      c = numerator(coordinate_dict[i])
+      M[i,:] = Hecke.extract_fp_coefficients(c, max_deg)
+      #extract Fp-coefficients
+      #TODO: write function for that and use everywhere
+    end
   end
-  a 
   function kernel_to_Div(D::Divisor)
     
 
@@ -407,6 +428,38 @@ function Hecke.pth_root(a::Generic.AbsSimpleFunctionFieldElem{FqFieldElem, FqPol
     coord[i] = kx(c_num, c_den)
   end
   return F(coord)
+end
+
+
+#TODO: move
+
+function extract_fp_coefficients(z::FqPolyRingElem, degree_bound::Int)
+  Fq = base_ring(parent(z))
+  d = degree(z)
+  l = degree(Fq)
+  if l == 1
+    return vcat(collect(coefficients(z)), zeros(Fq, degree_bound-d))
+  else
+    Fp = base_field(Fq)
+    fp_coefficients = zeros(Fp, l*degree_bound)
+    idx = 1
+    for i in 0:d
+      z_i = coeff(z, i)
+      if iszero(z_i)
+        idx += l
+      else
+        for j in 0:l-1
+          fp_coeff = coeff(z_i, j)
+          if !iszero(fp_coeff)
+            fp_coefficients[idx] = fp_coeff
+          end
+          idx += 1
+        end
+      end
+    end
+  end
+  @assert idx > l*degree_bound #test
+  return fp_coefficients
 end
 
 ################################################################################
