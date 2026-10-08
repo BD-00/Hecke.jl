@@ -1,7 +1,7 @@
 #TODO: move to Divisor.jl
 mutable struct RiemannRochCtx
  RR_basis::Vector{Generic.FunctionFieldElem} #Fq-basis
- basis_gens::Vector{Generic.FunctionFieldElem} #k(x)-generators
+ basis_gens::Generic.MatSpaceElem #k(x)-generators via coordinates in power basis
  dlist::Vector{Int}
  iso::Generic.MapWithSection
  gens #Fp-basis
@@ -12,7 +12,7 @@ end
 
 function riemann_roch_space_with_ctx(D::Divisor)
   I_fin, I_inf = ideals(D)
-  return _riemann_roch_space_with_ctx(inv(I_fin), inv(I_inf), function_field(F))
+  return _riemann_roch_space_with_ctx(inv(I_fin), inv(I_inf), function_field(D))
 end
 
 
@@ -20,22 +20,22 @@ function _riemann_roch_space_with_ctx(J_fin, J_inf, F)
   x = gen(base_ring(F))
   n = degree(F)
 
-  basis_fin = basis(J_fin)
-  basis_inf = basis(J_inf)
-  dM, d_deg = Hecke._riemann_roch_common_setup(basis_fin, basis_inf)
+  B_fin = _coordinate_matrix(J_fin)
+  B_inf = _coordinate_matrix(J_inf)
+  dM, d_deg = _riemann_roch_common_setup(B_fin, B_inf)
 
   # weak Popov reduction of dM (no denominators)
   T, U = weak_popov_with_transform(dM)
 
   # v_i in Hess paper
-  basis_gens = change_base_ring(F, U) * basis_fin
+  basis_gens = change_base_ring(base_ring(B_fin), U) * B_fin
 
   RR_basis = elem_type(F)[]
   dlist = Int[]
   for i in 1:n
     d_i = maximum(degree(T[i, k]) for k in 1:n)
     push!(dlist, d_deg - d_i)
-    g = basis_gens[i]
+    g = F(vec(collect(basis_gens[i, :])))
     for _ in 0:(d_deg - d_i)
       push!(RR_basis, g)
       g = x*g # this is x^j * basis_gens[i] for j = 0 .. d_deg - d_i
