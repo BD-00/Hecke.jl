@@ -298,7 +298,7 @@ function class_group_p(F::Generic.AbsSimpleFunctionField)
     end
   end
   #a->V(disclog_kernel(a))
-  Hecke.test_disclog_kernel(kernel_gens, V, RRCtx, K) #test
+  test_disclog_kernel(kernel_gens, V, RRCtx, K) #test
 
   #Fp-iso: divisor in class group -> elem in kernel
   
@@ -314,45 +314,59 @@ function class_group_p(F::Generic.AbsSimpleFunctionField)
   end
 
 
-  #find a such that p*D = (a):
-  D_one = Hecke.divisor_of_degree_one(F) #divisor of degree one
+  #find a in funfield such that p*D = (a) for a divisor D:
+
+  #divisor of degree one:
+  D_one = Hecke.divisor_of_degree_one(F)
+  #basis a_i for candidates a:
   candidates_ctx = Hecke.riemann_roch_space_with_ctx(genus(F)*p.d*D_one) #candidates for a
-  #da/dx for a in basis of candidates
-  candidates_dx = [nth_derivative(a, 1) for a in candidates_ctx.gens]
-  len = length(candidates_ctx.gens)
+  #a_i' for a_i in basis of candidates
+  candidates_dx = [Hecke.nth_derivative(a, 1) for a in candidates_ctx.gens]
+  len = length(candidates_dx)
+
+  #collect k(x)-coordinates of a_i' - b * a_i
   coordinate_dict = Dict{Int, Vector}()
-  Rfin = coefficient_ring(Ofin)
-  l = one(Rfin) #lcm
-  max_degs = Int[]
-  for b in RRCtx.gens
+  Rfin = coefficient_ring(Ofin) #k(x)
+
+  p_torsion_basis = Divisor[]
+  for b in kernel_gens
+    #TODO: function that maps to Fp-module?
+    #common denominator of coordinates of a_i' - b * a_i for all i:
+    common_den = one(Rfin)
+    #maximum of degree difference between num and den of coordinates:
+    max_degs = Int[]
     for i in 1:len
-      w = candidates_ctx.gens[i]-b*candidates_dx[i]
+      #a_i' - b * a_i:
+      w = candidates_dx[i]-b*candidates_ctx.gens[i]
       c = coordinates(w)
       coordinate_dict[i] = c
       max_deg = maximum(map(x->degree(numerator(x))-degree(denominator(x)), c))
       push!(max_degs, max_deg)
-      l = lcm(mapreduce(denominator, lcm, c), l)
+      common_den = lcm(mapreduce(denominator, lcm, c), common_den)
     end
-    max_deg = maximum(max_degs) + degree(l)
+    max_deg = maximum(max_degs) + degree(common_den)
     t = gen(Rfin)
     B = [t^i for i in 0:max_deg]
-    M = zeros(Fp, len, max_deg*degree(Fq))
+    #express each a_i' - b * a_i in Fp_basis w.r.t. its coordinates
+    fp_coordinates = Vector{FqFieldElem}[]
     for i in 1:len
-      coordinate_dict[i].*=l
-      c = numerator(coordinate_dict[i])
-      M[i,:] = Hecke.extract_fp_coefficients(c, max_deg)
-      #extract Fp-coefficients
-      #TODO: write function for that and use everywhere
+      coordinate_dict[i].*= common_den
+      kx_coord = Rfin.(coordinate_dict[i])
+      fp_coeff = FqFieldElem[]
+      for c in kx_coord
+        fp_coeff = vcat(fp_coeff, Hecke.extract_fp_coefficients(c, max_deg))
+      end
+      #map coordinates to Fp-module
+      push!(fp_coordinates, fp_coeff)
     end
+    fp_coordinate_matrix = matrix(Fp, fp_coordinates)
+    #basis for coefficients of `a` satisfying p*D = a
+    coeff_basis = kernel(fp_coordinate_matrix)
+    a = (F.(coeff_basis[1:1, :])*candidates_ctx.gens)[1]
+    Da = divexact(divisor(a), p)
+    push!(p_torsion_basis, Da)
   end
-  function kernel_to_Div(D::Divisor)
-    
-
-  end
-
-
-
-  return Mrep
+  return p_torsion_basis
 end
 
 #differential omega = a dx
@@ -460,6 +474,26 @@ function extract_fp_coefficients(z::FqPolyRingElem, degree_bound::Int)
   end
   @assert idx > l*degree_bound #test
   return fp_coefficients
+end
+
+function AbstractAlgebra.divexact(D::Divisor, n)
+  I, J = ideals(D)
+
+  I_fact = factor(I)
+  J_fact = factor(J)
+
+  Inew = mapreduce(x->x[1]^(x[2]), prod, collect(I_fact))
+
+  Dnew = Divisor(I^n, J^n)
+
+  if has_support(D)
+    fin_supp = finite_support(D)
+    inf_supp = infinite_support(D)
+    Dnew.finite_support = Dict((p, divexact(e, n)) for (p, e) in fin_supp)
+    Dnew.infinite_support = Dict((p, divexact(e, n)) for (p, e) in inf_supp)
+  end
+
+  return Dnew
 end
 
 ################################################################################
