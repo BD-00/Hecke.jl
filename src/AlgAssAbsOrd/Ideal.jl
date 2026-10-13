@@ -222,13 +222,12 @@ function ideal_from_lattice_gens(A::AbstractAssociativeAlgebra{QQFieldElem}, v::
   for i = 1:length(v)
     elem_to_mat_row!(M, i, v[i])
   end
-  M = _hnf_integral(M, :lowerleft)
-  i = something(findfirst(k -> !is_zero_row(M, k), 1:nrows(M)), nrows(M) + 1)
+  H = _hnf_integral(M, :lowerleft)
+  i = something(findfirst(k -> !is_zero_row(H, k), 1:nrows(H)), nrows(H) + 1)
   #if length(v) >= dim(A)
-  #  M = sub(M, (nrows(M) - dim(A) + 1):nrows(M), 1:dim(A))
+  #  H = sub(H, (nrows(H) - dim(A) + 1):nrows(H), 1:dim(A))
   #end
-  M = sub(M, i:nrows(M), 1:ncols(M))
-  return ideal(A, M; M_in_hnf=true)
+  return ideal(A, sub(H, i:nrows(H), 1:ncols(H)); M_in_hnf=true)
 end
 
 @doc raw"""
@@ -2109,11 +2108,11 @@ function maximal_integral_ideal_containing(I::AlgAssAbsOrdIdl, p::Union{ ZZRingE
   B, BtoOP = _as_algebra_over_center(OP)
   C, toC = _as_matrix_algebra(B)
 
-  JinC = _ideal_from_kgens(C, [ toC(OPtoB(toOP(O(b)))) for b in absolute_basis(J) ])
+  JinC = _ideal_from_kgens(C, [ toC(BtoOP\(toOP(O(b)))) for b in absolute_basis(J) ])
   y = left_principal_generator(JinC)
   m = matrix(y)
   r = rref!(m)
-  k = degree(C)
+  k = _matdeg(C)
   @assert r < k - 1 # Otherwise J would be maximal, which we have checked...
 
   # We need to "add" pivots to m to get rank k - 1
@@ -2122,6 +2121,7 @@ function maximal_integral_ideal_containing(I::AlgAssAbsOrdIdl, p::Union{ ZZRingE
   while r < k - 1
     if !iszero(m[row, col])
       row += 1
+      col += 1
       continue
     end
 

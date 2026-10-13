@@ -1,8 +1,13 @@
 @testset "RieSrf" begin
   include("RieSrf/Auxiliary.jl")
+  include("RieSrf/AbelJacobiMap.jl")
   include("RieSrf/CPath.jl")
   include("RieSrf/NumIntegrate.jl")
   include("RieSrf/PeriodMatrix.jl")
   include("RieSrf/RiemannSurface.jl")
+  include("RieSrf/RieSrfPoints.jl")
+  include("RieSrf/Divisors.jl")
   include("RieSrf/Theta.jl")
+  include("RieSrf/HeuristicEndomorphisms.jl")
+  include("RieSrf/EndomorphismStructure.jl")
 end

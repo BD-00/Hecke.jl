@@ -1,5 +1,16 @@
 @testset "RelSimpleNumField" begin
-  let
+  @testset "conformance" begin
+    Qx, x = QQ["x"]
+    f = x^2 + 12x - 92
+    K, a = number_field(f, "a")
+    Ky, y = K["y"]
+
+    L, b = number_field(y^2 + y + 1, "b")
+
+    ConformanceTests.test_Field_interface_recursive(L)
+  end
+
+  @testset "lift" begin
     K, a = Hecke.rationals_as_number_field()
     Kt, t = K["t"]
     L, b = number_field(t - 1, "b")
@@ -28,6 +39,20 @@
     @test L(0)^0 == one(L)
     @test L(0)^1 == zero(L)
     @test_throws ArgumentError L(0)^(-1)
+  end
+
+  @testset "Hashing" begin
+    Qx, x = QQ["x"]
+    K, a = number_field(x^2 - 2, "a")
+    Ky, y = K["y"]
+    L, b = number_field(y^2 - a, "b")
+    Lz, z = L["z"]
+    M, c = number_field(z^2 - b, "c")
+
+    d = deepcopy(c)
+    @test isequal(c, d)
+    @test hash(c) == hash(d)
+    @test length(Set([c, d])) == 1
   end
 
   @testset "is_subfield" begin

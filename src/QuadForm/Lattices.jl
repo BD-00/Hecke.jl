@@ -248,14 +248,14 @@ end
 # Steinitz form is not pretty
 
 @doc raw"""
-    generators(L::AbstractLat; minimal = false) -> Vector{Vector}
+    gens(L::AbstractLat; minimal = false) -> Vector{Vector}
 
 Return a set of generators of the lattice `L` over the base ring of `L`.
 
 If `minimal == true`, the number of generators is minimal. Note that computing
 minimal generators is expensive.
 """
-function generators(L::AbstractLat; minimal::Bool = false)
+function gens(L::AbstractLat; minimal::Bool = false)
   K = nf(base_ring(L))
   T = elem_type(K)
   if !minimal
@@ -411,7 +411,7 @@ If `minimal == true`, then a minimal generating set is used. Note that computing
 minimal generators is expensive.
 """
 function gram_matrix_of_generators(L::AbstractLat; minimal::Bool = false)
-  m = generators(L; minimal)
+  m = gens(L; minimal)
   M = matrix(nf(base_ring(L)), m)
   return gram_matrix(ambient_space(L), M)
 end
@@ -1510,10 +1510,10 @@ function assert_has_automorphisms(L::AbstractLat{<: NumField}; redo::Bool = fals
                             for g in t_gens)
 
   pm = pseudo_matrix(L)
-  C = coefficient_ideals(pm)
+  CI = coefficient_ideals(pm)
 
   for g in t_gens
-    @hassert :Lattice 1 all(g[i, j] in C[j] * inv(C[i])
+    @hassert :Lattice 1 all(g[i, j] in CI[j] * inv(CI[i])
                               for i in 1:nrows(g), j in 1:nrows(g))
   end
 
@@ -1849,7 +1849,7 @@ end
 ################################################################################
 
 @doc raw"""
-    direct_sum(x::Vararg{T}) where T <: AbstractLat -> T, Vector{AbstractSpaceMor}
+    direct_sum(x::T, y::T...) where T <: AbstractLat -> T, Vector{AbstractSpaceMor}
     direct_sum(x::Vector{T}) where T <: AbstractLat -> T, Vector{AbstractSpaceMor}
 
 Given a collection of quadratic or hermitian lattices $L_1, \ldots, L_n$,
@@ -1874,10 +1874,10 @@ function direct_sum(x::Vector{T};cached::Bool=true) where T <: AbstractLat
   return lattice(W, H), inj
 end
 
-direct_sum(x::Vararg{AbstractLat};cached::Bool=true) = direct_sum(collect(x);cached)
+direct_sum(x::AbstractLat, y::AbstractLat...; cached::Bool=true) = direct_sum(collect((x, y...)); cached)
 
 @doc raw"""
-    direct_product(x::Vararg{T}) where T <: AbstractLat -> T, Vector{AbstractSpaceMor}
+    direct_product(x::T, y::T...) where T <: AbstractLat -> T, Vector{AbstractSpaceMor}
     direct_product(x::Vector{T}) where T <: AbstractLat -> T, Vector{AbstractSpaceMor}
 
 Given a collection of quadratic or hermitian lattices $L_1, \ldots, L_n$,
@@ -1902,10 +1902,10 @@ function direct_product(x::Vector{T};cached::Bool=true) where T <: AbstractLat
   return lattice(W, H), proj
 end
 
-direct_product(x::Vararg{AbstractLat}) = direct_product(collect(x))
+direct_product(x::AbstractLat, y::AbstractLat...) = direct_product(collect((x, y...)))
 
 @doc raw"""
-    biproduct(x::Vararg{T}) where T <: AbstractLat -> T, Vector{AbstractSpaceMor}, Vector{AbstractSpaceMor}
+    biproduct(x::T, y::T...) where T <: AbstractLat -> T, Vector{AbstractSpaceMor}, Vector{AbstractSpaceMor}
     biproduct(x::Vector{T}) where T <: AbstractLat -> T, Vector{AbstractSpaceMor}, Vector{AbstractSpaceMor}
 
 Given a collection of quadratic or hermitian lattices $L_1, \ldots, L_n$,
@@ -1930,7 +1930,7 @@ function biproduct(x::Vector{T}; cached::Bool=true) where T <: AbstractLat
   return lattice(W, H), inj, proj
 end
 
-biproduct(x::Vararg{AbstractLat}; cached::Bool=true) = biproduct(collect(x);cached)
+biproduct(x::AbstractLat, y::AbstractLat...; cached::Bool=true) = biproduct(collect((x, y...)); cached)
 
 function _biproduct(x::Vector{T}) where T <: AbstractLat
   px = pseudo_matrix.(x)
@@ -1965,7 +1965,7 @@ end
 function _orthogonal_complement(v::Vector, L::AbstractLat)
   V = ambient_space(L)
   M = matrix(base_ring(V), 1, length(v), v)
-  ge = generators(L)
+  ge = gens(L)
   ge_or = copy(ge)
     for i in 1:length(ge)
     # <v, v> = 1

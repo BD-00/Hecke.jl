@@ -398,7 +398,7 @@ end
 #
 ################################################################################
 
-function hash(a::Hecke.RelSimpleNumFieldElem{AbsSimpleNumFieldElem}, b::UInt)
+function hash(a::Hecke.RelSimpleNumFieldElem, b::UInt)
   return hash(a.data, b)
 end
 
@@ -734,22 +734,9 @@ end
 #
 ################################################################################
 
-RandomExtensions.maketype(L::RelSimpleNumField, B) = elem_type(L)
-
-function rand(rng::AbstractRNG, sp::SamplerTrivial{<:Make2{<:RelSimpleNumFieldElem,<:RelSimpleNumField,<:AbstractUnitRange}})
-  L, B = sp[][1:end]
-  k = base_field(L)
-  pb = basis(L)
-  z = zero(L)
-  for i = 1:length(pb)
-    t = rand(rng, k, B)
-    z += t*pb[i]
-  end
-  return z
+function ConformanceTests.generate_element(K::RelSimpleNumField)
+  return rand(K, -10:10)
 end
-
-rand(L::RelSimpleNumField, B::AbstractUnitRange{Int}) = rand(GLOBAL_RNG, L, B)
-rand(rng::AbstractRNG, L::RelSimpleNumField, B::AbstractUnitRange{Int}) = rand(rng, make(L, B))
 
 ################################################################################
 #

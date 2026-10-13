@@ -323,7 +323,7 @@ function Nemo.add!(c::RelNonSimpleNumFieldElem{T}, a::RelNonSimpleNumFieldElem{T
   return c
 end
 
-function Base.hash(a::RelNonSimpleNumFieldElem{AbsSimpleNumFieldElem}, b::UInt)
+function Base.hash(a::RelNonSimpleNumFieldElem, b::UInt)
   return hash(a.data, b)
 end
 
@@ -589,6 +589,7 @@ function resultant(f::UniversalPolyRingElem, g::UniversalPolyRingElem, x::Univer
 end
 
 function resultant(f::MPolyRingElem, g::MPolyRingElem, i::Int)
+  check_parent(f, g)
   Kt = parent(f)
   gKt = gens(Kt)
   n = nvars(Kt)
@@ -618,12 +619,6 @@ function resultant(f::MPolyRingElem, g::MPolyRingElem, i::Int)
   end
   return evaluate(res, new_vals)
 end
-
-function rand(L::RelNonSimpleNumField, rg::AbstractUnitRange)
-  B = absolute_basis(L)
-  return rand(B, rg)
-end
-
 
 function mod(a::RelNonSimpleNumFieldElem{T}, p::ZZRingElem) where T
   K = parent(a)

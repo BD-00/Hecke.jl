@@ -1418,6 +1418,7 @@ function maximal_integral_ideal_containing(I::AlgAssRelOrdIdl, p::Union{ AbsNumF
   while r < k - 1
     if !iszero(m[row, col])
       row += 1
+      col += 1
       continue
     end
 
@@ -1781,6 +1782,9 @@ function _coprime_bases(M::Union{ RelNumFieldOrder{S, T, U}, AlgAssRelOrd{S, T, 
     elem_to_mat_row!(mat_N, i, basis_N[i][1])
   end
   mat_N = mat_N*inv(mat_M)
+
+  @assert is_lower_triangular(mat_M)
+  @assert is_lower_triangular(mat_N)
 
   return basis_M, basis_N, mat_M, mat_N
 end

@@ -275,9 +275,9 @@ function quo(I::FiniteRingIdeal, J::FiniteRingIdeal)
     !fl && error("Ideal not containing second argument")
     push!(gensJinI, x)
   end
-  Q, ItoQ = quo(I.B, gensJinI)
-  SQ, SQtoQ = snf(Q)
-  Q, ItoQ = SQ, ItoQ * inv(SQtoQ)
+  Q0, ItoQ0 = quo(I.B, gensJinI)
+  Q, SQtoQ = snf(Q0)
+  ItoQ = ItoQ0 * inv(SQtoQ)
   gensQ = gens(Q)
   homs = FinGenAbGroupHom[]
   for a in gensQ
@@ -290,7 +290,7 @@ function quo(I::FiniteRingIdeal, J::FiniteRingIdeal)
   quoring = FiniteRing(Q, homs)
   pr = x -> FiniteRingElem(quoring, ItoQ(I.BtoA\(x.a)))
   lf = y -> FiniteRingElem(R, I.BtoA(ItoQ\(y.a)))
-  return quoring, MapFromFunc(R, quoring, pr, lf)
+  return quoring, map_from_func(R, quoring, pr, lf)
 end
 
 ################################################################################
