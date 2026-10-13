@@ -211,7 +211,7 @@ function _primitive_element_mod_p(p::AbsNumFieldOrderIdeal{AbsSimpleNumField, Ab
   O = order(p)
   Q, Q_map = quo(O,p)
   n = norm(p) - 1
-  primefactors_n = collect(keys(factor(n).fac))
+  primefactors_n = prime_divisors(n)
   while true
     x = rand(Q)
     x == 0 && continue
@@ -720,18 +720,37 @@ function baby_step_giant_step(g, n, h, cache::Dict)
   m = ZZRingElem(isqrt(n) + 1)
   if isempty(cache)
     it = g^0
-    for j in 0:m
-      cache[it] = j
-      it *= g
+    if fits(Int, m)
+      for j in 0:Int(m)
+        cache[it] = j
+        it *= g
+      end
+    else
+      for j in 0:m
+        cache[it] = j
+        it *= g
+      end
     end
   end
   b = g^(-m)
   y = h
-  for i in 0:m-1
-    if haskey(cache, y)
-      return ZZRingElem(mod(i*m + cache[y], n))
-    else
-      y *= b
+  # the largest value is m * m + m <= 2m*2
+  if 2*nbits(m) + 1 < 8 * sizeof(Int)
+    mm = Int(m)
+    for i in 0:mm-1
+      if haskey(cache, y)
+        return ZZRingElem(mod(i*mm + cache[y], n))
+      else
+        y *= b
+      end
+    end
+  else
+    for i in 0:m-1
+      if haskey(cache, y)
+        return ZZRingElem(mod(i*m + cache[y], n))
+      else
+        y *= b
+      end
     end
   end
   error("Couldn't find discrete logarithm")
@@ -839,7 +858,7 @@ function _prime_part_multgrp_mod_p(p::AbsNumFieldOrderIdeal{AbsSimpleNumField, A
 end
 
 
-function _mult_grp(Q::AbsSimpleNumFieldOrderQuoRing, p::Integer)
+function _mult_grp(Q::AbsSimpleNumFieldOrderQuoRing, p::IntegerUnion; method = nothing)
   O = Q.base_ring
   OtoQ = NfOrdQuoMap(O, Q)
 
@@ -879,7 +898,7 @@ function _mult_grp(Q::AbsSimpleNumFieldOrderQuoRing, p::Integer)
     end
 
     if haskey(y2, q)
-      G2, G2toO = _1_plus_p_mod_1_plus_pv(q, y2[q], q^y2[q])
+      G2, G2toO = _1_plus_p_mod_1_plus_pv(q, y2[q], q^y2[q]; method)
 
       nq = norm(q) - 1
 
@@ -888,7 +907,11 @@ function _mult_grp(Q::AbsSimpleNumFieldOrderQuoRing, p::Integer)
       obcs_inv = gcdx(nq, obcs)[2]
 
       disc_log2 = function(x::AbsSimpleNumFieldOrderElem)
-        y = Q(x)^Int(nq)
+        if fits(Int, nq)
+          y = Q(x)^Int(nq)
+        else
+          y = Q(x)^nq
+        end
         z = G2toO.discrete_logarithm(y.elem)
         for i = 1:length(z)
           z[i] *= obcs_inv
@@ -945,8 +968,7 @@ function _n_part_multgrp_mod_p(p::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSi
   @assert !isone(gcd(ZZRingElem(n), np))
   npart, m = ppio(np, ZZRingElem(n))
   k = gcd(npart, ZZRingElem(n))
-  fac = factor(k)
-  powm = ZZRingElem[divexact(npart, x) for x in keys(fac.fac)]
+  powm = ZZRingElem[divexact(npart, x) for x in prime_divisors(k)]
 
   #
   #  We search for a random element with the right order
@@ -1308,7 +1330,7 @@ snf(GtoR::Union{GrpAbFinGenToAbsOrdQuoRingMultMap, GrpAbFinGenToAbsOrdMap}, modu
 # product to O/(IJ).
 # It is assumed that I and J are coprime.
 function direct_product(G::FinGenAbGroup, GtoQ::GrpAbFinGenToAbsOrdQuoRingMultMap, H::FinGenAbGroup, HtoQ::GrpAbFinGenToAbsOrdQuoRingMultMap)
-  return direct_product([G, H], [GtoQ, GtoH])
+  return direct_product([G, H], [GtoQ, HtoQ])
 end
 
 # Let G_i be the groups and Q_i be the codomains of the maps such that
@@ -1465,12 +1487,14 @@ function _direct_product!(ideals_and_maps::Vector{Tuple{AbsNumFieldOrderIdeal{Ab
   generators = Vector{AbsSimpleNumFieldOrderQuoRingElem}()
   if length(ideals) != 1
     moduli = _compute_products_for_make_coprime(ideals)
+  else
+    moduli = nothing
   end
   for i = 1:length(ideals)
     for map in ideals_and_maps[i][2]
       push!(groups, domain(map))
       for j = 1:length(map.generators)
-        if length(ideals) == 1
+        if moduli === nothing
           push!(generators, Q(map.generators[j]))
         else
           g = crt(map.generators[j], ideals[i], oneO, moduli[i])

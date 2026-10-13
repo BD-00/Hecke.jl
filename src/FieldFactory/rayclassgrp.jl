@@ -78,7 +78,7 @@ function ray_class_group_quo(m::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimp
   K = nf(O)
   n_quo = ctx.n
 
-  lp = merge(max, y1, y2)
+  lp = mergewith(max, y1, y2)
 
   powers = Vector{Tuple{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}, AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}}}()
   quo_rings = Tuple{AbsSimpleNumFieldOrderQuoRing, Hecke.AbsOrdQuoMap{AbsNumFieldOrder{AbsSimpleNumField,AbsSimpleNumFieldElem},AbsNumFieldOrderIdeal{AbsSimpleNumField,AbsSimpleNumFieldElem},AbsSimpleNumFieldOrderElem}}[]
@@ -241,7 +241,8 @@ function ray_class_group_quo(m::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimp
     function disclog(J::FacElem{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}, AbsNumFieldOrderIdealSet{AbsSimpleNumField, AbsSimpleNumFieldElem}})
       @vprintln :RayFacElem 1 "Disc log of element $J"
       a1 = id(X)
-      for (f, k) in J
+      for (f, k) in _simplify_for_ray_class_map(J, m)
+        iszero(k) && continue
         a1 += k*disclog(f)
       end
       return a1
@@ -457,10 +458,9 @@ end
 function ray_class_group_quo(O::AbsSimpleNumFieldOrder, m::Int, wprimes::Dict{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem},Int}, inf_plc::Vector{<: InfPlc}, ctx::ctx_rayclassgrp; GRH::Bool = true)
 
   d1 = Dict{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}, Int}()
-  lp = factor(m)
   I = ideal(O, 1)
   minI = ZZRingElem(1)
-  for q in keys(lp.fac)
+  for q in prime_divisors(m)
     lq = prime_decomposition(O, q)
     for (P, e) in lq
       if !haskey(wprimes, P)

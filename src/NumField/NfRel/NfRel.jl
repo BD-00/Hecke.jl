@@ -124,7 +124,11 @@ function Base.show(io::IO, ::MIME"text/plain", a::RelSimpleNumField)
   println(io, "Relative number field with defining polynomial ", a.pol)
   io = pretty(io)
   print(io, Indent(), "over ", Lowercase())
-  show(io, MIME"text/plain"(), base_field(a))
+  if haskey(io, :collapsenf)
+    print(io, base_field(a))
+  else
+    show(io, MIME"text/plain"(), base_field(a))
+  end
   print(io, Dedent())
 end
 
@@ -253,16 +257,11 @@ Base.:(^)(a::RelSimpleNumFieldElem, n::UInt) = a^Int(n)
 
 function Base.:(^)(a::RelSimpleNumFieldElem, n::Int)
   K = parent(a)
+
+  n == 0 && return one(K)
   if iszero(a)
+    @req n >= 0 "Element is not invertible"
     return zero(K)
-  end
-
-  if n == 0
-    return one(K)
-  end
-
-  if n < 0 && iszero(a)
-    error("Element is not invertible")
   end
 
   return K(powermod(data(a), n, K.pol))
@@ -399,7 +398,7 @@ end
 #
 ################################################################################
 
-function hash(a::Hecke.RelSimpleNumFieldElem{AbsSimpleNumFieldElem}, b::UInt)
+function hash(a::Hecke.RelSimpleNumFieldElem, b::UInt)
   return hash(a.data, b)
 end
 
@@ -542,7 +541,8 @@ function assure_trace_basis(K::RelSimpleNumField{T}) where T
   end
   F = base_field(K)
   trace_basis = T[F(degree(K))]
-  append!(trace_basis, polynomial_to_power_sums(K.pol, degree(K)-1))
+  l = leading_coefficient(K.pol)
+  append!(trace_basis, polynomial_to_power_sums(K.pol*inv(l), degree(K)-1))
   K.trace_basis = trace_basis
   return nothing
 end
@@ -614,8 +614,13 @@ function absolute_charpoly(a::RelSimpleNumFieldElem)
   return charpoly(a, QQ)
 end
 
+function lift(R::PolyRing{<:NumFieldElem}, x::SimpleNumFieldElem)
+  @req base_ring(R) === base_field(parent(x)) "Ring mismatch. Cannot lift to polynomial ring."
+    return deepcopy(data(x))
+end
+
 function (R::Generic.PolyRing{AbsSimpleNumFieldElem})(a::RelSimpleNumFieldElem{AbsSimpleNumFieldElem})
-  if base_ring(R)==base_field(parent(a))
+  if base_ring(R) == base_field(parent(a))
     return a.data
   end
   error("wrong ring")
@@ -697,7 +702,7 @@ function normal_basis(L::RelSimpleNumField{AbsSimpleNumFieldElem}, check::Bool =
       # Lift an idempotent of O/pO
       immF = pseudo_inv(mmF)
       fac = factor(ft)
-      gt = divexact(ft, first(keys(fac.fac)))
+      gt = divexact(ft, first(fac)[1])
       g = fq_poly_to_nf_elem_poly(parent(L.pol), immF, gt)
       return L(g)
     end
@@ -729,22 +734,9 @@ end
 #
 ################################################################################
 
-RandomExtensions.maketype(L::RelSimpleNumField, B) = elem_type(L)
-
-function rand(rng::AbstractRNG, sp::SamplerTrivial{<:Make2{<:RelSimpleNumFieldElem,<:RelSimpleNumField,<:AbstractUnitRange}})
-  L, B = sp[][1:end]
-  k = base_field(L)
-  pb = basis(L)
-  z = zero(L)
-  for i = 1:length(pb)
-    t = rand(rng, k, B)
-    z += t*pb[i]
-  end
-  return z
+function ConformanceTests.generate_element(K::RelSimpleNumField)
+  return rand(K, -10:10)
 end
-
-rand(L::RelSimpleNumField, B::AbstractUnitRange{Int}) = rand(GLOBAL_RNG, L, B)
-rand(rng::AbstractRNG, L::RelSimpleNumField, B::AbstractUnitRange{Int}) = rand(rng, make(L, B))
 
 ################################################################################
 #

@@ -36,10 +36,11 @@ function _pseudo_cholesky(G::ZZMatrix, ::Type{Matrix{QQFieldElem}})
   return __pseudo_cholesky!(C, G)
 end
 
-function _pseudo_cholesky(G::ZZMatrix, ::Type{Matrix{S}}) where {T, S <: Union{Rational{T}, UnsafeRational{T}}}
+function _pseudo_cholesky(G::ZZMatrix, ::Type{Matrix{S}}) where {S <: Union{Rational, UnsafeRational}}
   n = ncols(G)
   z = Matrix{S}(undef, n, n)
   C = _pseudo_cholesky(G, Matrix{QQFieldElem})
+  T = fieldtype(S, 1)
   for i in 1:n
     for j in 1:n
       z[i, j] = S(T(numerator(C[i, j])), T(denominator(C[i, j])))
@@ -501,7 +502,7 @@ function ___enumerate_cholesky(::Type{Vector}, Q::Matrix{QQFieldElem}, l::Union{
     t1 = compute_len!(t1, c, T, Q, x, U)
     t2 = numerator!(t2, t1)
     _short_enough = false
-    if S === Int
+    if S === Int && fits(Int, t2)
       _len = Int(t2)
       _short_enough = _len <= c
       if !(l isa Nothing)
@@ -761,12 +762,12 @@ end
 
 # This is the work horse
 # Assumes that G is a gram matrix, finds all vectors v with length l
-# lb <= v < ub. Also applies the transformation transform
+# lb <= l < ub. Also applies the transformation transform
 #
 # If transform === nothing, no transform in the vector case
 #
 # Return value is Vector{Tuple{Vector{S}, ZZRingElem}}
-function _short_vectors_gram_nolll_integral(::Type{T}, G, _lb, _ub, transform::X, d::Y, elem_type::Type{S} = ZZRingElem) where {T, X, Y, S}
+function _short_vectors_gram_nolll_integral(::Type{T}, G, _lb, _ub, transform::X, d::Y, elem_type::Type{S} = ZZRingElem, NormType::Type{N} = QQFieldElem) where {T, X, Y, S, N}
   n = nrows(G)
   ub = floor(ZZRingElem, _ub)
   # G is integral, so q(x) <= ub is equivalent to q(x) <= floor(ub)
@@ -774,41 +775,41 @@ function _short_vectors_gram_nolll_integral(::Type{T}, G, _lb, _ub, transform::X
 
   # We pass the following function through to the iterator
   # They are applied to the vector found and the length of the vector
-  cleanvec = v -> __clean_and_assemble(v, transform, !isnothing(transform) && !isone(transform), S)
+  tmpvec = zeros_array(ZZ, n)
+  cleanvec = v -> __clean_and_assemble(v, transform, !isnothing(transform) && !isone(transform), tmpvec, S)
   cleanscalar = l -> l//d
-
   if ub isa ZZRingElem && fits(Int, ub)
     if _lb isa Nothing
-      V = __enumerate_gram(T, G, nothing, Int(ub), QQFieldElem, cleanvec, cleanscalar, elem_type)
+      V = __enumerate_gram(T, G, nothing, Int(ub), NormType, cleanvec, cleanscalar, elem_type)
     else
       lb = ceil(ZZRingElem, _lb)
       if iszero(lb)
-        V = __enumerate_gram(T, G, nothing, Int(ub), QQFieldElem,
+        V = __enumerate_gram(T, G, nothing, Int(ub), NormType,
                              cleanvec, cleanscalar, elem_type)
       else
-        V = __enumerate_gram(T, G, Int(lb), Int(ub), QQFieldElem,
+        V = __enumerate_gram(T, G, Int(lb), Int(ub), NormType,
                              cleanvec, cleanscalar, elem_type)
       end
     end
   else
     if _lb isa Nothing
-      V = __enumerate_gram(T, G, nothing, ub, QQFieldElem,
+      V = __enumerate_gram(T, G, nothing, ub, NormType,
                              cleanvec, cleanscalar, elem_type)
     else
       lb = ceil(ZZRingElem, _lb)
       if iszero(lb)
-        V = __enumerate_gram(T, G, nothing, ub, QQFieldElem,
+        V = __enumerate_gram(T, G, nothing, ub, NormType,
                              cleanvec, cleanscalar, elem_type)
       else
-        V = __enumerate_gram(T, G, lb, ub, QQFieldElem,
+        V = __enumerate_gram(T, G, lb, ub, NormType,
                              cleanvec, cleanscalar, elem_type)
       end
     end
   end
 
   # V is type-unstable, so we use a function barrier
-  if V isa Vector
-    W = Vector{Tuple{Vector{S}, QQFieldElem}}()
+  if V isa Vector && T <: Vector
+    W = Vector{Tuple{Vector{S}, NormType}}()
     __assemble_result!(W, V, transform, n)
     return W
   else
@@ -818,10 +819,10 @@ end
 
 Base.IteratorSize(::Type{<:LatEnumCtx}) = Base.SizeUnknown()
 
-function __clean_and_assemble(v::V, transform::U, dotransform::Bool, elem_type::Type{S} = ZZRingElem) where {V, U, S}
+function __clean_and_assemble(v::V, transform::U, dotransform::Bool, tmp::Vector{ZZRingElem}, elem_type::Type{S} = ZZRingElem) where {V, U, S}
   # this may or may not produce a copy
   if dotransform
-    m = _transform(v, transform)
+    m = _transform(v, transform, tmp)
   else
     m = v
   end
@@ -851,8 +852,9 @@ end
 
 function __assemble_result!(W, V::T, transform, n) where {T}
   k = 0
+  tmp = zeros_array(ZZ, n)
   for (v, l) in V
-    m = _transform(v, transform)
+    m = _transform(v, transform, tmp)
 
     positive = false
     for k in 1:n
@@ -920,7 +922,7 @@ end
 
 # No assumption on _G, algorithm applies LLL
 function _short_vectors_gram(::Type{T}, _G, ub, elem_type::Type{S} = ZZRingElem; hard::Bool = false) where {T, S}
-  return _short_vectors_gram(T, _G, ZZRingElem(0), ub, S, hard = hard)
+  return _short_vectors_gram(T, _G, ZZRingElem(0), ub, S; hard)
 end
 
 ################################################################################
@@ -930,22 +932,33 @@ end
 ################################################################################
 
 # No assumption on _G, algorithm applies LLL
-function _shortest_vectors_gram(::Type{S}, _G) where {S}
-  d = denominator(_G)
-  G = change_base_ring(ZZ, d * _G)
-  Glll, T = lll_gram_with_transform(G)
-  ub = minimum([Glll[i, i] for i in 1:nrows(G)])
-  @assert ub > 0
-  if isone(T)
-    V = _short_vectors_gram_nolll_integral(S, Glll, 0, ub, nothing, one(ZZ), ZZRingElem)
+function _shortest_vectors_gram(::Type{S}, _G; dolll=true, elem_type=ZZRingElem) where {S}
+  G, d = integral_split(_G, ZZ)
+  if dolll
+    Glll, T = lll_gram_with_transform(G)
   else
-    V = _short_vectors_gram_nolll_integral(S, Glll, 0, ub, T, one(ZZ), ZZRingElem)
+    Glll = G
+  end
+  ub = minimum([Glll[i, i] for i in 1:nrows(G)])
+  if !fits(Int, ub)
+    norm_type = QQFieldElem
+  else
+    norm_type = Int
+  end
+  norm_type = QQFieldElem # TODO: remove this and track the bug
+  # L = integer_lattice(gram=QQ[2 1 0 0 0 1 0 0 0 0 0 0 1 -1 0 0 0 0 0 0 0 0 0 0 0 0; 1 2 1 0 0 1 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0; 0 1 2 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0; 0 0 1 2 -1 -1 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0; 0 0 0 -1 2 0 0 -1 0 -1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0; 1 1 0 -1 0 3 1 1 0 0 0 0 0 0 0 1 0 1 0 0 0 0 0 0 0 0; 0 0 0 0 0 1 2 1 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0; 0 0 0 0 -1 1 1 3 -1 1 0 -1 0 -1 0 1 0 0 0 0 0 0 0 0 0 0; 0 0 0 0 0 0 0 -1 2 -1 1 1 0 1 0 -1 0 0 0 0 0 0 0 0 0 0; 0 0 1 1 -1 0 0 1 -1 3 0 -1 0 -1 0 0 0 0 0 0 0 0 0 0 0 0; 0 0 0 0 0 0 0 0 1 0 2 0 0 0 0 -1 0 0 0 0 0 0 0 0 0 0; 0 0 0 0 0 0 0 -1 1 -1 0 2 -1 1 0 0 0 0 0 0 0 0 0 0 0 0; 1 1 0 0 0 0 0 0 0 0 0 -1 3 -1 1 0 1 0 0 0 0 0 0 0 0 0; -1 0 0 0 0 0 0 -1 1 -1 0 1 -1 3 0 0 0 1 0 0 0 0 0 0 0 0; 0 0 0 0 0 0 0 0 0 0 0 0 1 0 2 0 1 0 0 0 0 -1 0 0 0 0; 0 0 0 0 0 1 1 1 -1 0 -1 0 0 0 0 3 0 1 0 0 0 0 0 -1 0 0; 0 0 0 0 0 0 0 0 0 0 0 0 1 0 1 0 2 1 0 0 0 0 0 1 0 0; 0 0 0 0 0 1 0 0 0 0 0 0 0 1 0 1 1 3 -1 0 0 0 0 0 0 0; 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1 2 1 0 1 0 1 0 0; 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 2 1 1 0 1 0 0; 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 2 1 0 0 0 0; 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1 0 0 0 1 1 1 3 1 1 0 0; 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 2 0 0 0; 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1 1 0 1 1 0 1 0 3 1 0; 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 2 -1; 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1 2]); shortest_vectors(L)
+
+  @assert ub > 0
+  if !dolll || isone(T)
+    V = _short_vectors_gram_nolll_integral(S, Glll, 0, ub, nothing, one(Int), elem_type, norm_type)
+  else
+    V = _short_vectors_gram_nolll_integral(S, Glll, 0, ub, T, one(ZZ), elem_type, norm_type)
   end
   min = minimum(v[2] for v in V)
-  return min//d, Vector{ZZRingElem}[ v[1] for v in V if v[2] == min]
+  return min//d, Vector{elem_type}[ v[1] for v in V if v[2] == min]
 end
 
-function _shortest_vectors_gram(_G, elem_type::Type{S} = ZZRingElem) where {S}
+function _shortest_vectors_gram(_G::MatElem, elem_type::Type{S} = ZZRingElem) where {S}
   d = denominator(_G)
   G = change_base_ring(ZZ, d * _G)
   Glll, T = lll_gram_with_transform(G)
@@ -969,43 +982,57 @@ function _shortest_vectors_gram(_G, elem_type::Type{S} = ZZRingElem) where {S}
   return min, cur_vec
 end
 
-function _short_vectors_gram_integral(::Type{S}, _G, ub, elem_type::Type{U} = ZZRingElem; hard = false) where {S, U}
-  if hard
+function _short_vectors_gram_integral(::Type{S}, _G, lb, ub, elem_type::Type{U} = ZZRingElem; hard=false, is_lll_reduced_known::Bool=false) where {S, U}
+  if is_lll_reduced_known
+    Glll = _G
+    T = one(_G)
+  elseif hard
     Glll, T = lll_gram_with_transform(_G, LLLContext(0.99999999999999, 0.500000000001, :gram))
   else
     Glll, T = lll_gram_with_transform(_G)
   end
   if S === Vector && isone(T)
-    V = _short_vectors_gram_nolll_integral(S, Glll, 0, ub, nothing, one(ZZ), elem_type)
+    V = _short_vectors_gram_nolll_integral(S, Glll, lb, ub, nothing, one(ZZ), elem_type)
   else
-    V = _short_vectors_gram_nolll_integral(S, Glll, 0, ub, T, one(ZZ), elem_type)
+    V = _short_vectors_gram_nolll_integral(S, Glll, lb, ub, T, one(ZZ), elem_type)
   end
 
   return V
 end
 
-function _shortest_vectors_gram_integral(::Type{S}, _G) where {S}
-  Glll, T = lll_gram_with_transform(_G)
+function _short_vectors_gram_integral(::Type{S}, _G, ub, elem_type::Type{U} = ZZRingElem; kwargs...) where {S, U}
+  return _short_vectors_gram_integral(S, _G, ZZRingElem(0), ub, U; kwargs...)
+end
+
+function _shortest_vectors_gram_integral(::Type{S}, _G; is_lll_reduced_known::Bool=false) where {S}
+  if is_lll_reduced_known
+    Glll = _G
+    T = nothing
+  else
+    Glll, T = lll_gram_with_transform(_G)
+    if isone(T)
+      T = nothing
+    end
+  end
   max = maximum([Glll[i, i] for i in 1:nrows(Glll)])
   @assert max > 0
-  if isone(T)
-    V = _short_vectors_gram_nolll_integral(S, Glll, 0, max, nothing, one(ZZ), ZZRingElem)
-  else
-    V = _short_vectors_gram_nolll_integral(S, Glll, 0, max, T, one(ZZ), ZZRingElem)
-  end
+  V = _short_vectors_gram_nolll_integral(S, Glll, 0, max, T, one(ZZ), ZZRingElem)
   min = minimum(v[2] for v in V)
   return min, [ v for v in V if v[2] == min]
 end
 
-_transform(m::ZZMatrix, T::ZZMatrix) = m * T
+_transform(m::ZZMatrix, T::ZZMatrix, tmp) = m * T
 
-_transform(m::Vector, ::Nothing) = m
+_transform(m::Vector, ::Nothing, tmp) = m
 
-function _transform(m::Vector{Int}, T::ZZMatrix)
-  return ZZRingElem.(m) * T
+function _transform(m::Vector{Int}, T::ZZMatrix, tmp)
+  @inbounds for i in 1:length(m)
+    tmp[i] = m[i]
+  end
+  return tmp * T
 end
 
-function _transform(m::Vector{ZZRingElem}, T::ZZMatrix)
+function _transform(m::Vector{ZZRingElem}, T::ZZMatrix, tmp)
   return m * T
 end
 
@@ -1039,3 +1066,4 @@ floor!(z::Int, x::Rational{Int}, y::Int, w::Int) = Int(floor(x))
 isqrt!(z::Int, x::Int) = isqrt(x)
 
 ceil!(z::Int, x::Rational{Int}, y::Int, w::Int) = Int(ceil(x))
+

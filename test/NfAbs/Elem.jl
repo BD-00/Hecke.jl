@@ -1,14 +1,3 @@
-@testset "Linear disjoint" begin
-  Qx, x = polynomial_ring(QQ, "x")
-  _K, _ = number_field([x^2 - 2, x^2 - 3], "a", cached = false)
-  K, _ = simple_extension(_K)
-  L, b = number_field(x^2 - 2, "b", cached = false)
-  @test !is_linearly_disjoint(K, L)
-
-  M, c = number_field(x^2 - 3, "c", cached = false)
-  @test is_linearly_disjoint(L, M)
-end
-
 @testset "Random" begin
   Qx, x = polynomial_ring(QQ, "x")
   K, a = number_field(x^32 + 2, "a")
@@ -38,6 +27,8 @@ end
   Kt, t = K["t"]
   f = t^4+(-28*_a^2 + 26*_a + 124)*t^2+(81*_a^2 + 504*_a + 936)
   @test @inferred is_irreducible(f)
+  @test @inferred !is_irreducible(zero(Kt))
+  @test @inferred !is_irreducible(one(Kt))
 
   f = x^3-7*x^2+6*x-1
   K, a = number_field(f, "a")
@@ -61,15 +52,23 @@ end
   @test Hecke.is_integral(QQFieldElem(1, 2)*b[1]) == false
 end
 
-@testset "Compositum" begin
+@testset "Is integer or rational" begin
   Qx, x = QQ["x"]
-  f = x^2 + 1
+  f = x^2 + 1//2
   K, a = number_field(f, "a")
-  L, b = number_field(x^2-3, "b")
-  C, mK, mL = compositum(K, L)
 
-  @test iszero(K.pol(mK(gen(K))))
-  @test iszero(L.pol(mL(gen(L))))
+  @test Hecke.is_integer(2*a^2) == true
+  @test Hecke.is_integer(a^2) == false
+  @test Hecke.is_rational(a^2) == true
+  @test Hecke.is_rational(a) == false
+
+  g = x^3 + 3
+  L, b = number_field([f, g], "b")
+
+  @test Hecke.is_integer(2*b[1]^2) == true
+  @test Hecke.is_integer(b[1]^2) == false
+  @test Hecke.is_rational(b[1]^2) == true
+  @test Hecke.is_rational(b[1]) == false
 end
 
 @testset "PolyFactor" begin
@@ -162,6 +161,16 @@ end
   @test all(iszero, (f(b) for b in r))
 end
 
+@testset "Norm" begin
+  Qx, xQ = QQ["x"]
+  F, _ = number_field(xQ^2-2)
+  Fx, xF = F["x"]
+  d = degree(F)
+  for i in 0:11
+    @test norm(xF^i + xF^(i+1)) == xQ^(i*d) * norm(xF+1)
+  end
+end
+
 @testset "Norm of factored element" begin
   Qx, x = QQ["x"]
   f = x^3 - 2
@@ -173,4 +182,14 @@ end
   @test norm(h, z) == 1620*a^2 - 3342*a + 1120
   @test evaluate(norm(h, FacElem(z))) == evaluate(FacElem(K, Dict(1620*a^2 - 3342*a + 1120 => 1)))
   @test evaluate(norm(h, FacElem(L))) == evaluate(FacElem(K))
+end
+
+@testset "compact presentation" begin
+  Qx, x = QQ[:x]
+  f = 8*x^3 + 4*x^2 - 1//3*x-1
+  k, a = number_field(f; cached = false)
+  ok = maximal_order(k)
+  b = 24*a
+  @test Hecke.evaluate_mod(FacElem(b)^3, b^3*ok) == b^3
+  @test evaluate(Hecke.compact_presentation(FacElem(b)^3)) == b^3
 end

@@ -32,22 +32,16 @@ struct ZZFracIdl <: NumFieldOrderFractionalIdeal
   end
 end
 
+base_ring(::ZZIdl) = ZZ
+
+base_ring_type(::Type{ZZIdl}) = ZZRing
+
 order(::ZZIdl) = ZZ
 
 order(::ZZFracIdl) = ZZ
 
 # constructors
-*(::ZZRing, x::IntegerUnion) = ideal(ZZ, x)
-
-*(x::IntegerUnion, ::ZZRing) = ideal(ZZ, x)
-
-ideal(::ZZRing, x::ZZRingElem) = ZZIdl(x)
-
-ideal(::ZZRing, x::Integer) = ZZIdl(ZZRingElem(x))
-
-ideal(::ZZRing, x::AbstractVector{ZZRingElem}) = ZZIdl(gcd(x))
-
-ideal(::ZZRing, x::AbstractVector{<:Integer}) = ZZIdl(ZZRingElem(gcd(x)))
+ideal(::ZZRing, x::Vector{ZZRingElem}) = ZZIdl(gcd(x))
 
 fractional_ideal(::ZZRing, x::QQFieldElem) = ZZFracIdl(x)
 
@@ -168,9 +162,9 @@ is_primary(I::ZZIdl) = is_zero(I) || is_prime_power_with_data(gen(I))[1]
 
 is_subset(I::ZZIdl, J::ZZIdl) = is_divisible_by(gen(J), gen(I))
 
-radical(I::ZZIdl) = iszero(I) ? I : ideal(ZZ, radical(gen(I)))
+radical(I::ZZIdl) = iszero(I) ? I : ideal(radical(gen(I)))
 primary_decomposition(I::ZZIdl) = iszero(I) ? [ (I,I) ] :
-  [ (ideal(ZZ, p^k), ideal(ZZ, p)) for (p,k) in factor(gen(I)) ]
+  [ (ideal(p^k), ideal(p)) for (p,k) in factor(gen(I)) ]
 
 maximal_order(::QQField) = ZZ
 
@@ -230,7 +224,7 @@ function hilbert_symbol(a,b, p::ZZIdl)
   return hilbert_symbol(a,b, gen(p))
 end
 
-is_local_norm(K, x, p::ZZIdl) = is_local_norm(K, x, gen(p))
+is_local_norm(K::AbsSimpleNumField, x, p::ZZIdl) = is_local_norm(K, x, gen(p))
 
 function quadratic_defect(q::QQFieldElem, p::ZZIdl)
   return quadratic_defect(q, gen(p))

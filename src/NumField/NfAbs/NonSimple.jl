@@ -27,9 +27,7 @@ end
 ################################################################################
 
 function Base.deepcopy_internal(a::AbsNonSimpleNumFieldElem, dict::IdDict)
-  # TODO: Fix this once deepcopy is fixed for QQMPolyRingElem
-  # z = AbsNonSimpleNumFieldElem(Base.deepcopy_internal(data(a), dict))
-  z = AbsNonSimpleNumFieldElem(parent(a), Base.deepcopy(data(a)))
+  z = AbsNonSimpleNumFieldElem(parent(a), Base.deepcopy_internal(data(a), dict))
   return z
 end
 
@@ -78,21 +76,21 @@ end
 #
 ################################################################################
 
-RandomExtensions.maketype(K::AbsNonSimpleNumField, r) = elem_type(K)
-
-function rand(rng::AbstractRNG, sp::SamplerTrivial{<:Make2{AbsNonSimpleNumFieldElem,AbsNonSimpleNumField,<:AbstractUnitRange}})
+# construct a dense random element:
+# linear combination of basis elements (monomials) with random coefficients
+function rand(rng::AbstractRNG,
+              sp::SamplerTrivial{<:Make2{AbsNonSimpleNumFieldElem, AbsNonSimpleNumField,
+                                         <:AbstractUnitRange{<:IntegerUnion}}})
   K, r = sp[][1:end]
-  # TODO: This is super slow
-  b = basis(K, copy = false)
-  z::Random.gentype(sp) = K() # type-assert to help inference on Julia 1.0 and 1.1
-  for i in 1:degree(K)
-    z += rand(rng, r) * b[i]
-  end
-  return z
-end
 
-rand(K::AbsNonSimpleNumField, r::AbstractUnitRange) = rand(GLOBAL_RNG, K, r)
-rand(rng::AbstractRNG, K::AbsNonSimpleNumField, r::AbstractUnitRange) = rand(rng, make(K, r))
+  ci = QQFieldElem[rand(rng, r) for _ in 1:degree(K)]
+
+  d = degrees(K)
+  exp_it = cartesian_product_iterator([0:d[i]-1 for i in eachindex(d)], inplace = true)
+  ei = Vector{Int}[copy(exp) for exp in exp_it]
+
+  return K(QQMPolyRingElem(parent(K.pol[1]), ci, ei))
+end
 
 ################################################################################
 #
@@ -360,31 +358,21 @@ end
 
 function elem_to_mat_row!(M::ZZMatrix, i::Int, d::ZZRingElem, a::AbsNonSimpleNumFieldElem)
   K = parent(a)
-  # TODO: This is super bad
-  # Proper implementation needs access to the content of the underlying
-  # QQMPolyRingElem
 
   for j in 1:ncols(M)
     M[i, j] = zero(ZZ)
   end
 
-  one!(d)
+  a_poly = data(a)
+  set!(d, denominator(a_poly))
 
-  if length(data(a)) == 0
-    return nothing
+  for j in 1:length(a_poly)
+    k = monomial_to_index(K, exponent_vector(a_poly, j))
+    # TODO: we can tweak flint (and add nemo bindings) to extract primitive part coefficients directly
+    M[i, k] = numerator(coeff(a_poly, j) * d)
   end
 
-  z = zero_matrix(QQ, 1, ncols(M))
-  elem_to_mat_row!(z, 1, a)
-  z_q = FakeFmpqMat(z)
-
-  for j in 1:ncols(M)
-    M[i, j] = z_q.num[1, j]
-  end
-
-  set!(d, z_q.den)
-
-  return nothing
+  return M
 end
 
 function elem_to_mat_row!(M::QQMatrix, i::Int, a::AbsNonSimpleNumFieldElem)
@@ -461,6 +449,10 @@ end
 ################################################################################
 
 function minpoly_dense(a::AbsNonSimpleNumFieldElem)
+  return minpoly_dense(Globals.Qx, a)
+end
+
+function minpoly_dense(Qt, a::AbsNonSimpleNumFieldElem)
   K = parent(a)
   n = degree(K)
   M = zero_matrix(QQ, degree(K)+1, degree(K))
@@ -469,7 +461,6 @@ function minpoly_dense(a::AbsNonSimpleNumFieldElem)
   z *= a
   elem_to_mat_row!(M, 2, z)
   i = 2
-  Qt, _ = polynomial_ring(QQ,"t", cached=false)
   while true
     if n % (i-1) == 0 && rank(M) < i
       N = kernel(transpose(sub(M, 1:i, 1:ncols(M))), side = :right)
@@ -489,6 +480,10 @@ function minpoly_dense(a::AbsNonSimpleNumFieldElem)
 end
 
 function minpoly_sparse(a::AbsNonSimpleNumFieldElem)
+  return minpoly_sparse(Globals.Qx, a)
+end
+
+function minpoly_sparse(Qt, a::AbsNonSimpleNumFieldElem)
   K = parent(a)
   n = degree(K)
   M = sparse_matrix(QQ)
@@ -497,8 +492,8 @@ function minpoly_sparse(a::AbsNonSimpleNumFieldElem)
   z *= a
   sz = SRow(z)
   i = 1
+  t = gen(Qt)
   local so::typeof(sz)
-  Qt, t = polynomial_ring(QQ, "x", cached = false)
   while true
     if n % i == 0
       fl, _so = can_solve_with_solution(M, sz)
@@ -525,10 +520,11 @@ function minpoly_sparse(a::AbsNonSimpleNumFieldElem)
 end
 
 function minpoly(a::AbsNonSimpleNumFieldElem)
-  return minpoly_via_trace(a)::QQPolyRingElem
+  return minpoly(Globals.Qx, a)
 end
 
 function minpoly(Qx::QQPolyRing, a::AbsNonSimpleNumFieldElem)
+  return minpoly_via_trace(Qx, a)
   return Qx(minpoly(a))
 end
 
@@ -537,7 +533,7 @@ function minpoly(Rx::ZZPolyRing, a::AbsNonSimpleNumFieldElem)
   if !isone(denominator(f))
     error("element is not integral")
   end
-  return Rx(denominator(f)*f)
+  return numerator(f, Rx)
 end
 
 function minpoly(a::AbsNonSimpleNumFieldElem, R::ZZRing)
@@ -554,13 +550,13 @@ end
 #
 ################################################################################
 
-function charpoly(a::AbsNonSimpleNumFieldElem)
-  f = minpoly(a)
+function charpoly(Rx::QQPolyRing, a::AbsNonSimpleNumFieldElem)
+  f = minpoly(Rx, a)
   return f^div(degree(parent(a)), degree(f))
 end
 
-function charpoly(Rx::QQPolyRing, a::AbsNonSimpleNumFieldElem)
-  return Qx(charpoly(a))
+function charpoly(a::AbsNonSimpleNumFieldElem)
+  return charpoly(Globals.Qx, a)
 end
 
 function charpoly(Rx::ZZPolyRing, a::AbsNonSimpleNumFieldElem)
@@ -568,7 +564,7 @@ function charpoly(Rx::ZZPolyRing, a::AbsNonSimpleNumFieldElem)
   if !isone(denominator(f))
     error("element is not integral")
   end
-  return Rx(denominator(f)*f)
+  return numerator(f, Rx)
 end
 
 function charpoly(a::AbsNonSimpleNumFieldElem, R::ZZRing)
@@ -770,64 +766,15 @@ end
 #
 ################################################################################
 
-function simple_extension(K::AbsNonSimpleNumField; cached::Bool = true, check = true, simplified::Bool = false)
+function simple_extension(K::AbsNonSimpleNumField; cached::Bool = true, check::Bool = true, simplified::Bool = false)
   if simplified
     return simplified_simple_extension(K, cached = cached)
   end
-  n = ngens(K)
-  g = gens(K)
-  if n == 1
-    #The extension is already simple
-    f = to_univariate(Globals.Qx, K.pol[1])
-    Ka, a = number_field(f, "a", cached = cached, check = check)
-    mp = hom(Ka, K, g[1], inverse = [a])
-    return Ka, mp
-  end
-  pe = g[1]
-  i = 1
-  ind = Int[1]
-  f = minpoly(pe)
-  #TODO: use resultants rather than minpoly??
-  while i < n
-    i += 1
-    j = 1
-    f = minpoly(pe + j * g[i])
-    while degree(f) < prod(total_degree(K.pol[k]) for k in 1:i)
-      j += 1
-      f = minpoly(pe + j * g[i])
-    end
-    push!(ind, j)
-    pe += j * g[i]
-  end
-  Ka, a = number_field(f, check = check, cached = cached)
-  k = base_ring(K)
-  M = zero_matrix(k, degree(K), degree(K))
-  z = one(K)
-  elem_to_mat_row!(M, 1, z)
-  if degree(K) > 1
-    elem_to_mat_row!(M, 2, pe)
-    z = mul!(z, z, pe)
-    for i=3:degree(K)
-      z = mul!(z, z, pe)
-      elem_to_mat_row!(M, i, z)
-    end
-  end
-  N = zero_matrix(k, n, degree(K))
-  for i = 1:n
-    elem_to_mat_row!(N, i, g[i])
-  end
-  s = solve(transpose(M), transpose(N); side = :right)
-  b = basis(Ka)
-  emb = Vector{AbsSimpleNumFieldElem}(undef, n)
-  for i = 1:n
-    emb[i] = zero(Ka)
-    for j = 1:degree(Ka)
-      emb[i] += b[j] * s[j, i]
-    end
-  end
-  h = hom(Ka, K, pe, inverse = emb)
+
+  Ka, h = _simple_extension(K; cached = cached, check = check)
+
   embed(h)
-  embed(MapFromFunc(K, Ka, x->preimage(h, x)))
+  embed(map_from_func(K, Ka, x->preimage(h, x)))
   return Ka, h
 end
 
@@ -907,12 +854,12 @@ end
 
 function number_field(f::Vector{ZZPolyRingElem}, s::VarName="_\$"; cached::Bool = false, check::Bool = true)
   Qx, _ = polynomial_ring(QQ, var(parent(f[1])), cached = false)
-  return number_field(QQPolyRingElem[Qx(x) for x = f], s, cached = cached, check = check)
+  return number_field(QQPolyRingElem[change_base_ring(QQ, x; parent = Qx) for x = f], s, cached = cached, check = check)
 end
 
 function number_field(f::Vector{ZZPolyRingElem}, s::Vector{<:VarName}; cached::Bool = false, check::Bool = true)
   Qx, _ = polynomial_ring(QQ, var(parent(f[1])), cached = false)
-  return number_field(QQPolyRingElem[Qx(x) for x = f], s, cached = cached, check = check)
+return number_field(QQPolyRingElem[change_base_ring(QQ, x; parent = Qx) for x = f], s, cached = cached, check = check)
 end
 
 function gens(K::AbsNonSimpleNumField)
@@ -987,7 +934,7 @@ function cyclotomic_field(::Type{NonSimpleNumField}, n::Int, s::VarName=:z; cach
     lc = [1]
   else
     lf = factor(n)
-    lc = [Int(p^k) for (p,k) = lf.fac]
+    lc = [Int(p^k) for (p,k) = lf]
   end
   lp = [cyclotomic(k, x) for k = lc]
   ls = ["$s($n)_$k" for k = lc]
@@ -1045,7 +992,7 @@ end
 #TODO:
 #  test f mod p first
 #  if all polys are monic, the test if traces have non-trivial gcd
-function minpoly_via_trace(a::AbsNonSimpleNumFieldElem)
+function minpoly_via_trace(Qt, a::AbsNonSimpleNumFieldElem)
   k = parent(a)
   d = degree(k)
   b = a
@@ -1058,7 +1005,7 @@ function minpoly_via_trace(a::AbsNonSimpleNumFieldElem)
       i += 1
     end
     q = QQFieldElem(1, div(d, i))
-    f = power_sums_to_polynomial([x*q for x = l])
+    f = power_sums_to_polynomial(QQFieldElem[x*q for x = l], Qt)
     if iszero(subst(f, a))  #TODO: to checks first...
       return f::QQPolyRingElem
     end
@@ -1088,24 +1035,6 @@ end
 #TODO: find a better algo.
 function degree(a::AbsNonSimpleNumFieldElem)
   return degree(minpoly(a))
-end
-
-#TODO: Improve the algorithm
-function primitive_element(K::AbsNonSimpleNumField)
-  g = gens(K)
-  pe = g[1]
-  d = total_degree(K.pol[1])
-  i = 1
-  while i < length(g)
-    i += 1
-    d *= total_degree(K.pol[i])
-    while true
-      pe += g[i]
-      f = minpoly(pe)
-      degree(f) == d && break
-    end
-  end
-  return pe
 end
 
 function factor(f::PolyRingElem{AbsNonSimpleNumFieldElem})
@@ -1168,7 +1097,7 @@ function factor(f::PolyRingElem{AbsNonSimpleNumFieldElem})
 
   res = Dict{PolyRingElem{AbsNonSimpleNumFieldElem}, Int64}()
 
-  for i in keys(fac.fac)
+  for (i, _) in fac
     t = change_base_ring(K, i, parent = Kx)
     t = compose(t, gen(Kx) + k*pe, inner = :second)
     @vtime :PolyFactor 2 t = gcd(f, t)
@@ -1205,8 +1134,4 @@ end
 function (K::QQField)(a::AbsNonSimpleNumFieldElem)
   @req is_constant(data(a)) "Element must be rational"
   return constant_coefficient(data(a))
-end
-
-function is_rational(a::AbsNonSimpleNumFieldElem)
-  return is_constant(data(a))
 end

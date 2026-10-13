@@ -1,6 +1,7 @@
 @testset "AlgAssAbsOrd" begin
   include("AlgAssAbsOrd/Order.jl")
   include("AlgAssAbsOrd/Ideal.jl")
+  include("AlgAssAbsOrd/NEQ.jl")
   include("AlgAssAbsOrd/PicardGroup.jl")
   include("AlgAssAbsOrd/LocallyFreeClassGroup.jl")
   include("AlgAssAbsOrd/ICM.jl")
@@ -9,4 +10,5 @@
   include("AlgAssAbsOrd/FakeAbsOrdQuoRing.jl")
   include("AlgAssAbsOrd/PIP.jl")
   include("AlgAssAbsOrd/ResidueRingMultGrp.jl")
+  include("AlgAssAbsOrd/SFC.jl")
 end

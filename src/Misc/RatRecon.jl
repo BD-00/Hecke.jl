@@ -92,7 +92,7 @@ function rational_reconstruction(a::AbsSimpleNumFieldElem, b::ZZRingElem; error_
 end
 
 # to appease the Singular crowd...
-farey_lift = rational_reconstruction
+const farey_lift = rational_reconstruction
 
 # in at least 2 examples produces the same result as Magma
 # can do experiments to see if dedicated Berlekamp Massey would be
@@ -206,8 +206,8 @@ function rational_reconstruction_mod(g::QQPolyRingElem, f::QQPolyRingElem, bnd::
       if error_tolerant
         return false, g, f
       end
-      rethrow(e)
     end
+    rethrow(e)
   end
                                        # bound n and a starting p
   kp = 10
@@ -251,9 +251,10 @@ function _modp_results(g::QQPolyRingElem,f::QQPolyRingElem, p::ZZRingElem, M::In
    l1 = fpPolyRingElem[]; l2 = fpPolyRingElem[];l3 = ZZRingElem[]
    L = listprimes([f,g], p, M)
    for j in 1:length(L)
-     Rp, t = polynomial_ring(Native.GF(Int(L[j]), cached=false), cached=false)
-     gp = Rp(g)
-     fp = Rp(f)
+     R = Native.GF(Int(L[j]), cached=false)
+     Rp, t = polynomial_ring(R, cached=false)
+     gp = change_base_ring(R, g; parent = Rp)
+     fp = change_base_ring(R, f; parent = Rp)
      fl, nu_p, de_p = rational_reconstruction_subres(gp, fp, -1, error_tolerant = error_tolerant)
      if fl
         ut = Rp(inv(leading_coefficient(de_p)))
@@ -273,9 +274,10 @@ function _inner_modp_results(g::QQPolyRingElem,f::QQPolyRingElem, p::ZZRingElem,
    while true
      np += 1
      if testPrime_jl(f,p) == true && testPrime_jl(g,p) == true
-         Rp, t = polynomial_ring(residue_ring(ZZ, p, cached=false)[1], cached=false)
-         gp = Rp(g)
-         fp = Rp(f)
+         R = residue_ring(ZZ, p, cached=false)[1]
+         Rp, t = polynomial_ring(R, cached=false)
+         gp = change_base_ring(R, g; parent = Rp)
+         fp = change_base_ring(R, f; parent = Rp)
          fl, nu_p, de_p = rational_reconstruction_subres(gp, fp, bnd, error_tolerant = error_tolerant)
          if fl
              return degree(nu_p), p
@@ -306,10 +308,10 @@ end
 function berlekamp_massey_naive(L::Vector{T}; parent = polynomial_ring(parent(L[1]), "x", cached = false)[1]) where T
      R_s = Nemo.parent(L[1])
      lg = length(L)
-     L = [R_s(L[lg-i]) for i in 0:lg-1]
+     Lrev = [R_s(L[lg-i]) for i in 0:lg-1]
      Ry = parent
      Y = gen(Ry)
-     g = Ry(L)
+     g = Ry(Lrev)
      if iszero(g)
        return true, g
      end
@@ -376,11 +378,10 @@ function _modpResults(f, p::ZZRingElem, M::Int)
    Rc = f.parent
    l1 = fpPolyRingElem[]; l3 = ZZRingElem[]
    Np = listprimes([f], p, M)
-   Zx, Y = polynomial_ring(ZZ, "Y", cached=false)
    for j in 1:length(Np)
      RNp = Native.GF(Int(Np[j]), cached=false)
      Rp, t = polynomial_ring(RNp, "t", cached=false)
-     fp = Rp(f)
+     fp = change_base_ring(RNp, f; parent = Rp)
      if degree(fp) != degree(f)
        continue #bad prime...
      end
@@ -414,7 +415,8 @@ function listprimes(f::Vector{QQPolyRingElem}, p::ZZRingElem, M::Int)
    i=0; L = ZZRingElem[]
    while true
     i += 1
-    if all(x-> testPrime_jl(x,p), f)
+    q = p
+    if all(x-> testPrime_jl(x,q), f)
        push!(L, p)
     end
     if i == M

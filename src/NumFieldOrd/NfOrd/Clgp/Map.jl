@@ -222,17 +222,33 @@ function class_group_disc_log(I::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSim
   return class_group_disc_log(w, c)
 end
 
+#the class group code may internally use different orders than the inout
+#e.g. lll(maximal_order()) rather than just maximal_order
+#this is compensated by composing the class group map with this
+#function
+#so it needs to also allow FacElem ideals....
 function change_base_ring(mC::MapClassGrp, O::AbsSimpleNumFieldOrder)
   L = order(codomain(mC))
   mD = MapClassGrp()
-  mD.header = MapHeader(mC.header.domain, IdealSet(O), x -> IdealSet(O)(mC.header.image(x)), y -> mC.header.preimage(codomain(mC)(y)))
+  function dl(I::FacElem{AbsSimpleNumFieldOrderIdeal, Hecke.AbsNumFieldOrderIdealSet{AbsSimpleNumField, AbsSimpleNumFieldElem}})
+    return sum(e*mC.header.preimage(codomain(mC)(v)) for (v, e) = I.fac)
+  end
+  function dl(I::AbsSimpleNumFieldOrderIdeal)
+    return mC.header.preimage(codomain(mC)(I))
+  end
+  mD.header = MapHeader(mC.header.domain, IdealSet(O), x -> IdealSet(O)(mC.header.image(x)), dl)
   return mD
+end
+
+function AbstractAlgebra.show_map_head(io::IO, mC::MapClassGrp)
+  print(io, "Class group map")
 end
 
 function show(io::IO, mC::MapClassGrp)
   @show_name(io, mC)
-  println(io, "ClassGroup map of ")
-  show(IOContext(io, :compact => true), codomain(mC))
+  io = pretty(io)
+  print(io, "Class group map of ", Lowercase())
+  show(terse(io), codomain(mC))
 end
 
 function class_group(c::ClassGrpCtx, O::AbsSimpleNumFieldOrder = order(c); redo::Bool = false)
@@ -256,6 +272,10 @@ function class_group(c::ClassGrpCtx, O::AbsSimpleNumFieldOrder = order(c); redo:
         return id(C)
       end
       return class_group_disc_log(x, c)
+    end
+
+    function disclog(x::FacElem{AbsSimpleNumFieldOrderIdeal, Hecke.AbsNumFieldOrderIdealSet{AbsSimpleNumField, AbsSimpleNumFieldElem}})
+      return sum(e*disclog(v) for (v, e) = x.fac)
     end
   end
 
@@ -613,11 +633,11 @@ function reduce_mod_units(a::Vector{FacElem{AbsSimpleNumFieldElem, AbsSimpleNumF
 
   if isdefined(U, :tentative_regulator)
     #TODO: improve here - it works, kind of...
-    B = Hecke._conj_arb_log_matrix_normalise_cutoff(b, prec)::ArbMatrix
-    bd = maximum(sqrt(sum((B[i,j]::ArbFieldElem)^2 for j=1:ncols(B)))::ArbFieldElem for i=1:nrows(B))
+    B0 = Hecke._conj_arb_log_matrix_normalise_cutoff(b, prec)::ArbMatrix
+    bd = maximum(sqrt(sum((B0[i,j]::ArbFieldElem)^2 for j=1:ncols(B0)))::ArbFieldElem for i=1:nrows(B0))
     bd = bd/root(U.tentative_regulator, length(U.units))
     if isfinite(bd)
-      s = ccall((:arb_bits, libarb), Int, (Ref{ArbFieldElem}, ), bd)
+      s = ccall((:arb_bits, libflint), Int, (Ref{ArbFieldElem}, ), bd)
       prec = max(s, prec)
       prec = 1<<nbits(prec)
     else
@@ -759,6 +779,9 @@ function coprime_deterministic(a::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSi
       continue
     end
     ant_val = anti_uniformizer(p)
+#    @assert valuation(p, p) == 1
+#    @assert valuation(ant_val, p) == -1
+#    @assert valuation(norm(ant_val), minimum(p)) == -valuation(norm(p), minimum(p))
     found = false
     ind = 1
     for i = 1:length(primes)
@@ -794,7 +817,15 @@ function coprime_deterministic(a::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSi
     end
     mo = mo*moduli[i]
   end
-  res = mod(res, minimum(m, copy = false))
+# seems to be wrong...and was always wrong. adjusting by m can change the
+# critical valuations, again
+#  m2 = minimum(m, copy = false)^2
+#  if is_defining_polynomial_nice(nf(OK))
+#    res = mod(res, m2)
+#  else
+#    d = denominator(res, OK)
+#    res = elem_in_nf(OK([x % m2 for x = coordinates(OK(d*res))]))//d
+#  end
   I = res*a
   I = simplify(I)
   return I.num, res*I.den

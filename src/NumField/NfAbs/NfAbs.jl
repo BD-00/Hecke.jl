@@ -30,18 +30,18 @@ is_simple(::AbsSimpleNumField) = true
 function number_field(S::EuclideanRingResidueRing{QQPolyRingElem}; cached::Bool = true, check::Bool = true)
   Qx = parent(modulus(S))
   K, a = number_field(modulus(S), "_a", cached = cached, check = check)
-  mp = MapFromFunc(K, S, y -> S(Qx(y)), x -> K(lift(x)))
+  mp = map_from_func(K, S, y -> S(Qx(y)), x -> K(lift(x)))
   return K, mp
 end
 
 function number_field(f::ZZPolyRingElem, s::VarName; cached::Bool = true, check::Bool = true)
   Qx = Globals.Qx
-  return number_field(Qx(f), Symbol(s), cached = cached, check = check)
+  return number_field(change_base_ring(QQ, f; parent = Qx), Symbol(s), cached = cached, check = check)
 end
 
 function number_field(f::ZZPolyRingElem; cached::Bool = true, check::Bool = true)
   Qx = Globals.Qx
-  return number_field(Qx(f), cached = cached, check = check)
+  return number_field(change_base_ring(QQ, f; parent = Qx), cached = cached, check = check)
 end
 
 function radical_extension(n::Int, gen::Integer; cached::Bool = true, check::Bool = true)
@@ -54,7 +54,7 @@ function radical_extension(n::Int, gen::ZZRingElem; cached::Bool = true, check::
 end
 
 # TODO: Some sort of reference?
-@doc doc"""
+@doc raw"""
     wildanger_field(n::Int, B::ZZRingElem) -> AbsSimpleNumField, AbsSimpleNumFieldElem
 
 Returns the field with defining polynomial $x^n + \sum_{i=0}^{n-1} (-1)^{n-i}Bx^i$.
@@ -132,7 +132,7 @@ function show_quad(io::IO, q::AbsSimpleNumField)
   end
 end
 
-@doc doc"""
+@doc raw"""
     rationals_as_number_field() -> AbsSimpleNumField, AbsSimpleNumFieldElem
 
 Returns the rational numbers as the number field defined by $x - 1$.
@@ -257,6 +257,10 @@ function is_torsion_unit(x::AbsSimpleNumFieldElem, checkisunit::Bool = false)
     _isunit(x) ? nothing : return false
   end
 
+  if is_one(x) || x == -1
+    return true
+  end
+
   K = parent(x)
   d = degree(K)
   c = conjugate_data_arb(K)
@@ -363,7 +367,7 @@ function normal_basis(K::AbsSimpleNumField)
     #Now, I check if p is totally split
     R = GF(q, cached = false)
     Rt, t = polynomial_ring(R, "t", cached = false)
-    ft = Rt(K.pol)
+    ft = change_base_ring(R, defining_polynomial(K); parent = Rt)
     pt = powermod(t, q, ft)
     if degree(gcd(ft, pt-t)) == degree(ft)
       p = q
@@ -380,9 +384,9 @@ function _normal_basis_generator(K, p)
   #Now, I only need to lift an idempotent of O/pO
   R = GF(p, cached = false)
   Rx, x = polynomial_ring(R, "x", cached = false)
-  f = Rx(K.pol)
+  f = change_base_ring(R, defining_polynomial(K); parent = Rx)
   fac = factor(f)
-  g = divexact(f, first(keys(fac.fac)))
+  g = divexact(f, first(fac)[1])
   Zy, y = polynomial_ring(ZZ, "y", cached = false)
   g1 = lift(Zy, g)
   return K(g1)
@@ -426,8 +430,8 @@ function _issubfield_first_checks(K::AbsSimpleNumField, L::AbsSimpleNumField)
   while cnt < cnt_threshold
     F = GF(p, cached = false)
     Fx = polynomial_ring(F, "x", cached = false)[1]
-    fp = Fx(f)
-    gp = Fx(g)
+    fp = change_base_ring(F, f; parent = Fx)
+    gp = change_base_ring(F, g; parent = Fx)
     if !is_squarefree(fp) || !is_squarefree(gp)
       p = next_prime(p)
 	    continue
@@ -528,11 +532,11 @@ function is_isomorphic_with_map(K::AbsSimpleNumField, L::AbsSimpleNumField)
     end
     F = GF(p, cached = false)
     Fx = polynomial_ring(F, "x", cached = false)[1]
-    fp = Fx(f)
+    fp = change_base_ring(F, f; parent = Fx)
     if degree(fp) != degree(f) || !is_squarefree(fp)
       continue
     end
-    gp = Fx(g)
+    gp = change_base_ring(F, g; parent = Fx)
     if degree(gp) != degree(g) || !is_squarefree(gp)
       continue
     end
@@ -564,6 +568,14 @@ Assuming $L$ is normal (which is not checked), compute the compositum $C$ of the
 2 fields together with the embedding of $K \to C$ and $L \to C$.
 """
 function compositum(K::AbsSimpleNumField, L::AbsSimpleNumField)
+  if K === L
+    identity = id_hom(K)
+    return K, identity, identity
+  end
+  if has_embedding(L, K)
+    mL = hom(L, K, force_coerce(K, gen(L)); check = false)
+    return K, id_hom(K), mL
+  end
   lf = factor(L, K.pol)
   d = degree(first(lf.fac)[1])
   if any(x->degree(x) != d, keys(lf.fac))
@@ -599,7 +611,7 @@ function write(io::IO, A::Vector{AbsSimpleNumFieldElem})
     return
   else
     # print some useful(?) information
-    print(io, "# File created by Hecke $VERSION_NUMBER, $(Base.Dates.now()), by function 'write'\n")
+    print(io, "# File created by Hecke $HECKE_VERSION, $(Dates.now()), by function 'write'\n")
     K = parent(A[1])
     polring = parent(K.pol)
 
@@ -679,8 +691,7 @@ function read(io::IO, K::AbsSimpleNumField, ::Type{Hecke.AbsSimpleNumFieldElem})
       i = i + 1
     else
       coe = map(Hecke.ZZRingElem, split(ln, " "))
-      t = ZZPolyRingElem(Array(slice(coe, 1:(length(coe) - 1))))
-      t = Qx(t)
+      t = Qx(coe[1:end-1])
       t = divexact(t, coe[end])
       push!(A, K(t))
       i = i + 1
@@ -720,7 +731,7 @@ Computes the splitting field of $f$ as an absolute field.
 """
 function splitting_field(f::ZZPolyRingElem; do_roots::Bool = false)
   Qx = polynomial_ring(QQ, parent(f).S, cached = false)[1]
-  return splitting_field(Qx(f), do_roots = do_roots)
+  return splitting_field(change_base_ring(QQ, f; parent = Qx), do_roots = do_roots)
 end
 
 function splitting_field(f::QQPolyRingElem; do_roots::Bool = false)
@@ -729,7 +740,7 @@ end
 
 function splitting_field(fl::Vector{ZZPolyRingElem}; coprime::Bool = false, do_roots::Bool = false)
   Qx = polynomial_ring(QQ, parent(fl[1]).S, cached = false)[1]
-  return splitting_field([Qx(x) for x = fl], coprime = coprime, do_roots = do_roots)
+  return splitting_field([change_base_ring(QQ, x; parent = Qx) for x = fl], coprime = coprime, do_roots = do_roots)
 end
 
 function splitting_field(fl::Vector{QQPolyRingElem}; coprime::Bool = false, do_roots::Bool = false)
@@ -738,10 +749,10 @@ function splitting_field(fl::Vector{QQPolyRingElem}; coprime::Bool = false, do_r
   end
   ffl = QQPolyRingElem[]
   for x = fl
-    append!(ffl, collect(keys(factor(x).fac)))
+    append!(ffl, [p for (p, _) in factor(x)])
   end
   fl = ffl
-  r = []
+  r = QQFieldElem[]
   if do_roots
     r = [roots(x)[1] for x = fl if degree(x) == 1]
   end
@@ -885,21 +896,23 @@ end
 ################################################################################
 
 function is_linearly_disjoint(K1::AbsSimpleNumField, K2::AbsSimpleNumField)
-  if gcd(degree(K1), degree(K2)) == 1
-    return true
+  # trivial degree check
+  is_coprime(degree(K1), degree(K2)) && return true
+
+  # both defining polynomials are monic in Z[x]:
+  # if polynomial discriminants are coprime, so are the discriminants of maximal orders
+  if is_defining_polynomial_nice(K1) && is_defining_polynomial_nice(K2)
+    d1, d2 = numerator(discriminant(K1.pol)), numerator(discriminant(K2.pol))
+    is_coprime(d1, d2) && return true
   end
-  d1 = numerator(discriminant(K1.pol))
-  d2 = numerator(discriminant(K2.pol))
-  if gcd(d1, d2) == 1
-    return true
-  end
+
+  # if we have computed maximal orders, check their discriminants
   if is_maximal_order_known(K1) && is_maximal_order_known(K2)
-    OK1 = maximal_order(K1)
-    OK2 = maximal_order(K2)
-    if is_coprime(discriminant(K1), discriminant(K2))
-      return true
-    end
+    OK1, OK2 = maximal_order(K1), maximal_order(K2)
+    is_coprime(discriminant(OK1), discriminant(OK2)) && return true
   end
+
+  # check polynomial irreducibility over the field
   f = change_base_ring(K2, K1.pol)
   return is_irreducible(f)
 end
@@ -954,35 +967,44 @@ end
 #this traverses the lattice downwards collecting all chains of embeddings
 function collect_all_chains(a::NumField, filter::Function = x->true)
   s = get_attribute(a, :subs)::Union{Nothing, Vector{Any}}
-  s === nothing && return s
-  all_chain = Dict{UInt, Array{Any}}(objectid(domain(f)) => [f] for f = s if filter(f))
+  has_base = isa(base_field(a), NumField)
+  s === nothing && !has_base && return nothing
+  direct = s === nothing ? Any[] : Any[f for f = s if filter(f)]
+  all_chain = Dict{UInt, Array{Any}}(
+    objectid(domain(f)) => [f] for f = direct)
+  seen = Set{UInt}(keys(all_chain))
+  push!(seen, objectid(a))
+  new_k = Any[domain(f) for f = direct]
   if isa(base_field(a), NumField)
-    all_chain[objectid(base_field(a))] = [MapFromFunc(base_field(a), a, x->a(x))]
+    b = base_field(a)
+    ob = objectid(b)
+    all_chain[ob] = [map_from_func(b, a, x->a(x))]
+    push!(seen, ob)
+    push!(new_k, b)
   end
-  new_k = Any[domain(f) for f = s]
   while length(new_k) > 0
     k = pop!(new_k)
+    if isa(base_field(k), NumField)
+      b = base_field(k)
+      ob = objectid(b)
+      if !(ob in seen)
+        g = map_from_func(b, k, x->k(x))
+        all_chain[ob] = vcat([g], all_chain[objectid(k)])
+        push!(seen, ob)
+        push!(new_k, b)
+      end
+    end
     s = get_attribute(k, :subs)::Union{Nothing, Vector{Any}}
     s === nothing && continue
     for f in s
       if filter(domain(f))
         o = objectid(domain(f))
-        if haskey(all_chain, o)
+        if o in seen
           continue
         end
-        @assert !haskey(all_chain, o)
         all_chain[o] = vcat([f], all_chain[objectid(codomain(f))])
-        @assert !(o in new_k)
+        push!(seen, o)
         push!(new_k, domain(f))
-        if isa(base_field(domain(f)), NumField)
-          b = base_field(domain(f))
-          ob = objectid(b)
-          if !haskey(all_chain, ob)
-            g = MapFromFunc(b, domain(f), x->domain(f)(x))
-            all_chain[ob] = vcat([g], all_chain[objectid(domain(f))])
-            push!(new_k, b)
-          end
-        end
       end
     end
   end
@@ -992,19 +1014,38 @@ end
 #tries to find one chain (array of embeddings) from a -> .. -> t
 function find_one_chain(t::NumField, a::NumField)
   s = get_attribute(a, :subs)::Union{Nothing, Vector{Any}}
-  s === nothing && return s
+  has_base = isa(base_field(a), NumField)
+  s === nothing && !has_base && return nothing
+  direct = s === nothing ? Any[] : s
   ot = objectid(t)
-  all_chain = Dict{UInt, Array{Any}}(objectid(domain(f)) => [f] for f = s)
+  all_chain = Dict{UInt, Vector{Any}}(
+    objectid(domain(f)) => Any[f] for f = direct)
+  seen = Set{UInt}(keys(all_chain))
+  push!(seen, objectid(a))
+  new_k = Any[domain(f) for f = direct]
   if isa(base_field(a), NumField)
-    all_chain[objectid(base_field(a))] = [MapFromFunc(base_field(a), a, x->a(x))]
+    b = base_field(a)
+    ob = objectid(b)
+    all_chain[ob] = [map_from_func(b, a, x->a(x))]
+    push!(seen, ob)
+    push!(new_k, b)
   end
-  new_k = Any[domain(f) for f = s]
   if haskey(all_chain, ot)
     return all_chain[ot]
   end
-  new_k = Any[domain(f) for f = s]
   while length(new_k) > 0
     k = pop!(new_k)
+    if isa(base_field(k), NumField)
+      b = base_field(k)
+      ob = objectid(b)
+      if !(ob in seen)
+        g = map_from_func(b, k, x->k(x))
+        all_chain[ob] = vcat([g], all_chain[objectid(k)])
+        ob == ot && return all_chain[ob]
+        push!(seen, ob)
+        push!(new_k, b)
+      end
+    end
     s = get_attribute(k, :subs)::Union{Nothing, Vector{Any}}
     s === nothing && continue
     for f in s
@@ -1012,25 +1053,12 @@ function find_one_chain(t::NumField, a::NumField)
       if o == ot
         return vcat([f], all_chain[objectid(codomain(f))])
       end
-      if o in keys(all_chain)
+      if o in seen
         continue
       end
-      @assert !haskey(all_chain, o)
       all_chain[o] = vcat([f], all_chain[objectid(codomain(f))])
-      @assert !(o in new_k)
+      push!(seen, o)
       push!(new_k, domain(f))
-      if isa(base_field(domain(f)), NumField)
-        b = base_field(domain(f))
-        ob = objectid(b)
-        if !haskey(all_chain, ob)
-          g = MapFromFunc(b, domain(f), x->domain(f)(x))
-          all_chain[ob] = vcat([g], all_chain[objectid(domain(f))])
-          push!(new_k, b)
-        end
-        if ob == ot
-          return all_chain[ob]
-        end
-      end
     end
   end
   return nothing
@@ -1051,16 +1079,8 @@ function embed(f::Map{<:NumField, <:NumField})
   @assert absolute_degree(d) <= absolute_degree(c)
   cn = find_one_chain(d, c)
   if cn !== nothing
-    if is_simple(d)
-      cgend = force_coerce(c, gen(d))
-      if cgend != f(gen(d))
-        error("different embedding already installed")
-        return
-      end
-    else
-      if any(x->c(x) != f(x), gens(d))
-        error("different embedding already installed")
-      end
+    if any(x->force_coerce(c, x) != f(x), gens(d))
+      error("different embedding already installed")
     end
   end
   s = get_attribute!(c, :subs, [])::Vector{Any}
@@ -1081,16 +1101,16 @@ function has_embedding(F::NumField, G::NumField)
   if absolute_degree(G) % absolute_degree(F) != 0
     return false
   end
-  cn = find_one_chain(d, c)
+  cn = find_one_chain(F, G)
   return cn !== nothing
 end
 
 #in (small) fields, super fields are stored via WeakRef's
 # special -> :sub_of
 #this find all superfields registered
-function find_all_super(A::NumField, filter::Function = x->true)
+function find_all_super(A::NumField, filter::T = x->true) where {T <: Function}
   s = get_attribute(A, :sub_of)::Union{Nothing, Vector{WeakRef}}
-  s === nothing && return Set([A])
+  s === nothing && return Set(typeof(A)[A])
 
   # Remove dead weak refs (since we edit s in-place, this
   # automatically updates the :sub_of attribute of A, too.
@@ -1099,7 +1119,7 @@ function find_all_super(A::NumField, filter::Function = x->true)
   #the gc could(?) run anytime, so even after the pruning above
   #things could get deleted
 
-  all_s = Set([x.value for x = s if x.value !== nothing && filter(x.value)])
+  all_s = Set(typeof(A)[x.value for x = s if x.value !== nothing && filter(x.value)])
   new_s = copy(all_s)
   while length(new_s) > 0
     B = pop!(new_s)
@@ -1128,16 +1148,10 @@ function common_super(A::NumField, B::NumField)
   end
 
   c = intersect(find_all_super(A), find_all_super(B))
-  first = true
   m = nothing
-  for C = c
-    if first
+  for C in c
+    if m === nothing || absolute_degree(C) < absolute_degree(m)
       m = C
-      first = false
-    else
-      if absolute_degree(C) < absolute_degree(m)
-        m = C
-      end
     end
   end
   return m
@@ -1152,7 +1166,7 @@ function common_super(a::NumFieldElem, b::NumFieldElem)
 end
 
 #tries to find a common parent for all "a" and then calls op on it.
-function force_op(op::Function, ::Val{throw_error}, a::NumFieldElem...) where {throw_error}
+function force_op(op::T, ::Val{throw_error}, a::NumFieldElem...) where {T <: Function, throw_error}
   C = parent(a[1])
   for b = a
     C = common_super(parent(b), C)
@@ -1237,8 +1251,8 @@ function force_coerce_cyclo(a::AbsSimpleNumField, b::AbsSimpleNumFieldElem, ::Va
 
     ex = [x[1] for x = cg]
     ky = polynomial_ring(parent(b), cached = false)[1]
-    f = interpolate(ky, [(za)^(i) for i=ex],
-                        [ff(zb^(i)) for i=ex])
+    f = interpolate(ky, AbsSimpleNumFieldElem[(za)^(i) for i=ex],
+                        AbsSimpleNumFieldElem[ff(zb^(i)) for i=ex])
     g = parent(ff)()
     for i=0:length(f)
       c = coeff(f, i)
@@ -1268,5 +1282,5 @@ function force_coerce_cyclo(a::AbsSimpleNumField, b::AbsSimpleNumFieldElem, ::Va
   end
 
   # now ff is a polynomial for b w.r.t. the fa-th cyclotomic field
-  return a(ff)
+  return a(change_base_ring(QQ, ff; parent = parent(a.pol)))
 end

@@ -12,7 +12,12 @@ base_ring(A::GroupAlgebra{T}) where {T} = A.base_ring::parent_type(T)
 
 base_ring_type(::Type{GroupAlgebra{T, S, R}}) where {T, S, R} = parent_type(T)
 
-Generic.dim(A::GroupAlgebra) = order(Int, group(A))
+Generic.dim(A::GroupAlgebra) = vector_space_dim(A)
+
+function vector_space_dim(A::GroupAlgebra{T, S, R}) where {T, S, R}
+  isfinite(group(A)) || throw(InfiniteDimensionError())
+  return order(Int, group(A))
+end
 
 elem_type(::Type{GroupAlgebra{T, S, R}}) where {T, S, R} = GroupAlgebraElem{T, GroupAlgebra{T, S, R}}
 
@@ -692,8 +697,9 @@ mutable struct AbsAlgAssMorGen{S, T, U, V} <: Map{S, T, HeckeMap, Any}#AbsAlgAss
     z.M = M
     z.tempcodomain = zero_matrix(base_ring(Minv), 1, nrows(Minv))
     z.tempcodomain2 = zero_matrix(base_ring(Minv), 1, ncols(Minv))
-    z.tempcodomain_threaded = [zero_matrix(base_ring(Minv), 1, nrows(Minv)) for i in 1:Threads.nthreads()]
-    z.tempcodomain2_threaded = [zero_matrix(base_ring(Minv), 1, ncols(Minv)) for i in 1:Threads.nthreads()]
+    nt = _maxthreadid()
+    z.tempcodomain_threaded = [zero_matrix(base_ring(Minv), 1, nrows(Minv)) for i in 1:nt]
+    z.tempcodomain2_threaded = [zero_matrix(base_ring(Minv), 1, ncols(Minv)) for i in 1:nt]
     @assert nrows(Minv) == degree(base_ring(codomain)) * dim(codomain)
     z.Minv = Minv
     return z
@@ -726,9 +732,10 @@ end
 
 function preimage(f::AbsAlgAssMorGen, z)
   @assert parent(z) === codomain(f)
-  if Threads.nthreads() > 1
-    ftc = f.tempcodomain_threaded[Threads.threadid()]
-    ftc2 = f.tempcodomain2_threaded[Threads.threadid()]
+  if length(f.tempcodomain_threaded) > 1
+    tid = Threads.threadid()
+    ftc = f.tempcodomain_threaded[tid]
+    ftc2 = f.tempcodomain2_threaded[tid]
   else
     ftc = f.tempcodomain
     ftc2 = f.tempcodomain2

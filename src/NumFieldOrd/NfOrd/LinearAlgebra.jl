@@ -213,23 +213,34 @@ function Base.deepcopy_internal(P::PMat{T, S}, dict::IdDict) where {T, S}
 end
 
 function show(io::IO, P::PMat)
-  compact = get(io, :compact, false)
-  if nrows(P.matrix) == 0
-    print(io, "empty $(0) x $(ncols(P)) pseudo-matrix")
-  elseif compact
-    for i in 1:nrows(P.matrix)
-      i == 1 || print(io, "\n")
-      print(io, "(")
-      print(IOContext(io, :compact => true), P.coeffs[i])
-      print(io, ") * ")
-      print(io, sub(P.matrix, i:i, 1:ncols(P.matrix)))
+  a = P.matrix
+  r = nrows(a)
+  c = ncols(a)
+  if r == 0 || c == 0
+    print(io, "empty $(r) x $(c) pseudo-matrix")
+    return
+  end
+
+  # borrowed from AA
+  # preprint each element to know the widths so as to align the columns
+  strings = String[sprint(print, isassigned(a, i, j) ? a[i, j] : Base.undef_ref_str,
+                          context = :compact => true) for i=1:r, j=1:c]
+  maxs = maximum(length, strings, dims=1)
+
+  for i = 1:r
+    print(io, "[")
+    for j = 1:c
+      s = strings[i, j]
+      s = ' '^(maxs[j] - length(s)) * s
+      print(io, s)
+      if j != c
+        print(io, "   ")
+      end
     end
-  else
-    print(io, "Pseudo-matrix over ", base_ring(P))
-    for i in 1:nrows(P.matrix)
-      print(io, "\n")
-      show(IOContext(io, :compact => true), P.coeffs[i])
-      print(io, " with row $(sub(P.matrix, i:i, 1:ncols(P.matrix)))")
+    print(io, "]")
+    print(io, " * ", P.coeffs[i])
+    if i != r
+      println(io, "")
     end
   end
 end
@@ -257,6 +268,12 @@ This function returns the $R$ that was used to defined $M$.
 base_ring(M::PMat{T, S}) where {T, S} = nrows(M) >= 1 ? order(M.coeffs[1]) : M.base_ring::order_type(parent_type(T))
 
 base_ring_type(::Type{PMat{T, S}}) where {T, S} = order_type(parent_type(T))
+
+function pseudo_matrix_type(::Type{R}, ::Type{S}) where {R, S}
+  return PMat{elem_type(S), fractional_ideal_type(R)}
+end
+
+pseudo_matrix_type(R, S) = pseudo_matrix_type(typeof(R), typeof(S))
 
 function pseudo_matrix(m::AbstractAlgebra.MatElem{T}, c::Vector{S}) where {T, S}
   # sanity checks
@@ -1109,7 +1126,7 @@ function _in_span(v::Vector{AbsSimpleNumFieldElem}, P::PMat)
    m = nrows(P)
    n = ncols(P)
    K = base_ring(P.matrix)
-   x = zeros(K, m)
+   x = [zero(K) for _ in 1:m]
    t = K()
    k = 1
    for i = 1:n

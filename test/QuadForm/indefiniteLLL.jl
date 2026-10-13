@@ -39,7 +39,7 @@ end
   # Finds an isotropic vector
   G0 = ZZ[0 1 2; 1 -1 3; 2 3 0]
   H0,U0 = Hecke.lll_gram_indef_with_transform(G0)
-  @test U0*G0*transpose(U0) == H0 
+  @test U0*G0*transpose(U0) == H0
   @test H0[1,1] == 0
 
   G1 = ZZ[1 2 3; 2 -1 0 ; 3 0 0]
@@ -47,7 +47,7 @@ end
   @test U1*G1*transpose(U1) == H1
   gamma_H1 = find_gamma(change_base_ring(QQ,H1))
   gamma_G1 = find_gamma(change_base_ring(QQ,G1))
-  @test  gamma_H1 <= gamma_G1 
+  @test  gamma_H1 <= gamma_G1
   @test abs(G1[1,1])^3 <= gamma_H1^3 * abs(det(G1))
 
   A = ZZ[1 -1 2 3; 2 4 0 1; 0 0 -1 3; 1 1 2 0]
@@ -181,4 +181,24 @@ end
   gamma_H = find_gamma(change_base_ring(QQ,H))
   gamma_G = find_gamma(change_base_ring(QQ,G))
   @test gamma_H < gamma_G
+  # U must be the base change from G to H
+  @test U*G*transpose(U) == H
+  @test abs(det(U)) == 1
+  @test Hecke.lll_gram_indef_ternary_hyperbolic(G; check = true) == (H, U)
+
+  for G0 in [ZZ[1 0 0; 0 4 3; 0 3 2], ZZ[0 0 1; 0 1 0; 1 0 0],
+             ZZ[1 0 0; 0 1 0; 0 0 -1], ZZ[-1 0 0; 0 4 3; 0 3 2]]
+    for T in [ZZ[1 0 0; 1 1 0; 0 0 1], ZZ[1 2 0; 0 1 0; -1 0 1],
+              ZZ[1 0 -2; 0 1 1; 0 0 1], ZZ[1 1 1; 0 1 2; 0 0 1]]
+      GG = T*G0*transpose(T)
+      HH, UU = Hecke.lll_gram_indef_ternary_hyperbolic(GG)
+      @test UU*GG*transpose(UU) == HH
+      @test abs(det(UU)) == 1
+    end
+  end
+
+  # wrong rank, or not unimodular indefinite of signature (2, 1) or (1, 2)
+  @test_throws ArgumentError Hecke.lll_gram_indef_ternary_hyperbolic(ZZ[1 0; 0 -1]; check = true)
+  @test_throws ArgumentError Hecke.lll_gram_indef_ternary_hyperbolic(ZZ[1 0 0; 0 1 0; 0 0 1]; check = true)
+  @test_throws ArgumentError Hecke.lll_gram_indef_ternary_hyperbolic(ZZ[2 1 0; 1 2 0; 0 0 -1]; check = true)
 end

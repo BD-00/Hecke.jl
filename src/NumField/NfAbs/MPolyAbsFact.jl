@@ -94,7 +94,7 @@ mutable struct HenselCtxFqRelSeries{T}
     is_squarefree(g) || return nothing
     @assert is_squarefree(g)
 
-    lf = collect(keys(factor(g).fac))
+    lf = first.(collect(factor(g)))
     return HenselCtxFqRelSeries(f, lf, s)
   end
 
@@ -119,10 +119,10 @@ mutable struct HenselCtxFqRelSeries{T}
     k = base_ring(lf[1])
     if isa(k, Nemo.fpField)
       p = Int(characteristic(k))
-      k = quo(ZZ, p)[1]
-      kt, t = polynomial_ring(k, cached = false)
-      lf = [map_coefficients(k, x, parent = kt) for x = lf]
-      lg = [map_coefficients(k, x, parent = kt) for x = lg]
+      Zp = quo(ZZ, p)[1]
+      kt, t = polynomial_ring(Zp, cached = false)
+      lf = [map_coefficients(Zp, x, parent = kt) for x = lf]
+      lg = [map_coefficients(Zp, x, parent = kt) for x = lg]
     end
 
     return HenselCtxFqRelSeries(f, lf, lg, n, s)
@@ -392,12 +392,6 @@ mutable struct RootCtxSingle{T}
   R::T  # the root
   o::T  # inv(f'(R)) for the double lifting.
 
-  function RootCtxSingle(f::PolyRingElem{S}, K::fqPolyRepField) where {S <: SeriesElem}
-    #not used I think
-    RR,  = power_series_ring(K, max_precision(R), var(R), cached = false) #can't get the model
-    return RootCtxSingle(f, RR)
-  end
-
   function RootCtxSingle(f::PolyRingElem{<:SeriesElem{T}}, r::T) where {T}
     R = base_ring(parent(f))
     k, mk = residue_field(R)
@@ -472,7 +466,7 @@ function symbolic_roots(f::ZZMPolyRingElem, r::ZZRingElem, pr::Int = 10; max_roo
   g = evaluate(f, [Hecke.Globals.Zx(r), gen(Hecke.Globals.Zx)])
   @assert is_squarefree(g)
   lg = factor(g)
-  rt = reduce(vcat, [Hecke.roots(number_field(x)[1], x) for x = keys(lg.fac)])
+  rt = reduce(vcat, [Hecke.roots(number_field(x)[1], x) for (x, _) = lg])
   rt = rt[1:min(length(rt), max_roots)]
   RT = []
   for i = 1:length(rt)
@@ -593,11 +587,11 @@ function roots(f::QQMPolyRingElem, p_max::Int=2^15; pr::Int = 2)
   while true
     p_max = next_prime(p_max)
     gp = factor(Native.GF(p_max, cached = false), g)
-    if any(x->x>1, values(gp.fac))
+    if any(x > 1 for (_, x) in gp)
       @vprintln :AbsFact 1 "not squarefree mod $p_max"
       continue
     end
-    e = lcm([degree(x) for x = keys(gp.fac)])
+    e = lcm([degree(x) for (x, _) = gp])
     if e < d
       d = e
       best_p = p_max
@@ -721,7 +715,7 @@ function combination(RC::RootCtx)
     mn = transpose(matrix([[Fp(coeff(coeff(x^pow, pow*d+j), lk)) for lk = 0:k-1] for x = R]))
 
     if false && iszero(mn)
-      @vprintln :AbsFact 2 "found zero column, disgarding"
+      @vprintln :AbsFact 2 "found zero column, discarding"
       bad += 1
       if bad > max(2, div(length(R), 2))
         pow += 1
@@ -883,18 +877,18 @@ function field(RC::RootCtx, m::MatElem)
   kS = power_series_ring(k, tf+2, "s")[1]
   for x = HH.lf[1:HH.n]
     f = MPolyBuildCtx(kXY)
-    lc = one(kt)
+    den = one(kt)
     cz = []
     z = x
     for i=0:degree(x)
       c = coeff(z, i)
       local fl, n, d = rational_reconstruction(c, parent = kt)
       @assert fl
-      b = lcm(lc, d)
+      b = lcm(den, d)
       n *= divexact(b, d)
-      if b != lc
-        cz = divexact(b, lc) .* cz
-        lc = b
+      if b != den
+        cz = divexact(b, den) .* cz
+        den = b
       end
       push!(cz, n)
     end
@@ -945,7 +939,7 @@ function field(RC::RootCtx, m::MatElem)
   #currently, we're in F_q[[t]], not Q_q[[t]], however, the primitivity
   #can already be decided over F_q as lifting can not enlarge the field
 
-  #if no single coefficient is primtive, use block systems and sums of coeffs
+  #if no single coefficient is primitive, use block systems and sums of coeffs
   #to find a primitive one.
   all_bs = []
   pe_j = 0
@@ -975,7 +969,7 @@ function field(RC::RootCtx, m::MatElem)
         break
       end
     end
-    @vprintln :AbsFact 2 "using coeffs $used to form primtive element"
+    @vprintln :AbsFact 2 "using coeffs $used to form primitive element"
     pow = 1
     while true
       pe = x -> (sum(coeff(x, t) for t = used)^pow)
@@ -1080,19 +1074,19 @@ function field(RC::RootCtx, m::MatElem)
 
     @vprintln :AbsFact 1  "using as number field: $k"
 
-    m = transpose(matrix([[pe(x)^l for x = fl] for l=0:degree(k)-1]))
+    mm = transpose(matrix([[pe(x)^l for x = fl] for l=0:degree(k)-1]))
     kx, x = polynomial_ring(k, "x", cached = false)
     kX, _ = polynomial_ring(k, ["X", "Y"], cached = false)
     B = MPolyBuildCtx(kX)
     for j=1:length(el[1])
       n = transpose(matrix([[coeff(x, j)] for x = fl]))
-      s = Hecke.solve(m, transpose(n); side = :right)
+      s = Hecke.solve(mm, transpose(n); side = :right)
       @assert all(x->iszero(coeff(s[x, 1], 1)), 1:degree(k))
-      s = [rational_reconstruction(coeff(s[i, 1], 0)) for i=1:degree(k)]
-      if !all(x->x[1], s)
+      sr = [rational_reconstruction(coeff(s[i, 1], 0)) for i=1:degree(k)]
+      if !all(x->x[1], sr)
         break
       end
-      push_term!(B, k([x[2]//x[3] for x = s]), exponent_vector(el[1], j))
+      push_term!(B, k([x[2]//x[3] for x = sr]), exponent_vector(el[1], j))
     end
     q = finish(B)
     if length(q) < length(el[1])
@@ -1123,7 +1117,7 @@ function absolute_bivariate_factorisation(f::QQMPolyRingElem)
   x, y = gens(R)
 
   lf = factor(f)
-  if length(lf.fac) > 1 || any(x->x>1, values(lf.fac))
+  if length(lf) > 1 || any(x>1 for (_, x) in lf)
     error("poly must be irreducible over Q")
   end
 
@@ -1250,10 +1244,10 @@ function lift_prime_power(
     ok, I = Hecke.AbstractAlgebra.MPolyFactor.pfracinit(md, 1, minorvars, alphas)
     @assert ok  # evaluation of fac's should be pairwise coprime
 
-    a = map_coefficients(ZZ, a, parent = parent(fac[1]))
+    aa = map_coefficients(ZZ, a, parent = parent(fac[1]))
 
     for l in kstart:kstop
-        error = a - prod(fac)
+        error = aa - prod(fac)
 
         for c in coefficients(error)
           if valuation(c) < l
@@ -1307,8 +1301,8 @@ function absolute_multivariate_factorisation(a::QQMPolyRingElem)
   R = parent(a)
   K = base_ring(R)
 
-  alphas = zeros(ZZ, nvars(R))
-  bi_sub = zeros(Qxy, nvars(R))
+  alphas = [zero(ZZ) for _ in 1:nvars(R)]
+  bi_sub = [zero(Qxy) for _ in 1:nvars(R)]
 
   @assert length(a) > 0
 
@@ -1336,7 +1330,7 @@ function absolute_multivariate_factorisation(a::QQMPolyRingElem)
     # linear is irreducible by assumption
     return (unit, [a, parent(a)(1)])
   elseif length(vars) == 1
-    uni_sub = zeros(Hecke.Globals.Qx, nvars(R))
+    uni_sub = [zero(Hecke.Globals.Qx) for _ in 1:nvars(R)]
     uni_sub[vars[1]] = gen(Hecke.Globals.Qx)
     K1, alpha = number_field(evaluate(a, uni_sub), cached = false)
     R1 = polynomial_ring(K1, map(string, symbols(R)), internal_ordering = internal_ordering(R), cached = false)[1]
@@ -1425,7 +1419,7 @@ function absolute_multivariate_factorisation(a::QQMPolyRingElem)
   A = map_coefficients(K1, a, parent = R1)
   lcAf = Fac{elem_type(R1)}()
   lcAf.unit = map_coefficients(K1, lcaf.unit, parent = R1)
-  for i in lcaf.fac
+  for i in lcaf
     lcAf[map_coefficients(K1, i[1], parent = R1)] = i[2]
   end
 
@@ -1605,5 +1599,3 @@ include("/home/fieker/Downloads/n60s3.m");
 
   -125685*x+151959*x^8+917230*x^6+8717398*y^5*x^5+5108544*x^8*y^4-1564434*x^5+7744756*x^5*y^6+306683*x^3*y^6+413268*x^4*y^6+9081976*x^6*y^6+1317780*x^6*y^5+76745*x^4*y^5-15797040*x^7*y^5+99348*x^3*y^5+4106178*x^6*y^4+2010995*x^4*y^4-11264228*x^7*y^4-12465712*x^5*y^4+40908*x^2*y^4+404227*x^3*y^4-9204694*x^7*y^3-49266*x^2*y^3-3500343*x^4*y^3+1512264*x^3*y^3+6405504*x^8*y^3+9879662*x^6*y^3-3821606*x^5*y^3-592704*x^9*y^3-8503779*x^5*y^2-783216*x^9*y^2+10608275*x^6*y^2+574917*x^2*y^2-10143*x*y^2+5943180*x^4*y^2-3295022*x^3*y^2+3452692*x^8*y^2-6432756*x^7*y^2-344988*x^9*y+67473*x*y+2548458*x^4*y-2646351*x^7*y+1059606*x^8*y-3698541*x^5*y-491400*x^2*y+430155*x^3*y+4011984*x^6*y+1530912*x^4+617526
 =#
-
-

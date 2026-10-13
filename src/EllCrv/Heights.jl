@@ -107,108 +107,41 @@ Computes the local height of a point $P$ on an elliptic curve defined over
 $\mathbf{Q}$ at $p$. The number $p$ must be a prime or $0$. In the latter case,
 the height at the infinite place is returned.
 """
-function local_height(P::EllipticCurvePoint{QQFieldElem}, p, prec::Int = 100)
+function local_height(P::EllipticCurvePoint{QQFieldElem}, p::IntegerUnion, prec::Int = 100)
+  @req p == 0 || is_prime(p) "p must be 0 or a non-negative prime"
 
-  if !is_finite(P)
-    return zero(ArbField(prec, cached = false))
-  end
-
-  if p == 0
-    return _real_height(P, prec)
-  end
-
-  @req p > 0 && is_prime(p) "p must be 0 or a non-negative prime"
-
-  E = parent(P)
-  F, phi = minimal_model(E)
-
-  P = phi(P)
-
-  p = ZZ(p)
-
-  x = P[1]
-  y = P[2]
-
-  a1, a2, a3, a4, a6 = map(numerator, a_invariants(F))
-
-  b2, b4, b6, b8, c4, c6 = get_b_c_integral(F)
-
-  delta = discriminant(E)
-
-  A = 3*x^2 + 2*a2*x + a4 - a1*y
-  B = 2*y + a1*x + a3 # = psi2(P)
-  C = 3*x^4 + b2 * x^3 + 3*b4*x^2 + 3*b6*x + b8 # = psi3(P)
-
-  # L always QQ
-  # N always ZZ
-  # M always QQ
-
-  if (!iszero(A) && valuation(A, p) <= 0) || (!iszero(B) && valuation(B, p) <= 0)
-    if !iszero(x)
-      L = QQ(max(0, -valuation(x, p)))
-    else
-      L = zero(QQ)
-    end
-  elseif (!iszero(c4) && valuation(c4, p) == 0)
-    N = ZZ(valuation(delta, p)) # work with ZZRingElem to avoid overflow
-    if iszero(B)
-      M = N//2
-    else
-      M = min(QQ(valuation(B, p)), N//2)
-    end
-    L = M*(M - N)//N
-  elseif (iszero(C) || (!iszero(C) && !iszero(B) && valuation(C, p) >= 3*valuation(B, p)))
-    L = ZZ(-2*valuation(B, p))//3
-  else
-    L = ZZ(-valuation(C, p))//4
-  end
-
-  attempt = 2
-
-  while true
-    R = ArbField(attempt*prec, cached = false)
-    result = L*log(R(p))
-
-    !radiuslttwopower(result, -prec) && (attempt *= 2; continue)
-
-    if radiuslttwopower(result, -prec)
-      expand!(result, -prec)
-      @assert radiuslttwopower(result, -prec)
-      return result
-    end
-    #attempt = 2*attempt
-  end
+  is_infinite(P) && return zero(ArbField(prec, cached = false))
+  p == 0 && return _real_height(P, prec)
+  return _local_height(P, p, QQValuation(p), prec)
 end
 
 function local_height(P::EllipticCurvePoint{AbsSimpleNumFieldElem}, pIdeal::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}, prec::Int = 100)
+  @req is_prime(pIdeal) "p must be prime"
 
-  if !is_finite(P)
-    return zero(ArbField(prec, cached = false))
-  end
+  is_infinite(P) && return zero(ArbField(prec, cached = false))
+  return _local_height(P, pIdeal, AbsSimpleNumFieldValuation(pIdeal), prec)
+end
 
-  #if p == 0
-  #  return _real_height(P, prec)
-  #end
+function local_height(P::EllipticCurvePoint{AbsSimpleNumFieldElem}, v::InfPlc, prec::Int = 100)
+  is_infinite(P) && return zero(ArbField(prec, cached = false))
+  return archimedean_height(P, v, prec)
+end
 
-  @req #=p > 0 &&=# is_prime(pIdeal) "p must be 0 or a non-negative prime"
+function _local_height(P::EllipticCurvePoint{T}, p, v::DiscreteValuation{T}, prec::Int) where T
+  Eorig = parent(P)
+  ld = tates_algorithm_local(Eorig, p, EllipticCurveLocalData)
 
-  E = parent(P)
-  K = base_field(E)
-  OK = ring_of_integers(K)
-  F, phi = minimal_model(E, pIdeal)
+  # NOTE: In the Silverman/Cremona normalization, the local height is model-dependent;
+  #   only the sum over all places is not.
+  h_offset = 2 * divexact(ZZ(valuation(v, discriminant(Eorig))) - ld.discriminant_valuation, 12)
 
-  res_degree = norm(pIdeal)
-  p = minimum(pIdeal)
+  E = ld.minimal_model
+  P = isomorphism(Eorig, E)(P)
 
-  P = phi(P)
+  x, y = P[1], P[2]
 
-  x = P[1]
-  y = P[2]
-
-  a1, a2, a3, a4, a6 = map(numerator, a_invariants(F))
-
-  b2, b4, b6, b8 = map(OK, b_invariants(E))
-  c4, c6 = map(OK, c_invariants(E))
+  a1, a2, a3, a4, a6 = a_invariants(E)
+  b2, b4, b6, b8 = b_invariants(E)
 
   delta = discriminant(E)
 
@@ -216,36 +149,32 @@ function local_height(P::EllipticCurvePoint{AbsSimpleNumFieldElem}, pIdeal::AbsN
   B = 2*y + a1*x + a3 # = psi2(P)
   C = 3*x^4 + b2 * x^3 + 3*b4*x^2 + 3*b6*x + b8 # = psi3(P)
 
-  # L always QQ
-  # N always ZZ
-  # M always QQ
+  # This is Proposition 3.4.1 in Cremona; the algorithm is coming from
+  #   Silverman's "Computing Heights on Elliptic Curves"
+  # NOTE: we adopt Cremona's normalization convention,
+  #   so our values are twice those from Silverman.
+  # NOTE: the same convention is used by SageMath
+  #   and Magma (with `Renormalization := true`).
 
-  if (!iszero(A) && valuation(A, pIdeal) <= 0) || (!iszero(B) && valuation(B, pIdeal) <= 0)
-    if !iszero(x)
-      L = QQ(max(0, -valuation(x, pIdeal)))
-    else
-      L = zero(QQ)
-    end
-  elseif (!iszero(c4) && valuation(c4, pIdeal) == 0)
-    N = ZZ(valuation(delta, pIdeal)) # work with ZZRingElem to avoid overflow
-    if iszero(B)
-      M = N//2
-    else
-      M = min(QQ(valuation(B, pIdeal)), N//2)
-    end
+  if valuation(v, A) <= 0 || valuation(v, B) <= 0
+    L = QQ(max(0, -valuation(v, x)))
+  elseif is_multiplicative_reduction(ld.reduction_type)
+    N = ZZ(valuation(v, delta))
+    M = is_zero(B) ? N // 2 : min(QQ(valuation(v, B)), N//2)
     L = M*(M - N)//N
-  elseif (iszero(C) || (!iszero(C) && !iszero(B) && valuation(C, pIdeal) >= 3*valuation(B, pIdeal)))
-    L = ZZ(-2*valuation(B, pIdeal))//3
+  elseif ld.kodaira_symbol.ksymbol == 4 || ld.kodaira_symbol.ksymbol == -4 # IV or IV*
+    L = ZZ(-2*valuation(v, B)) // 3
   else
-    L = ZZ(-valuation(C, pIdeal))//4
+    L = ZZ(-valuation(v, C)) // 4
   end
+
+  L = L - h_offset
 
   attempt = 2
 
   while true
     R = ArbField(attempt*prec, cached = false)
-    result = L*log(R(res_degree))
-    # Weighted as in Silverman? Then //(ramification_index(pIdeal)*degree(residue_field(OK, pIdeal)[1]))
+    result = L*log(R(norm(v)))
 
     !radiuslttwopower(result, -prec) && (attempt *= 2; continue)
 
@@ -254,12 +183,7 @@ function local_height(P::EllipticCurvePoint{AbsSimpleNumFieldElem}, pIdeal::AbsN
       @assert radiuslttwopower(result, -prec)
       return result
     end
-    #attempt = 2*attempt
   end
-end
-
-function local_height(P::EllipticCurvePoint{AbsSimpleNumFieldElem}, v::InfPlc, prec = 100)
-  return archimedean_height(P, v, prec)
 end
 
 ################################################################################
@@ -281,9 +205,8 @@ function _real_height(P::EllipticCurvePoint{QQFieldElem}, prec = 100)
 
   #P = phi(P)
 
-  a1, a2, a3, a4, a6 = map(numerator,(a_invariants(F)))
-
-  b2, b4, b6, b8 = get_b_integral(F)
+  a1, a2, a3, a4, a6 = a_invariants(E)
+  b2, b4, b6, b8 = b_invariants(E)
   H = max(ZZ(4), abs(b2), 2*abs(b4), 2*abs(b6), abs(b8))
   _b2 = b2-12
   _b4 = b4-b2+6
@@ -359,11 +282,11 @@ function _real_height(P::EllipticCurvePoint{QQFieldElem}, prec = 100)
 
     # Algorithm is only precise up to wprec bits
     error_arf = arf_struct(0, 0, 0, 0)
-    ccall((:arf_set_si_2exp_si, libarb), Nothing,
+    ccall((:arf_set_si_2exp_si, libflint), Nothing,
         (Ref{arf_struct}, Int, Int), error_arf, Int(1), Int(-wprec))
-    ccall((:arb_add_error_arf, libarb), Nothing,
+    ccall((:arb_add_error_arf, libflint), Nothing,
             (Ref{ArbFieldElem}, Ref{arf_struct}), mu, error_arf)
-    ccall((:arf_clear, libarb), Nothing, (Ref{arf_struct}, ), error_arf)
+    ccall((:arf_clear, libflint), Nothing, (Ref{arf_struct}, ), error_arf)
     expand!(mu, -prec)
     @assert radiuslttwopower(mu, prec)
     return mu
@@ -382,9 +305,9 @@ function archimedean_height(P::EllipticCurvePoint{AbsSimpleNumFieldElem}, _v::In
 
   #P = phi(P)
 
-  a1, a2, a3, a4, a6 = map(numerator,(a_invariants(F)))
+  a1, a2, a3, a4, a6 = a_invariants(E)
   R = ArbField(prec)
-  b2, b4, b6, b8 = map(t -> evaluate(t, v,  prec), get_b_integral(F))
+  b2, b4, b6, b8 = map(t -> evaluate(t, v,  prec), _ellcrv_b_invariants(a1, a2, a3, a4, a6))
   H = max(R(4), abs(b2), 2*abs(b4), 2*abs(b6), abs(b8))
 
   # We are looking for h.
@@ -416,7 +339,7 @@ function archimedean_height(P::EllipticCurvePoint{AbsSimpleNumFieldElem}, _v::In
 
   while true
     newprec = attempt*wprec
-    b2, b4, b6, b8 = map(t -> evaluate(t, v, newprec), get_b_integral(F))
+    b2, b4, b6, b8 = map(t -> evaluate(t, v, newprec), _ellcrv_b_invariants(a1, a2, a3, a4, a6))
 
     _b2 = b2-12
     _b4 = b4-b2+6
@@ -465,11 +388,11 @@ function archimedean_height(P::EllipticCurvePoint{AbsSimpleNumFieldElem}, _v::In
 
     # Algorithm is only precise up to wprec bits
     error_arf = arf_struct(0, 0, 0, 0)
-    ccall((:arf_set_si_2exp_si, libarb), Nothing,
+    ccall((:arf_set_si_2exp_si, libflint), Nothing,
         (Ref{arf_struct}, Int, Int), error_arf, Int(1), Int(-wprec))
-    ccall((:arb_add_error_arf, libarb), Nothing,
+    ccall((:arb_add_error_arf, libflint), Nothing,
             (Ref{ArbFieldElem}, Ref{arf_struct}), mu, error_arf)
-    ccall((:arf_clear, libarb), Nothing, (Ref{arf_struct}, ), error_arf)
+    ccall((:arf_clear, libflint), Nothing, (Ref{arf_struct}, ), error_arf)
     expand!(mu, -prec)
     @assert radiuslttwopower(mu, prec)
     return mu
@@ -501,21 +424,29 @@ Compute the Néron-Tate height (or canonical height) of a point $P$ on an
 elliptic curve defined over $\mathbb{Q}$.
 """
 function canonical_height(P::EllipticCurvePoint{QQFieldElem}, prec = 100)
+  E = parent(P)
+
+  is_infinite(P) && return zero(ArbField(prec, cached = false))
+  if !is_integral_model(E)
+    # local height formulas depend on model integrality
+    return canonical_height(integral_model(E)[2](P), prec)
+  end
+
+  # the local heights at all primes where E is minimal with good reduction
+  #   add up to the logarithm of the denominator of x
+  d = denominator(P[1])
+
   attempt = 1
-
   while true
-    R = ArbField(attempt*prec, cached = false)
-    E = P.parent
-    disc = discriminant(E)
-    d = (denominator(P[1]))
-    h = local_height(P, 0, attempt*prec) + log(R(d))
-    plist = bad_primes(E)
+    wprec = attempt*prec + 16
+    R = ArbField(wprec, cached = false)
+    h = local_height(P, 0, wprec) + log(R(d))
 
-    for p in plist
-      if !divides(d,p)[1]
-       h = h + local_height(P,p, attempt*prec)
-      end
+    for p in _bad_prime_candidates(E)
+      # replace the contribution counted in log(d) by the local height
+      h = h + local_height(P, p, wprec) - valuation(d, p)*log(R(p))
     end
+
     if radiuslttwopower(h, -prec)
       expand!(h, -prec)
       @assert radiuslttwopower(h, -prec)
@@ -533,33 +464,43 @@ Compute the Néron-Tate height (or canonical height) of a point $P$ on an
 elliptic curve defined over a number field
 """
 function canonical_height(P::EllipticCurvePoint{AbsSimpleNumFieldElem}, prec = 100)
-  attempt = 1
-  K = base_field(parent(P))
-  OK = ring_of_integers(K)
-  while true
-    R = ArbField(attempt*prec, cached = false)
-    E = P.parent
-    disc = discriminant(E)
+  E = parent(P)
 
-    #d should be the norm of J where I/J = P[1]*OK is the unique decomposition
-    #of prime integer ideals
-    d = (denominator(P[1]*OK))
-    h = log(d)
+  is_infinite(P) && return zero(ArbField(prec, cached = false))
+  if !is_integral_model(E)
+    # local height formulas depend on model integrality
+    return canonical_height(integral_model(E)[2](P), prec)
+  end
+
+  K = base_field(E)
+  OK = ring_of_integers(K)
+
+  # x*OK + OK = J^-1 for the denominator ideal J of x,
+  # so the local heights at the primes of good reduction sum to log N(J)
+  Jinv = P[1]*OK + 1*OK
+
+  attempt = 1
+  while true
+    # add some guard bits, since the sum rounds to the given precision.
+    # This should depend on the magnitude of heights, but 16 seems enough
+    #   for most "normal" cases
+    wprec = attempt*prec + 16
+    R = ArbField(wprec, cached = false)
+
+    h = -log(R(norm(Jinv)))
 
     for v in real_places(K)
-      h = h + local_height(P, v, attempt*prec)
+      h = h + local_height(P, v, wprec)
     end
 
     for v in complex_places(K)
-      h = h + 2*local_height(P, v, attempt*prec)
+      h = h + 2*local_height(P, v, wprec)
     end
 
-
-    plist = bad_primes(E)
-
-    #Removed the divides check
-    for p in plist
-      h = h + local_height(P,p, attempt*prec)
+    for p in _bad_prime_candidates(E)
+      # replace the contribution counted in log N(J) by the local height
+      # NOTE: since we use J^-1, we invert the sign
+      h = h + local_height(P, p, wprec) + valuation(Jinv, p)*log(R(norm(p)))
     end
 
     h = h//degree(K)
@@ -648,9 +589,11 @@ end
     CPS_height_bounds(E::EllipticCurve) -> ArbFieldElem, ArbFieldElem
 
 Given an elliptic curve over a number field or rational field, return a tuple
-`a, b` giving bounds for the difference between the naive and the canonical
-height of an elliptic curve E. We have `a <= naive_height(P) -
-canonical_height(P) <= b` for all rational points `P` of `E`.
+`(a, b)` giving bounds for the difference between the naive and the canonical
+height of an elliptic curve E.
+
+We have `a <= naive_height(P) - canonical_height(P) <= b` for all rational
+points `P` of `E`.
 """
 function CPS_height_bounds(E::EllipticCurve{T}) where T<:Union{QQFieldElem, AbsSimpleNumFieldElem}
   # This is just a working precision
@@ -796,15 +739,25 @@ function CPS_dvev_complex(E::EllipticCurve{T}, v::V, prec::Int = 100) where T wh
   F = b6*x^4 + 2*b4*x^3 + b2*x^2 + 4*x
   G = -b8*x^4 - 2*b6*x^3 - b4*x^2 + 1
 
-  E_fg = function (u::AcbFieldElem, eta::ArbFieldElem)
-    fsum = sum([eta^i//factorial(i)*abs(derivative(f, i)(u)) for i in (1:3)])
-    gsum = sum([eta^i//factorial(i)*abs(derivative(g, i)(u)) for i in (1:4)])
+  function taylor(pol::PolyRingElem, u::AcbFieldElem, eta::ArbFieldElem)
+    s = zero(eta)
+    d = degree(pol)
+    for i in 1:d
+      pol = derivative(pol)
+      s += eta^i//factorial(i)*abs(pol(u))
+    end
+    return s
+  end
+
+  function E_fg(u::AcbFieldElem, eta::ArbFieldElem)
+    fsum = taylor(f, u, eta)
+    gsum = taylor(g, u, eta)
     return max(fsum, gsum)
   end
 
-  E_FG = function (u::AcbFieldElem, eta::ArbFieldElem)
-    Fsum = sum([eta^i//factorial(i)*abs(derivative(F, i)(u)) for i in (1:4)])
-    Gsum = sum([eta^i//factorial(i)*abs(derivative(G, i)(u)) for i in (1:4)])
+  function E_FG(u::AcbFieldElem, eta::ArbFieldElem)
+    Fsum = taylor(F, u, eta)
+    Gsum = taylor(G, u, eta)
     return max(Fsum, Gsum)
   end
 

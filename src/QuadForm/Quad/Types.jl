@@ -42,6 +42,7 @@ Reference: [CS99](@cite) Chapter 15, Section 7.
 mutable struct ZZLocalGenus
   _prime::ZZRingElem
   _symbol::Vector{Vector{Int}}
+  canonical_symbol::String
 
   function ZZLocalGenus(prime, symbol, check=true)
     if check
@@ -73,6 +74,7 @@ non-degenerate integer_lattice.
   _signature_pair::Tuple{Int, Int}
   _symbols::Vector{ZZLocalGenus} # assumed to be sorted by their primes
   _representative::ZZLat
+  _representatives::Vector{ZZLat}
 
   function ZZGenus(signature_pair, symbols::Vector{ZZLocalGenus})
     G = new()
@@ -279,8 +281,8 @@ end
     return new{S, T, U}()
   end
 
-  function QuadLat(K::S, G::T, P::U) where {S, T, U}
-    space = quadratic_space(K, G)
+  function QuadLat(K::S, G::T, P::U; cached=false) where {S, T, U}
+    space = quadratic_space(K, G; cached)
     z = new{S, T, U}(space, P)
     z.base_algebra = K
     return z

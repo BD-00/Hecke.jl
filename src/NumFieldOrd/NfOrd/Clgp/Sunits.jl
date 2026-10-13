@@ -143,13 +143,13 @@ function sunit_mod_units_group_fac_elem(I::Vector{AbsNumFieldOrderIdeal{AbsSimpl
           push!(b.values, v)
         end
       end
-      s, d = _solve_ut(S1, b)
-      @assert d == 1  # this would indicate element is not in group...
-      c = zeros(ZZRingElem, length(I))
+      s, dd = _solve_ut(S1, b)
+      @assert dd == 1  # this would indicate element is not in group...
+      cc = zeros(ZZRingElem, length(I))
       for (p,v) = s
-        c[p] = v
+        cc[p] = v
       end
-      return C(c)
+      return C(cc)
     end
 
     function log(a::AbsSimpleNumFieldElem)
@@ -180,10 +180,10 @@ by $I$, ie. the group of non-zero field elements which are only divisible
 by ideals in $I$.
 The map will return elements in factored form.
 """
-function sunit_group_fac_elem(I::Vector{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}})
+function sunit_group_fac_elem(I::Vector{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}}; GRH::Bool = true)
   O = order(I[1])
   S, mS = sunit_mod_units_group_fac_elem(I)
-  U, mU = unit_group_fac_elem(O)
+  U, mU = unit_group_fac_elem(O; GRH)
 
   G = abelian_group(vcat(U.snf, S.snf))
 

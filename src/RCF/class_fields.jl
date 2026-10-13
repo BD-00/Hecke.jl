@@ -12,11 +12,31 @@ function Base.show(io::IO, C::ClassField_pp{S, T}) where {S, T}
 end
 
 function Base.show(io::IO, CF::ClassField)
+  io = pretty(io)
+  print(io, "Class field with structure ", Lowercase())
+  print(io, codomain(CF.quotientmap))
+  print(io, " over ", Lowercase(), base_field(CF))
+end
+
+function Base.show(io::IO, ::MIME"text/plain", CF::ClassField)
   @show_name(io, CF)
   @show_special(io, CF)
-  print(IOContext(io, :compact => true), "Class field defined mod ",
-                   defining_modulus(CF), " of structure ",
-                   codomain(CF.quotientmap))
+  io = pretty(io)
+  println(io, "Class field")
+  print(io, Indent(), "over ", Lowercase())
+  show(io, "text/plain", base_field(CF))
+  println(io, Dedent())
+  println(io, "with modulus", Indent())
+  m = defining_modulus(CF)
+  println(io, "finite part ", m[1])
+  print(io, "infinite part")
+  println(io, Indent())
+  print(IOContext(io, :nofield => true, :typeinfo=>typeof(m[2])), m[2])
+  println(io, Dedent(), Dedent())
+  println(io, "with structure")
+  print(io, Indent())
+  print(io, codomain(CF.quotientmap))
+  print(io, Dedent())
 end
 
 ###############################################################################
@@ -371,6 +391,24 @@ function prime_decomposition_type(C::T, p::AbsNumFieldOrderIdeal) where T <: Uni
 end
 
 @doc raw"""
+    absolute_prime_decomposition_type(C::T, p::Union{Integer, ZZRingElem}) where T <: Union{ClassField, ClassField_pp} -> Tuple{Int, Int, Int}[]
+
+Returns a list of triples $e, f, g$ s.th. when decomposing $p$ in the field
+there are $g$ prime ideals of inertia degree $f$ and ramification index $e$.
+
+Specifically, $p$ is decomposed in the coefficient ring (base field) of $C$ and each prime ideal there gives rise to one of the list items.
+"""
+function absolute_prime_decomposition_type(C::T, p::Union{Integer, ZZRingElem}) where T <: Union{ClassField, ClassField_pp}
+  lp = prime_decomposition(base_ring(C), p)
+  res = Tuple{Int, Int, Int}[]
+  for P = lp
+    s = prime_decomposition_type(C, P[1])
+    push!(res, (s[1]*P[2], s[2]*degree(P[1]), s[3]))
+  end
+  return res
+end
+
+@doc raw"""
     decomposition_group(C::ClassField, p::[InfPlc | AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}]) -> FinGenAbGroup
 
 Compute the decomposition group of any infinite place or prime ideal of the
@@ -632,9 +670,9 @@ function grunwald_wang(dp::Dict{<:NumFieldOrderIdeal, Int}, di::Dict{<:NumFieldE
 end
 
 function _grunwald_wang(d::Dict{<:Any, Int})
-  lp = collect(keys(d))
-  li = [x for x = lp if isa(x, NumFieldEmb)]
-  lp = [x for x = lp if isa(x, NumFieldOrderIdeal)]
+  keys_d = collect(keys(d))
+  li = [x for x = keys_d if isa(x, NumFieldEmb)]
+  lp = [x for x = keys_d if isa(x, NumFieldOrderIdeal)]
   @assert length(lp) + length(li) == length(d)
 
   if length(li) == 0
@@ -649,13 +687,13 @@ function _grunwald_wang(d::Dict{<:Any, Int})
   @assert all(x->k === number_field(order(x)), lp)
 
   deg = lcm([x for x = values(d)]...)
-  ld = factor(deg).fac
-  if length(keys(ld)) == 1
+  ld = factor(deg)
+  if length(ld) == 1
     return _grunwald_wang_pp(d)
   end
   S = ray_class_field(1*maximal_order(k))
-  for p = keys(ld)
-    dp = Dict(x => Int(gcd(v, p^ld[p])) for (x, v) = d)
+  for (p, k) in ld
+    dp = Dict(x => Int(gcd(v, p^k)) for (x, v) = d)
     S *= _grunwald_wang_pp(dp)
   end
   return rewrite_with_conductor(S)
@@ -691,7 +729,7 @@ function _grunwald_wang_pp(d::Dict{<:Any, Int})
 
   @assert is_prime_power(deg) #for now, to keep things simple
 
-  con = prod(lp)
+  con = 1*zk
   #complication:
   # if deg = 2^l, l >= 3 then, since there are no unramifed
   # extensions of Q_2 of this degree, 2 has to divide the conductor
@@ -720,6 +758,13 @@ function _grunwald_wang_pp(d::Dict{<:Any, Int})
   end
   P = PrimesSet(2, -1, Int(divexact(deg, s)), 1)
   st = iterate(P)
+  while true
+    if st[1] in map(minimum, lp)
+      st = iterate(P, st[2])
+    else
+      break
+    end
+  end
   PP = prime_decomposition(zk, st[1])
   iP = 1
   cnt = 0
@@ -737,7 +782,8 @@ function _grunwald_wang_pp(d::Dict{<:Any, Int})
     else
       if iseven(deg) && length(l2) > 0
         S1 = ray_class_field(mR)
-        S2 = [ray_class_field(divexact(con, p^valuation(con, p)), n_quo = deg) for p = l2]
+        cur_con = con
+        S2 = [ray_class_field(divexact(cur_con, p^valuation(cur_con, p)), n_quo = deg) for p = l2]
         ngp = norm_group_map(S1, S2)
         s, _ = sub(R, [val[i] for i = 1:length(lp)])
         s += preimage(S1.quotientmap, sum(kernel(x)[1] for x = ngp))[1]
@@ -747,9 +793,9 @@ function _grunwald_wang_pp(d::Dict{<:Any, Int})
       s = saturate(s, R)
       fl, s = has_complement(s, R)
       @assert fl
-      c, mc = quo(R, s)
-      c, _mc = quo(c, FinGenAbGroupElem[d[lp[i]] * mc(val[i]) for i = 1:length(lp)])
-      mc = mc * _mc
+      c0, mc0 = quo(R, s)
+      c, _mc = quo(c0, FinGenAbGroupElem[d[lp[i]] * mc0(val[i]) for i = 1:length(lp)])
+      mc = mc0 * _mc
       if all(i->order(mc(val[i])) == d[lp[i]], 1:length(lp))
 #        @show :cyc, snf(c)[1]
         for (u, mu) = subgroups(c, quotype = [deg])
@@ -772,7 +818,15 @@ function _grunwald_wang_pp(d::Dict{<:Any, Int})
     con *= PP[iP][1]
     iP += 1
     if length(PP) < iP
-      st = iterate(P, st[2])
+      while true
+        st = iterate(P, st[2])
+        if st[1] in map(minimum, lp)
+          continue
+        end
+        if is_coprime(st[1], minimum(con))
+          break
+        end
+      end
       PP = prime_decomposition(zk, st[1])
       iP = 1
     end

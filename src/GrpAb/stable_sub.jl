@@ -85,7 +85,7 @@ end
 function action(V::FinGenAbGroup, act::Vector{T}) where T<: Map{FinGenAbGroup, FinGenAbGroup}
 
   expon = Int(exponent(V))
-  @hassert :StabSub 1 length(factor(order(V)).fac)==1
+  @hassert :StabSub 1 length(factor(order(V)))==1
   RR = residue_ring(ZZ, expon, cached=false)[1]
   act_mat = Vector{zzModMatrix}(undef, length(act))
   for z = 1:length(act)
@@ -450,41 +450,81 @@ end
 #
 ###############################################################################
 
-function submodules_all(M::ZpnGModule)
+function _transform_to_howell(x::zzModMatrix, w::Vector{ZZRingElem})
+  R = base_ring(x)
+  n = ncols(x)
+  #
+  #  Howell form of every candidate, embedding them in a free module
+  #
+  if n > nrows(x)
+    xx = vcat(x, zero_matrix(R, n-nrows(x), ncols(x)))
+  else
+    xx = deepcopy(x)
+  end
+  for k=1:nrows(xx)
+    for j=1:n
+      @inbounds xx[k,j] *= w[j]
+    end
+  end
+  howell_form!(xx)
+  xx = view(xx, 1:n, 1:n)
+  return xx
+end
 
+
+function _transfrom_from_howell(x::zzModMatrix, w::Vector{ZZRingElem})
+  xx = deepcopy(x)
+  for j=1:ncols(x)
+    for k=1:j
+      xx[k,j] = divexact(xx[k,j].data, w[j])
+    end
+  end
+  return xx
+end
+
+function submodules_all(M::ZpnGModule)
   R = M.R
   if isone(order(M.V))
     return (zzModMatrix[])
   end
   S,mS = snf(M)
-  minlist = minimal_submodules(S)
-  list = zzModMatrix[identity_matrix(R, length(S.V.snf)), zero_matrix(R,1,length(S.V.snf))]
 
-  #
-  #  Find minimal submodules, factor out and recursion on the quotients
-  #
+  w = ZZRingElem[divexact(ZZRingElem(R.n), S.V.snf[j]) for j=1:ngens(S.V)]
 
-  for x in minlist
-    N, _ = quo(S, x)
-    newlist = submodules_all(N)
-    for y in newlist
-      push!(list,vcat(y,x))
+  reshowell = Set{zzModMatrix}()
+  res = Vector{zzModMatrix}()
+  workqueue = Vector{zzModMatrix}()
+
+  triv = zero_matrix(R, 0, ngens(S.V))
+  push!(workqueue, triv)
+  h = _transform_to_howell(triv, w)
+  m = _transfrom_from_howell(h, w)
+  push!(res, m)
+  push!(reshowell, h)
+
+  while !isempty(workqueue)
+    x = popfirst!(workqueue)
+    N, = quo(S, x)
+    if is_one(order(N.V))
+      continue
+    end
+    for Nnew in minimal_submodules(N)
+      yy = vcat(x, Nnew)
+      h = _transform_to_howell(yy, w)
+      if h in reshowell
+        continue
+      else
+        m = _transfrom_from_howell(h, w)
+        push!(workqueue, yy)
+        push!(res, m)
+        push!(reshowell, h)
+      end
     end
   end
 
-  append!(list,minlist)
-  #
-  #  Eliminate redundance via Howell form
-  #
-  w=ZZRingElem[divexact(ZZRingElem(R.n), S.V.snf[j]) for j=1:ngens(S.V)]
-  list=_no_redundancy(list, w)
-
-  #
   #  Writing the submodules in terms of the given generators and returning an iterator
-  #
   MatSnf=change_base_ring(R, mS.map)
-  return (x*MatSnf for x in list)
-
+  return (x*MatSnf for x in res)
 end
 
 ###############################################################################
@@ -830,13 +870,52 @@ end
 ##################################################################################
 
 @doc raw"""
-    stable_subgroups(R::FinGenAbGroup, quotype::Vector{Int}, act::Vector{T}; op=sub)
+    stable_subgroups(R::FinGenAbGroup, act::Vector{T};
+                     op = sub, quotype = Int[-1], subtype = Int[-1], order = -1,
+                     minimal = false)
 
-Given a group $R$, an array of endomorphisms of the group and the type of the quotient, it returns all the stable
-subgroups of $R$ such that the corresponding quotient has the required type.
+Given a group $R$ and an array of endomorphisms of the group, return all stable
+subgroups of $R$. If `quotype` is specified, only subgroups whose quotient has
+the given type are returned. If `order` is specified, only subgroups of the
+given order are returned. If `subtype` is specified, only subgroups isomorphic
+to `abelian_group(subtype)` are returned; `subtype = Int[]` selects the trivial
+subgroup. Only one of `quotype`, `subtype`,
+and `order` can be specified, and none can be combined with `minimal = true`.
 """
-function stable_subgroups(R::FinGenAbGroup, act::Vector{T}; op = sub, quotype::Vector{Int} = Int[-1], minimal::Bool = false) where T <: Map{FinGenAbGroup, FinGenAbGroup}
-  subs = _stable_subgroups(R, act; quotype = quotype, minimal = minimal)
+function stable_subgroups(R::FinGenAbGroup, act::Vector{T}; op = sub, quotype::Vector{Int} = Int[-1], subtype::Vector{Int} = Int[-1], order::Union{ZZRingElem, Int} = -1, minimal::Bool = false) where T <: Map{FinGenAbGroup, FinGenAbGroup}
+  if subtype != [-1]
+    @req quotype == [-1] && order == -1 "Only one of `quotype`, `subtype`, and `order` can be specified"
+    @req !minimal "Cannot compute minimal subgroups with prescribed subgroup type"
+    @req all(>(0), subtype) "The subgroup type must have positive entries"
+    # A finite abelian group has a subgroup of the given type if and only if
+    # it has a quotient of that type. Otherwise we return an empty iterator.
+    if !has_quotient(R, subtype)
+      return (op(R, x) for x in ())
+    end
+  end
+  if order != -1
+    @req quotype == [-1] "Only one of `quotype` and `order` can be specified"
+    @req !minimal "Cannot compute minimal subgroups with prescribed order"
+    @req order > 0 "The subgroup order must be positive"
+
+    if !is_divisible_by(Hecke.order(R), order)
+      return (op(R, x) for x in ())
+    end
+  end
+  if !minimal && all(is_identity, act)
+    if quotype != [-1]
+      return subgroups(R; quotype = quotype, fun = op)
+    elseif subtype != [-1]
+      return subgroups(R; subtype = subtype, fun = op)
+    elseif order != -1
+      # Use the equivalent index restriction to preserve the ordering of the
+      # subgroup iterator used by callers before this keyword was available.
+      return subgroups(R; index = divexact(Hecke.order(R), order), fun = op)
+    else
+      return subgroups(R; fun = op)
+    end
+  end
+  subs = _stable_subgroups(R, act; quotype = quotype, subtype = subtype, order = order, minimal = minimal)
   #Finally, translate back to R.
   return (op(R, x) for x in subs)
 end
@@ -856,7 +935,7 @@ function stable_subgroups_for_abexts(R::FinGenAbGroup, act::Vector{FinGenAbGroup
   return (inv(mS)*quo(S, y, false)[2] for y in subs_snf)
 end
 
-function _stable_subgroups(R::FinGenAbGroup, act::Vector{T}; quotype::Vector{Int} = Int[-1], minimal::Bool = false) where T <: Map{FinGenAbGroup, FinGenAbGroup}
+function _stable_subgroups(R::FinGenAbGroup, act::Vector{T}; quotype::Vector{Int} = Int[-1], subtype::Vector{Int} = Int[-1], order::Union{ZZRingElem, Int} = -1, minimal::Bool = false) where T <: Map{FinGenAbGroup, FinGenAbGroup}
   if quotype[1] != -1 && minimal
     error("Cannot compute minimal submodules with prescribed quotient type")
   end
@@ -877,16 +956,16 @@ function _stable_subgroups(R::FinGenAbGroup, act::Vector{T}; quotype::Vector{Int
     end
     actS[i] = hom(S, S, imgs, check = false)
   end
-  subs_snf = _stable_subgroup_snf(S, actS; quotype = quotype, minimal = minimal)
+  subs_snf = _stable_subgroup_snf(S, actS; quotype = quotype, subtype = subtype, order = order, minimal = minimal)
   return (FinGenAbGroupElem[mQ\mS(x) for x in y] for y in subs_snf)
 end
 
-function _stable_subgroup_snf(R::FinGenAbGroup, act::Vector{FinGenAbGroupHom}; quotype::Vector{Int} = Int[-1], minimal::Bool = false)
+function _stable_subgroup_snf(R::FinGenAbGroup, act::Vector{FinGenAbGroupHom}; quotype::Vector{Int} = Int[-1], subtype::Vector{Int} = Int[-1], order::Union{ZZRingElem, Int} = -1, minimal::Bool = false)
   @assert is_snf(R)
   c = exponent(R)
   lf = factor(c)
   list = Base.Generator[]
-  for p in keys(lf.fac)
+  for (p, _) in lf
     x1 = valuation(c, p)
     G, mG = sylow_subgroup(R, p, false)
     S, mS = snf(G)
@@ -910,7 +989,15 @@ function _stable_subgroup_snf(R::FinGenAbGroup, act::Vector{FinGenAbGroupHom}; q
       end
       M = Amodule(act_mat)
       #  Searching for submodules
-      if quotype[1] != -1
+      if order != -1
+        # A subgroup of order p^v has dimension v over GF(p).
+        plist = submodules(M, ngens(S) - valuation(order, p))
+      elseif subtype != [-1]
+        # S is elementary abelian. Each entry of subtype divisible by p
+        # contributes one dimension. submodules expects the codimension.
+        dim = count(t -> !is_coprime(t, p), subtype)
+        plist = submodules(M, ngens(S) - dim)
+      elseif quotype[1] != -1
         ind = 0
         for i = 1:length(quotype)
           if !is_coprime(quotype[i], p)
@@ -944,7 +1031,25 @@ function _stable_subgroup_snf(R::FinGenAbGroup, act::Vector{FinGenAbGroupHom}; q
 
       #  Searching for submodules
       M1 = ZpnGModule(S, act_mat1)
-      if quotype[1] != -1
+      if order != -1
+        v = valuation(order, p)
+        if v == 0
+          plist = [zero_matrix(RR, 0, ngens(S))]
+        else
+          # Enumerate the possible subgroup types of order p^v in S.
+          types = _psubgroups_types(elementary_divisors(S), p, v)
+          plist = Iterators.flatten(submodules(M1, typesub = sort(t)) for t in types)
+        end
+      elseif subtype != [-1]
+        # typesub expects the positive valuations at p of the subgroup type.
+        subtype_p = filter(>(0), Int[valuation(t, p) for t in subtype])
+        if isempty(subtype_p)
+          # The subgroup order is coprime to p, so we take the zero submodule.
+          plist = [zero_matrix(RR, 0, ngens(S))]
+        else
+          plist = submodules(M1, typesub = subtype_p)
+        end
+      elseif quotype[1] != -1
         quotype_p = Int[]
         for i=1:length(quotype)
           v = valuation(quotype[i],p)
@@ -952,7 +1057,11 @@ function _stable_subgroup_snf(R::FinGenAbGroup, act::Vector{FinGenAbGroupHom}; q
             push!(quotype_p, v)
           end
         end
-        plist = submodules(M1, typequo = quotype_p)
+        if isempty(quotype_p)
+          plist = [identity_matrix(RR, ngens(S))]
+        else
+          plist = submodules(M1, typequo = quotype_p)
+        end
       else
         if minimal
           plist = minimal_submodules(M1)
@@ -965,7 +1074,7 @@ function _stable_subgroup_snf(R::FinGenAbGroup, act::Vector{FinGenAbGroupHom}; q
     end
   end
   if isempty(list)
-    return Base.Generator([])
+    return (x for x in Vector{FinGenAbGroupElem}[FinGenAbGroupElem[]])
   end
 
   if minimal

@@ -1,5 +1,25 @@
 @testset "Clgp" begin
   Qx, x = polynomial_ring(QQ, "x")
+  @testset "Factored ideal preimages" begin
+    K, a = quadratic_field(-23; cached = false)
+    O = maximal_order(K)
+    C, mC = class_group(O; do_lll = false)
+    @test order(C) == 3
+
+    # Also exercise the map between different bases of the maximal order.
+    O2 = order(K, reverse(basis(O)); isbasis = true)
+    @test is_maximal(O2)
+    mC2 = Hecke.change_base_ring(mC, O2)
+    for m in (mC, mC2)
+      P = m(C[1])
+      Q = m(2*C[1])
+      @test preimage(m, P) == C[1]
+      @test preimage(m, FacElem([P, Q], ZZRingElem[2, 3])) == 2*C[1]
+      @test preimage(m, FacElem([P, Q], ZZRingElem[2, -1])) == zero(C)
+      @test preimage(m, FacElem([P, Q], ZZRingElem[1, -1])) == -C[1]
+    end
+  end
+
   @testset "class numbers" begin
     @testset "quadratic fields" begin
       classnumbersofquadraticfields = Tuple{Int, Int}[(-50,1),(-49,1),(-48,1),(-47,5),(-46,4)
@@ -28,6 +48,18 @@
         O = order(K, shuffle(basis(O)), isbasis = true)
         O.is_maximal = 1
         Cl, mCl = Hecke.class_group(O, redo = true, do_lll = false)
+        U, mU = Hecke.unit_group(O)
+        @test order(Cl) == h
+
+        K, a = number_field(x^2-1//d, "a"; cached = false)
+        O = maximal_order(K)
+        Cl, mCl = Hecke.class_group(O, redo = true)
+        U, mU = Hecke.unit_group(O)
+        @test order(Cl) == h
+
+        K, a = number_field(d*x^2-1, "a"; cached = false)
+        O = maximal_order(K)
+        Cl, mCl = Hecke.class_group(O, redo = true)
         U, mU = Hecke.unit_group(O)
         @test order(Cl) == h
       end
@@ -270,6 +302,19 @@ end
     @test order(class_group(OK)[1]) == 1
   end
 
+  @testset "bad defining polynomial" begin
+    Qx, x = QQ[:x]
+    K, a = number_field(10*x^10 + 5//3*x^9 + 5//18*x^8 + 5//108*x^7 + 5//648*x^6 + 5//3888*x^5 + 5//23328*x^4 + 5//139968*x^3 + 5//839808*x^2 + 5//5038848*x + 5//30233088; cached = false)
+    OK = maximal_order(K)
+    @test order(class_group(OK)[1]) == 1
+
+    K, a = number_field(10*x^10 + 5//3*x^9 + 5//18*x^8 + 5//108*x^7 + 5//648*x^6 + 5//3888*x^5 + 5//23328*x^4 + 5//139968*x^3 + 5//839808*x^2 + 5//5038848*x + 5//30233088; cached = false)
+    OK = maximal_order(K)
+    automorphism_list(K)
+    @test order(class_group(OK; use_aut = true)[1]) == 1
+  end
+
+
   @testset "Class group proof" begin
     K, a = number_field(x^2 - 2)
     OK = maximal_order(K)
@@ -279,7 +324,15 @@ end
     unit_group(OK, GRH = false)
     unit_group(OK, GRH = true)
 
-    # 
+    K, a = number_field(x^2 - 1//2)
+    OK = maximal_order(K)
+    class_group(OK, GRH = true)
+    c, mc = class_group(OK, GRH = false)
+    @test isone(order(c))
+    unit_group(OK, GRH = false)
+    unit_group(OK, GRH = true)
+
+    #
     K, = quadratic_field(-100200000001; cached = false)
     OK = maximal_order(K)
     U, mU = unit_group_fac_elem(OK, GRH = false)
@@ -302,9 +355,59 @@ end
   end
 
   # saturation at large primes
-  
+
   # the cyclotomic units are saturated at any prime l, since the class number h_149^+ is one.
   K, = cyclotomic_real_subfield(149, "a")
   u = Hecke._cyclotomic_units_totally_real_prime_conductor(K, 149)
   @test nrows(Hecke.RelSaturate.compute_candidates_for_saturate(FacElem.(u[2:end]), next_prime(2^25))) == 0
+
+  let
+    O = maximal_order(rationals_as_number_field()[1])
+    unit_group(O)
+    U, = unit_group_fac_elem(O; GRH = false)
+    @test order(U) == 2
+  end
+
+  let # non-maximal orders
+    K, a = quadratic_field(-1)
+    O = order(K, [10*a])
+    @test_throws ArgumentError class_group(O)
+    @test_throws ArgumentError class_number(O)
+  end
+
+  let # class number
+    K, a = quadratic_field(-1)
+    O = maximal_order(K)
+    @test class_number(O) == 1
+  end
+
+  let
+    # factor base for bad polynomials
+    QQx, x = QQ[:x]
+    f = 3*x^2 - 1//47
+    k, _ = number_field(f; cached = false)
+    B = Hecke.NfFactorBase(lll(maximal_order(k)), 50; complete = false, degree_limit = 0)
+    @test length(B.fb) == 10
+  end
+
+  @testset "Progress bar" begin
+    # the second call takes a different path if not interactive, as in CI
+    PB = Hecke.MiniProgressBar(header = "test")
+    io = IOBuffer()
+    Hecke.showprogress(io, PB, "")
+    PB.current = 0.5
+    Hecke.showprogress(io, PB, "")
+    @test occursin("test", String(take!(io)))
+  end
+
+  @testset "to_hecke" begin
+    Qx, x = QQ["x"]
+    K, a = number_field(x^3 + 2, "a")
+    c = Hecke.class_group_ctx(maximal_order(K))
+    mktemp() do path, io
+      close(io)
+      Hecke.to_hecke(path, c)
+      @test startswith(read(path, String), "K, a = number_field(x^3 + 2, \"a\");\n")
+    end
+  end
 end

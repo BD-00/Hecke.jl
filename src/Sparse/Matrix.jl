@@ -109,11 +109,11 @@ end
 function get_tmp_scalar(A::SMat, i::Int)
 #  return zeros(base_ring(A), i)
   if !isdefined(A, :tmp_scalar)
-    A.tmp_scalar = zeros(base_ring(A), i)
+    A.tmp_scalar = zeros_array(base_ring(A), i)
   end
   s = A.tmp_scalar
   if length(s) < i
-    append!(s, zeros(base_ring(A), i+1-length(s)))
+    append!(s, zeros_array(base_ring(A), i+1-length(s)))
   end
   @inbounds ret = s[length(s)-i+1:length(s)]
   resize!(s, length(s)-i)
@@ -604,12 +604,12 @@ end
 @doc raw"""
     *(A::SMat{T}, b::AbstractMatrix{T}) -> Matrix{T}
 
-Return the product $A \cdot b$ as a dense array.
+Return the product $A \cdot b$ as a dense matrix.
 """
 function *(A::SMat{T}, b::AbstractMatrix{T}) where T
   sz = size(b)
   @assert sz[1] == ncols(A)
-  c = Array{T}(undef, sz[1], sz[2])
+  c = Matrix{T}(undef, sz[1], sz[2])
   return mul!(c, A, b)
 end
 
@@ -652,6 +652,51 @@ function *(A::SRow{T}, B::SMat{T}) where T
       continue
     end
     C = add_scaled_row(B[p], C, v)
+  end
+  return C
+end
+
+# - SMat{T} * SMat{T}
+function *(A::SMat{T}, B::SMat{T}) where {T}
+  error("""
+  The product of two sparse matrices is, in general, not sparse.
+  Use `mul_sparse` if you still want to compute the product of two sparse matrices as a sparse matrix,
+  or `mul_dense` if you want to compute the product as a dense matrix.
+  """)
+end
+
+@doc raw"""
+    mul_sparse(A::SMat{T}, B::SMat{T}) -> SMat{T}
+
+Return the product $A\cdot B$ as a sparse matrix.
+
+The product of two sparse matrices is, in general, not sparse, so depending on the context,
+it might be more efficient to use [`mul_dense(::SMat{T}, ::SMat{T}) where {T}`](@ref) instead.
+"""
+function mul_sparse(A::SMat{T}, B::SMat{T}) where {T}
+  @req ncols(A) == nrows(B) "Matrices must have compatible dimensions"
+  @req base_ring(A) == base_ring(B) "Matrices must have same base ring"
+  C = sparse_matrix(base_ring(B), nrows(A), ncols(B))
+  for (i, rA) in enumerate(A.rows)
+    C[i] = rA * B
+  end
+  return C
+end
+
+@doc raw"""
+    mul_dense(A::SMat{T}, B::SMat{T}) -> MatElem{T}
+
+Return the product $A\cdot B$ as a dense matrix.
+"""
+function mul_dense(A::SMat{T}, B::SMat{T}) where {T}
+  @req ncols(A) == nrows(B) "Matrices must have compatible dimensions"
+  @req base_ring(A) == base_ring(B) "Matrices must have same base ring"
+  C = zero_matrix(base_ring(B), nrows(A), ncols(B))
+  for (i, rA) in enumerate(A.rows)
+    rC = rA * B
+    for (j, val) in rC
+      C[i, j] = val
+    end
   end
   return C
 end
@@ -751,7 +796,7 @@ end
 #
 ################################################################################
 
-function *(b::T, A::SMat{T}) where {T}
+function *(b::T, A::SMat{T}) where {T <: NCRingElement}
   if iszero(b)
     return sparse_matrix(base_ring(A), nrows(A), ncols(A))
   end
@@ -762,11 +807,11 @@ function *(b::T, A::SMat{T}) where {T}
   return B
 end
 
-function *(b, A::SMat)
+function *(b::NCRingElement, A::SMat)
   return base_ring(A)(b) * A
 end
 
-function *(A::SMat{T}, b::T) where {T}
+function *(A::SMat{T}, b::T) where {T <: NCRingElement}
   if iszero(b)
     return sparse_matrix(base_ring(A), nrows(A), ncols(A))
   end
@@ -777,7 +822,7 @@ function *(A::SMat{T}, b::T) where {T}
   return B
 end
 
-function *(A::SMat, b)
+function *(A::SMat, b::NCRingElement)
   return A * base_ring(A)(b)
 end
 
@@ -872,12 +917,6 @@ end
 #
 ################################################################################
 
-@doc raw"""
-    sub(A::SMat, r::AbstractUnitRange, c::AbstractUnitRange) -> SMat
-
-Return the submatrix of $A$, where the rows correspond to $r$ and the columns
-correspond to $c$.
-"""
 function sub(A::SMat{T}, r::AbstractUnitRange, c::AbstractUnitRange) where T
   B = sparse_matrix(base_ring(A))
   B.nnz = 0
@@ -897,164 +936,48 @@ function sub(A::SMat{T}, r::AbstractUnitRange, c::AbstractUnitRange) where T
   return B
 end
 
-#TODO: map to getindex with ranges and slices
-
-################################################################################
-#
-#  Valence
-#
-################################################################################
-
 @doc raw"""
-    valence_mc{T}(A::SMat{T}; extra_prime = 2, trans = Vector{SMatSLP_add_row{T}}()) -> T
+    sub(A::SMat, r::AbstractVector, c::AbstractVector) -> SMat
 
-Uses a Monte-Carlo algorithm to compute the valence of $A$. The valence is the
-valence of the minimal polynomial $f$ of $transpose(A)*A$, thus the last non-zero
-coefficient, typically $f(0)$.
-
-The valence is computed modulo various primes until the computation stabilises
-for `extra_prime` many.
-
-`trans`, if given, is  a SLP (straight-line-program) in GL(n, Z). Then the
-valence of `trans` * $A$  is computed instead.
+Return the submatrix of $A$, where the rows correspond to $r$ and the columns
+correspond to $c$. The row and column indices must be sorted and unique.
 """
-function valence_mc(A::SMat{T}; extra_prime = 2, trans = Vector{SMatSLP_add_row{T}}()) where T
-  # we work in At * A (or A * At) where we choose the smaller of the 2
-  # matrices
-  if false && ncols(A) > nrows(A)
-    At = A
-    A = transpose(A)
-  else
-    At = transpose(A)
-  end
-  if maximum(abs, A) > 2^20
-    mm = mul_mod_big!
-    println("mul big case")
-  else
-    mm = mul_mod!
-    println("mul small case")
-  end
-  c1 = Array{Int}(undef, ncols(A))
-  c2 = Array{Int}(undef, nrows(A))
-
-  for i=1:ncols(A)
-    c1[i] = Int(rand(-10:10))
-  end
-
-  c = copy(c1) ## need the starting value for the other primes as well
-
-  p = next_prime(2^30)
-  k = GF(p)
-  d = 10
-  v = Vector{typeof(k(1))}()
-  push!(v, k(c1[1]))
-  while true
-    while length(v) <= d
-      mm(c2, A, c1, p)
-      if length(trans) >0
-        apply_t!(c2, trans)
-        apply!(c2, trans)
+function sub(A::SMat{T}, r::AbstractVector, c::AbstractVector) where T
+  @req issorted(r) "The row indicies ($r) must be sorted"
+  @req issorted(c) "The column indicies ($c) must be sorted"
+  B = sparse_matrix(base_ring(A))
+  B.nnz = 0
+  B.c = length(c)
+  t = base_ring(A)()
+  _r = 0
+  for i in r
+    @req i != _r "The row indices must be unique"
+    _r = i
+    rw = sparse_row(base_ring(A))
+    ra = A.rows[i]
+    _k = 0
+    errork = false
+    for j=1:length(ra.values)
+      # searchsortedfirst cannot be useddd
+      cview = @view(c[_k + 1:end])
+      !insorted(ra.pos[j], cview) && continue
+      __k = searchsorted(cview, ra.pos[j])
+      if length(__k) > 1
+        errork = true
+        break
       end
-      mm(c1, At, c2, p)
-      push!(v, k(c1[1]))
+      k = first(__k) + _k
+      push!(rw.values, getindex!(t, ra.values, j))
+      push!(rw.pos, k)
+      _k = k
     end
-    f = berlekamp_massey(v)
-    fl = true
-    if !fl || degree(f) > div(d, 2)-1
-      d += 10
-      continue
-    end
-    df = degree(f)
-    println("Poly degree is $df, dims $(nrows(A)) x $(ncols(A))")
-
-    V = ZZRingElem(leading_coefficient(f))
-    pp = ZZRingElem(p)
-
-    v = Array{typeof(k(1))}(undef, 2*degree(f)+1)
-    while true
-      p = next_prime(p)
-      println(p)
-      k = GF(p)
-      copy!(c1, c)
-      v[1] = k(c1[1])
-      for i=1:2*degree(f)
-        mm(c2, A, c1, p)
-        if length(trans) >0
-          apply_t!(c2, trans)
-          apply!(c2, trans)
-        end
-        mm(c1, At, c2, p)
-        v[i+1] = k(c1[1])
-      end
-      f = berlekamp_massey(v)
-      fl = true
-      if !fl || degree(f) > df
-        println("initial guess was wrong...")
-        d += 10
-        return -1
-      end
-
-      Vn = crt(V, pp, ZZRingElem(leading_coefficient(f)), ZZRingElem(p))
-      pp *= p
-      if 2*Vn > pp
-        Vn = Vn - pp
-      end
-      if Vn == V
-        extra_prime -= 1
-        if extra_prime == 0
-          return V
-        end
-      end
-      V = Vn
-    end
+    @req !errork "The column indices must be unique"
+    push!(B, rw)
   end
+  return B
 end
 
-function valence_mc(A::SMat{T}, p::Int) where T
-  # we work in At * A (or A * At) where we choose the smaller of the 2
-  # matrices
-  if false && ncols(A) > nrows(A)
-    At = A
-    A = transpose(A)
-  else
-    At = transpose(A)
-  end
-  if maximum(abs, A) > 2^20
-    mm = mul_mod_big!
-    println("mul big case")
-  else
-    mm = mul_mod!
-    println("mul small case")
-  end
-  c1 = zeros{Int}(ncols(A))
-  c2 = zeros{Int}(nrows(A))
-
-  for i=1:ncols(A)
-    c1[i] = Int(rand(-10:10))
-  end
-
-  c = copy(c1) ## need the starting value for the other primes as well
-
-  k = GF(p)
-  d = 10
-  v = Vector{elem_type(k)}()
-  push!(v, k(c1[1]))
-  while true
-    while length(v) <= d
-      mm(c2, A, c1, p)
-      mm(c1, At, c2, p)
-      push!(v, k(c1[1]))
-    end
-    f = berlekamp_massey(v)
-    fl = true
-    if !fl || degree(f) > div(d, 2)-1
-      d += 10
-      continue
-    end
-    df = degree(f)
-    return f
-  end
-end
+#TODO: map to getindex with ranges and slices
 
 ################################################################################
 #
@@ -1364,7 +1287,7 @@ function identity_matrix(::Type{SMat}, R::Ring, n::Int)
   A = sparse_matrix(R)
   A.c = n
   for i in 1:n
-    push!(A, sparse_row(R, [i], [one(R)]))
+    push!(A, sparse_row(R, [(i, one(R))]))
   end
   return A
 end
@@ -1601,7 +1524,7 @@ end
 The same matrix, but as a julia matrix.
 """
 function Matrix(A::SMat)
-  M = elem_type(base_ring(A))[zero(base_ring(A)) for _ in 1:nrows(A), _ in 1:ncols(A)]
+  M = zeros_array(base_ring(A), nrows(A), ncols(A))
   for i in 1:nrows(A)
     for (k, c) in A[i]
       M[i, k] = c
@@ -1616,7 +1539,7 @@ end
 The same matrix, but as a two-dimensional julia array.
 """
 function Array(A::SMat)
-  M = elem_type(base_ring(A))[zero(base_ring(A)) for _ in 1:nrows(A), _ in 1:ncols(A)]
+  M = zeros_array(base_ring(A), nrows(A), ncols(A))
   for i in 1:nrows(A)
     for (k, c) in A[i]
       M[i, k] = c

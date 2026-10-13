@@ -39,7 +39,7 @@ function simplify(K::AbsSimpleNumField; canonical::Bool = false, cached::Bool = 
     b = _simplify(OK)
     if b != gen(K)
       @vprintln :Simplify 1 "The basis of the maximal order contains a better primitive element"
-      f1 = Qx(minpoly(representation_matrix(OK(b))))
+      f1 = change_base_ring(QQ, minpoly(representation_matrix(OK(b))); parent = Qx)
       L1 = number_field(f1, cached = cached, check = false)[1]
       #Before calling again the simplify on L1, we need to define the maximal order of L1
       mp = hom(L1, K, b, check = false)
@@ -65,7 +65,7 @@ function simplify(K::AbsSimpleNumField; canonical::Bool = false, cached::Bool = 
   if a == gen(K) && is_monic(K.pol) # K.pol is minpoly of a
     f = K.pol
   else
-    @vtime :Simplify 3 f = Qx(minpoly(representation_matrix(OK(a))))
+    @vtime :Simplify 3 f = change_base_ring(QQ, minpoly(representation_matrix(OK(a))); parent = Qx)
   end
   L = number_field(f, cached = cached, check = false)[1]
   m = hom(L, K, a, check = false)
@@ -133,7 +133,7 @@ end
 function _sieve_primitive_elements(B::Vector{AbsNonSimpleNumFieldElem})
   K = parent(B[1])
   Zx = polynomial_ring(ZZ, "x", cached = false)[1]
-  pols = [Zx(to_univariate(Globals.Qx, x)) for x in K.pol]
+  pols = [change_base_ring(ZZ, to_univariate(Globals.Qx, x); parent = Zx) for x in K.pol]
   p, d = _find_prime(pols)
   F = Native.finite_field(p, d, "w", cached = false)[1]
   Fp = Native.GF(p, cached = false)
@@ -205,9 +205,10 @@ end
 
 function _sieve_primitive_elements(B::Vector{AbsSimpleNumFieldElem})
   K = parent(B[1])
-  Zx = polynomial_ring(ZZ, "x", cached = false)[1]
-  f = Zx(K.pol*denominator(K.pol))
-  a = gen(K)*denominator(K.pol)
+  Zx = Globals.Zx
+  _f = defining_polynomial(K)
+  f = numerator(_f * denominator(_f), Zx)
+  a = gen(K) * denominator(_f)
 
   p, d = _find_prime(ZZPolyRingElem[f])
 
@@ -345,9 +346,23 @@ function polredabs(K::AbsSimpleNumField)
   ZK = lll(maximal_order(K))
   I = index(ZK)^2
   D = discriminant(ZK)
+  #arrange the LLL-basis to be sorted by length (OK, no-longer a lll basis)
+  all_l = map(length, basis(ZK, K))
+  #in AA/Nemo/Hecke we do not have permutation matrices - and neither
+  # permuting rows via (fake) permutations.
+  p = sortperm(all_l)
+  M = zero_matrix(ZZ, degree(K), degree(K))
+  for i=1:degree(K)
+    M[i, p[i]] = 1
+  end
+  ZK = AbsNumFieldOrder(K, M*basis_matrix(Hecke.FakeFmpqMat, ZK, copy = false))
   B = basis(ZK, copy = false)
+
+  #find the smallest index i s.th. the span of basis elements 1..i contains
+  # a primitive element. It is pointless to search for a PE in smaller blocks
+  #then start the enumeration at e_i - it should then try e_i+e_1 ... and so on
   Zx = ZZ["x"][1]
-  f = Zx(K.pol)
+  f = change_base_ring(ZZ, defining_polynomial(K); parent = Zx)
   p, d = _find_prime(ZZPolyRingElem[f])
 
   F = Native.finite_field(p, d, "w", cached = false)[1]
@@ -359,10 +374,15 @@ function polredabs(K::AbsSimpleNumField)
   n = degree(K)
 
   b = _block(B[1].elem_in_nf, rt, ap)
+  a = B[1].elem_in_nf
   i = 2
   while length(b) < degree(K)
     bb = _block(B[i].elem_in_nf, rt, ap)
-    b = _meet(b, bb)
+    _b = _meet(b, bb)
+    if length(_b) > length(b)
+      a += B[i].elem_in_nf
+      b = _b
+    end
     i += 1
   end
   i -= 1
@@ -389,16 +409,17 @@ function polredabs(K::AbsSimpleNumField)
     end
   end
 
-  scale = 1.0
-  enum_ctx_start(E, i, eps = 1.01) #start at the 1st vector having
+  scale = Float64(length(a)/length(B[i].elem_in_nf))
+  enum_ctx_start(E, i; eps = scale*1.01) #start at the 1st vector having
                        # a 1 at position i, it's pointless to start earlier
                        #as none of the elements can be primitive.
+                       #scale is large enough so that "a" should be findable
 
-  a = gen(K)
   all_a = AbsSimpleNumFieldElem[a]
-  la = length(a)*BigFloat(E.t_den^2)
+  la = length(a)
+
   Ec = BigFloat(E.c//E.d)
-  eps = BigFloat(E.d)^(1//2)
+  eps = BigFloat(1.01)
 
   found_pe = false
   first = true
@@ -417,7 +438,10 @@ function polredabs(K::AbsSimpleNumField)
       lq = Ec - (E.l[1] - E.C[1, 1]*(BigFloat(E.x[1,1]) + E.tail[1])^2)
 #      @show lq/E.t_den^2
 
-      if lq < la + eps
+      if length(all_a) == 0 #1st PE ever...
+        push!(all_a, q)
+        la = lq
+      elseif lq < la + eps
         if lq > la - eps
           push!(all_a, q)
 #          @show "new one", q, minpoly(q), bb
@@ -425,7 +449,6 @@ function polredabs(K::AbsSimpleNumField)
           a = q
           all_a = AbsSimpleNumFieldElem[a]
           if lq/la < 0.8
-#            @show "re-init"
             enum_ctx_start(E, E.x, eps = 1.01)  #update upperbound
             first = true
             Ec = BigFloat(E.c//E.d)
@@ -435,6 +458,7 @@ function polredabs(K::AbsSimpleNumField)
         end
       end
     end
+    found_pe && break
     scale *= 2
     enum_ctx_start(E, i, eps = scale)
     first = true
@@ -460,10 +484,14 @@ function polredabs(K::AbsSimpleNumField)
 werden alle als 'canonical' ausgegeben, obwohl sie isomorphe
 K"orper definieren ??
 =#
-  sort!(all_a, lt = (a,b) -> length(a) < length(b))
+  length_a = map(t2, all_a)
+  p = sortperm(length_a)
+  all_a = all_a[p]
+  length_a = length_a[p]
+
   i = length(all_a)
-  la1 = length(all_a[1])
-  while i >= 1 && la1 <= length(all_a[i]) - 1e-10
+  la1 = length_a[1]
+  while i >= 1 && la1  <= length_a[i] - 1e-10
     i -= 1
   end
   all_a = all_a[1:i]

@@ -183,8 +183,7 @@ end
 
 function max_ramified_prime(O::AbsSimpleNumFieldOrder, gtype::Vector{Int}, bound::ZZRingElem)
   n = prod(gtype)
-  fac = factor(n)
-  m = Int(minimum(keys(fac.fac)))
+  m = Int(minimum(prime_divisors(n)))
   k = divexact(n, m)
   b1 = Int(root(bound, degree(O)*(m-1)*k))
   return b1
@@ -221,7 +220,7 @@ function _abelian_normal_extensions(F::FieldsTower, gtype::Vector{Int}, absbound
     @vprintln :Fields 1 ""
     return Vector{Hecke.ClassField{Hecke.MapRayClassGrp, FinGenAbGroupHom}}[]
   end
-  Hecke.allow_cache!(mCl)
+  AbstractAlgebra.allow_cache!(mCl)
   @vtime :Fields 3 rcg_ctx = Hecke.rayclassgrp_ctx(O, expo)
   @vprintln :Fields 1 ""
   j = -1
@@ -470,7 +469,7 @@ function set_up_cycl_ext(K::AbsSimpleNumField, n::Int, autK::Vector{Hecke.morphi
     @vprint :Fields 1 ": computing class group of cyclotomic extension of order $e"
     @vprintln :FieldsNonFancy 1 "computing class group of cyclotomic extension of order $e"
     Cl, mCl = class_group(maximal_order(C.Ka), use_aut = true)
-    Hecke.allow_cache!(mCl)
+    AbstractAlgebra.allow_cache!(mCl)
     @vprint :Fields 1 "$(Hecke.set_cursor_col())$(Hecke.clear_to_eol())"
   end
   return nothing

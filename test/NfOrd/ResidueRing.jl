@@ -19,10 +19,7 @@ end
   end
   @test rand(Q, 2) isa Vector{elem_type(Q)}
 
-  Random.seed!(rng, rand_seed)
-  x = rand(rng, Q)
-  Random.seed!(rng, rand_seed)
-  @test x == rand(rng, Q)
+  @test reproducible(Q)
 end
 
 @testset "projection" begin
@@ -31,12 +28,14 @@ end
   O = equation_order(K)
   I = 2 * O
   Q, mQ = quo(O, I)
+  @test (@inferred kernel(mQ)) === I
   b = FacElem(Dict(K(2) => -1, K(6) => 1, K(3) => -1, K(5) => 2))
   @test @inferred isone(mQ(b))
   @test @inferred isone(mQ(O(5)))
 
   I = conductor(O, maximal_order(O))
   Q, mQ = quo(O, I)
+  @test (@inferred kernel(mQ)) === I
   @test isone(mQ(b))
   @test isone(mQ(O(5)))
 
@@ -44,12 +43,37 @@ end
   O = order(A, basis(A), cached = false)
   I = 2 * O
   Q, mQ = quo(O, I)
+  @test (@inferred kernel(mQ)) === I
   b = FacElem(Dict(A(2) => -1, A(6) => 1, A(3) => -1, A(5) => 2))
   @test isone(mQ(b))
   @test isone(mQ(O(5)))
 
   I = conductor(O, maximal_order(O))
   Q, mQ = quo(O, I)
+  @test (@inferred kernel(mQ)) === I
   @test mQ(b) == Q(25)
   @test mQ(O(25)) == Q(25)
+end
+
+@testset "map" begin
+  Qx, x = QQ["x"]
+  K, a = number_field(x^4 - x^3 + x^2 - x + 1, "a")
+  O = equation_order(K)
+  Q, OtoQ = quo(O, 2*O)
+  k = GF(2)
+  kt, t = k[:t]
+  S, ktoS = quo(kt, t^4 - t^3 + t^2 - t + 1)
+  f = hom(Q, S, S.([one(kt), t, t^2, t^3]))
+  @test sprint(show, f) isa String
+  @test domain(f) === Q
+  @test codomain(f) === S
+  @test is_one(f(one(Q)))
+  for _ in 1:10
+    x = rand(Q)
+    y = rand(Q)
+    @test f(x * y) == f(x) * f(y)
+    @test f(x + y) == f(x) + f(y)
+  end
+  @test_throws Hecke.AbstractAlgebra.NotImplementedError preimage(f, one(S))
+  @test_throws ArgumentError hom(Q, S, S.([one(kt), t, t^2, t^3 + 1]))
 end

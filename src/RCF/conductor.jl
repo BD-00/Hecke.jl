@@ -180,7 +180,51 @@ function signature(C::ClassField{MapClassGrp, FinGenAbGroupHom})
   return r, s
 end
 
+@doc raw"""
+    is_totally_real(C::ClassField) -> Bool
 
+Return `true` if and only if the number field defined by $C$ is totally real,
+that is, if all its embeddings into $\mathbb{C}$ have image in $\mathbb{R}$.
+
+# Examples
+```jldoctest
+julia> K, a = quadratic_field(10);
+
+julia> C = hilbert_class_field(K);
+
+julia> is_totally_real(C)
+true
+
+julia> is_totally_real(cyclotomic_field(ClassField, 5))
+false
+```
+"""
+function is_totally_real(C::ClassField)
+  return iszero(signature(C)[2])
+end
+
+@doc raw"""
+    is_totally_complex(C::ClassField) -> Bool
+
+Return `true` if and only if the number field defined by $C$ is totally complex,
+that is, if it has no real embeddings.
+
+# Examples
+```jldoctest
+julia> C = cyclotomic_field(ClassField, 5);
+
+julia> is_totally_complex(C)
+true
+
+julia> K, a = quadratic_field(10);
+
+julia> is_totally_complex(hilbert_class_field(K))
+false
+```
+"""
+function is_totally_complex(C::ClassField)
+  return iszero(signature(C)[1])
+end
 
 #######################################################################################
 #
@@ -450,9 +494,17 @@ function discriminant_sign(C::ClassField)
   end
 end
 
+function absolute_discriminant(::Type{FacElem}, C::ClassField)
+  OK = base_ring(C)
+  d = factored_norm(discriminant(FacElem, C))
+  d *= parent(d)(discriminant_sign(C))
+  d *= parent(d)(abs(QQ(discriminant(OK))))^degree(C)
+  return d
+end
+
 function absolute_discriminant(C::ClassField)
   OK = base_ring(C)
-  return discriminant_sign(C) * norm(discriminant(C))*discriminant(OK)^degree(C)
+  return discriminant_sign(C) * norm(discriminant(C))*abs(discriminant(OK))^degree(C)
 end
 
 function discriminant(C::ClassField, ::QQField)
@@ -461,11 +513,14 @@ end
 
 @doc raw"""
     discriminant(C::ClassField) -> AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}
+    discriminant(FacElem, C::ClassField) -> FacElem{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}}
 
 Using the conductor-discriminant formula, compute the (relative) discriminant of $C$.
 This does not use the defining equations.
+
+In the `FacElem` version, the discriminant is returned in factored form.
 """
-function discriminant(C::ClassField)
+function discriminant(::Type{FacElem}, C::ClassField)
   if isdefined(C,:conductor)
     m = C.conductor[1]
     inf_plc = C.conductor[2]
@@ -477,15 +532,14 @@ function discriminant(C::ClassField)
   O = order(m)
   if isdefined(C, :relative_discriminant)
     if isempty(C.relative_discriminant)
-      return ideal(O, 1)
+      return FacElem(Dict(ideal(O, 1)=>1))
     else
-      return prod([P^v for (P, v) in C.relative_discriminant])
+      return FacElem(C.relative_discriminant)
     end
   end
   if is_one(m)
-    return m
+    return FacElem(Dict(m =>1))
   end
-
 
   @assert typeof(m) == AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}
 
@@ -505,9 +559,9 @@ function discriminant(C::ClassField)
     end
     C.relative_discriminant = relative_disc
     if isempty(C.relative_discriminant)
-      return ideal(O, 1)
+      return FacElem(Dict(ideal(O, 1)=>1))
     else
-      return prod([P^v for (P, v) in C.relative_discriminant])
+      return FacElem(C.relative_discriminant)
     end
   end
 
@@ -556,10 +610,14 @@ function discriminant(C::ClassField)
   end
   C.relative_discriminant = relative_disc
   if isempty(relative_disc)
-    return ideal(O, 1)
+    return FacElem(Dict(ideal(O, 1)=>1))
   else
-    return prod([P^v for (P, v) in relative_disc])
+    return FacElem(C.relative_discriminant)
   end
+end
+
+function discriminant(C::ClassField)
+  return evaluate(discriminant(FacElem, C))
 end
 
 ##############################################################################
@@ -952,7 +1010,7 @@ function norm_group_map(R::ClassField{S, T}, r::Vector{<:ClassField}, map = fals
     return [hom(domain(fR), domain(x.quotientmap), FinGenAbGroupElem[]) for x = r]
   end
 
-  lp, sR = find_gens(MapFromFunc(IdealSet(base_ring(R)), domain(fR), x->preimage(fR, x)),
+  lp, sR = find_gens(map_from_func(IdealSet(base_ring(R)), domain(fR), x->preimage(fR, x)),
                              PrimesSet(100, -1), minimum(mR))
 
   if map == false
@@ -1315,32 +1373,35 @@ end
 Find all subfields of $C$ over the base field.
 
 If the optional keyword argument `degree` is positive, then only those with prescribed
-degree will be returned.
+relative degree will be returned. Nonpositive values impose no degree restriction.
 
 If the optional keyword `is_normal` is given, then only those that are normal
 over the field fixed by the automorphisms is returned. For normal base fields,
 this amounts to extensions that are normal over `Q`.
 
 If the optional keyword `is_normal` is set to a list of automorphisms, then
-only those wil be considered.
+only those will be considered.
 
 `type` can be set to the desired relative Galois group, given as a vector
-of integers descibing the structure.
+of integers describing the structure; `type = Int[]` selects the base field.
+The keywords `degree` and `type` are mutually exclusive.
 
 !!! note
     This will not find all subfields over $\mathbf{Q}$, but only the ones
     sharing the same base field.
 """
 function subfields(C::ClassField; arg...)
+  for key in keys(arg)
+    @req key in (:degree, :is_normal, :type) "Unknown keyword: $key. Allowed keywords are :degree, :is_normal, and :type."
+  end
+  @req !(haskey(arg, :degree) && haskey(arg, :type)) "degree and type are exclusive"
+
   degree = -1
   if haskey(arg, :degree)
     val = arg[:degree]
     @req isa(val, Int) "degree must be an integer"
     degree = Int(val)
   end
-
-  mR = C.rayclassgroupmap
-  mQ = C.quotientmap
 
   k = base_field(C)
 
@@ -1369,26 +1430,32 @@ function subfields(C::ClassField; arg...)
       error("modulus not stable under automorphisms")
     end
     C = rewrite_with_conductor(C)
-    mR = C.rayclassgroupmap
-    mQ = C.quotientmap
     act = induce_action(C, aut)
-    if haskey(arg, :type)
-      @req !haskey(arg, :degree) "degree and type are exclusive"
-      s = stable_subgroups(codomain(mQ), act; quotype = qtype, op = (x,y) -> quo(x, y, false)[2])
-    else
-      s = stable_subgroups(codomain(mQ), act; op = (x,y) -> quo(x, y, false)[2])
-      if degree != -1
-        s = filter(x->order(codomain(x)) == degree, collect(s))
-      end
-    end
-    return ClassField[ray_class_field(mR, FinGenAbGroupHom(mQ*x)) for x = s]
+  else
+    act = [id_hom(codomain(C.quotientmap))]
   end
 
-  if degree > 0
-    return ClassField[ray_class_field(mR, FinGenAbGroupHom(mQ*x)) for x = subgroups(codomain(mQ), index = degree, fun = (x,y) -> quo(x, y, false)[2])]
-  else
-    return ClassField[ray_class_field(mR, FinGenAbGroupHom(mQ*x)) for x = subgroups(codomain(mQ), fun = (x,y) -> quo(x, y, false)[2])]
+  mR = C.rayclassgroupmap
+  mQ = C.quotientmap
+  G = codomain(mQ)
+  if isempty(act)
+    act = [id_hom(G)]
   end
+  if haskey(arg, :type)
+    if qtype != [-1] && !has_quotient(G, qtype)
+      return ClassField[]
+    end
+    # Empty types and types consisting of ones specify the trivial quotient.
+    restriction = all(isone, qtype) ? (; order = order(G)) : (; quotype = qtype)
+  elseif degree > 0
+    n = order(G)
+    !(is_divisible_by(n, degree)) && return ClassField[]
+    restriction = (; order = divexact(n, degree))
+  else
+    restriction = (;)
+  end
+  s = stable_subgroups(G, act; restriction..., op = (x,y) -> quo(x, y, false)[2])
+  return ClassField[ray_class_field(mR, FinGenAbGroupHom(mQ*x)) for x = s]
 end
 
 @doc raw"""
@@ -1632,7 +1699,7 @@ function lorenz_module(k::AbsSimpleNumField, n::Int; containing=false)
     end
   end
   lf = factor(n)
-  return Base.reduce(lcm, [lorenz_module_pp(k, Int(p), l, containing = containing) for (p,l) = lf.fac])
+  return Base.reduce(lcm, [lorenz_module_pp(k, Int(p), l, containing = containing) for (p, l) in lf])
 end
 
 #TODO: is this the right interface???
@@ -1680,7 +1747,7 @@ function norm(m::T, a::FacElem{AbsSimpleNumFieldElem, AbsSimpleNumField}) where 
   Qt = parent(K.pol)
   h = gcd(gen(k) - evaluate(Qt(m(gen(k))), t), evaluate(K.pol, t))
   d = Dict{AbsSimpleNumFieldElem, ZZRingElem}()
-  for (e,v) = a.fac
+  for (e, v) in a
     n = resultant(h, mod(change_base_ring(k, Qt(e), parent = kt), h))
     if haskey(d, n)
       d[n] += v

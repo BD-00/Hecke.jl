@@ -73,7 +73,7 @@ mutable struct NfOrdToFqNmodMor <: Map{AbsSimpleNumFieldOrder, fqPolyRepField, H
     psmall = Int(p)
     R = Native.GF(psmall, cached = false)
     Rx, x = polynomial_ring(R, "_\$", cached = false)
-    F = fqPolyRepField(Rx(g), Symbol("_\$"), false)
+    F = fqPolyRepField(change_base_ring(R, g; parent = Rx), Symbol("_\$"), false)
     d = degree(g)
     n = degree(O)
     imageofbasis = Vector{fqPolyRepFieldElem}(undef, n)
@@ -168,6 +168,8 @@ function AbsOrdQuoMap(O::S, Q::AbsOrdQuoRing{S, T}) where {S, T}
   U = elem_type(O)
   return AbsOrdQuoMap{S, T, U}(O, Q)
 end
+
+kernel(f::AbsOrdQuoMap{S, T}) where {S, T} = ideal(codomain(f))::T
 
 const NfOrdQuoMap = AbsOrdQuoMap{AbsSimpleNumFieldOrder, AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}, AbsSimpleNumFieldOrderElem}
 
@@ -272,7 +274,7 @@ function NfOrdToFqMor(O::AbsSimpleNumFieldOrder, P::AbsNumFieldOrderIdeal{AbsSim
   p = minimum(P)
   R = Native.GF(p, cached = false)
   Rx, x = polynomial_ring(R, "_\$", cached = false)
-  F = FqPolyRepField(Rx(g), Symbol("_\$"), false)
+  F = FqPolyRepField(change_base_ring(R, g; parent = Rx), Symbol("_\$"), false)
   d = degree(g)
   n = degree(O)
   imageofbasis = Vector{FqPolyRepFieldElem}(undef, n)
@@ -559,7 +561,7 @@ function NfOrdToFqFieldMor(O::AbsSimpleNumFieldOrder, P::AbsNumFieldOrderIdeal{A
   p = minimum(P)
   R = GF(p, cached = false)
   Rx, x = polynomial_ring(R, "_\$", cached = false)
-  F, = Nemo._residue_field(Rx(g), "_\$", check = false)
+  F, = Nemo._residue_field(change_base_ring(R, g; parent = Rx), "_\$", check = false)
   d = degree(g)
   n = degree(O)
   imageofbasis = Vector{FqFieldElem}(undef, n)
@@ -662,6 +664,11 @@ end
 
 Mor(O::AbsSimpleNumFieldOrder, F::Nemo.FqField, h::FqPolyRingElem) = NfOrdToFqFieldMor(O, F, h)
 
+function kernel(f::Union{NfOrdToFqNmodMor, NfOrdToFqMor, NfOrdToGFMor, NfOrdToGFFmpzMor, NfOrdToFqFieldMor})
+  isdefined(f, :P) || throw(ArgumentError("Map was not constructed from a prime ideal"))
+  return f.P
+end
+
 ################################################################################
 #
 #  Extend to number field
@@ -756,13 +763,13 @@ mutable struct NfToFqFieldMor_easy <: Map{AbsSimpleNumField, FqField, HeckeMap, 
   header::MapHeader{AbsSimpleNumField, FqField}
   Fq::FqField
   s::FqFieldElem
-  t::FqPolyRingElem
+  t::FpPolyRingElem
   function NfToFqFieldMor_easy(a::Map, k::AbsSimpleNumField)
     r = new()
     r.Fq = codomain(a)
     r.header = MapHeader(k, r.Fq)
     r.s = r.Fq()
-    r.t = polynomial_ring(prime_field(r.Fq), cached = false)[1]()
+    r.t = polynomial_ring(Native.GF(characteristic(r.Fq), cached = false), cached = false)[1]()
     return r
   end
 end
@@ -785,7 +792,7 @@ function image(mF::NfToFqFieldMor_easy, a::FacElem{AbsSimpleNumFieldElem, AbsSim
       if denominator(k) % characteristic(Fq) == 0
         throw(BadPrime(characteristic(Fq)))
       end
-      _nf_to_fq!(s, k, Fq)#, t)
+      _nf_to_fq!(s, k, Fq, t)
       if iszero(s)
         throw(BadPrime(1))
       end
@@ -806,7 +813,7 @@ function image(mF::NfToFqFieldMor_easy, a::AbsSimpleNumFieldElem, n_quo::Int = 0
   if denominator(a) % characteristic(Fq) == 0
     throw(BadPrime(characteristic(Fq)))
   end
-  _nf_to_fq!(q, a, Fq)#, mF.t)
+  _nf_to_fq!(q, a, Fq, mF.t)
   return q
 end
 
@@ -991,9 +998,7 @@ function image(mF::NfToFqNmodMor_easy, a::FacElem{AbsSimpleNumFieldElem, AbsSimp
     if (quo != 0 && vv != 0) || !iszero(v)
       if cached
         s = zero(Fq)
-        ccall((:fq_nmod_set, libflint), Nothing,
-          (Ref{fqPolyRepFieldElem}, Ref{fpPolyRingElem}, Ref{fqPolyRepField}), s, D[i], Fq)
-        _reduce(s)
+        set!(s, D[i])
       else
         Nemo.nf_elem_to_gfp_poly!(t, k)
         #tt = deepcopy(t)
@@ -1014,9 +1019,7 @@ function image(mF::NfToFqNmodMor_easy, a::FacElem{AbsSimpleNumFieldElem, AbsSimp
           set!(D[i], t)
         end
         s = zero(Fq)
-        ccall((:fq_nmod_set, libflint), Nothing,
-          (Ref{fqPolyRepFieldElem}, Ref{fpPolyRingElem}, Ref{fqPolyRepField}), s, D[i], Fq)
-        _reduce(s)
+        set!(s, D[i])
       end
       if iszero(s)
         throw(BadPrime(1))
@@ -1074,7 +1077,17 @@ mutable struct NfToGFMor_easy <: Map{AbsSimpleNumField, fpField, HeckeMap, NfToG
   function NfToGFMor_easy(a::NfOrdToGFMor, k::AbsSimpleNumField)
     r = new()
     r.Fq = codomain(a)
-    r.defining_pol = a.poly_of_the_field
+    if isdefined(a, :poly_of_the_field)
+      r.defining_pol = a.poly_of_the_field
+    else
+      # this happens if the defining polynomial is not nice
+      rt = roots(r.Fq, change_base_ring(r.Fq, defining_polynomial(k); cached = false))
+      gk = gen(k)
+      d = denominator(gk, order(a.P))
+      fa = findall(x -> (gen(k)-lift(x))*d in a.P, rt)
+      @assert length(fa) == 1
+      r.defining_pol = polynomial(r.Fq, [-rt[fa[1]], r.Fq(1)])
+    end
     r.header = MapHeader(k, r.Fq)
     r.s = r.Fq()
     r.t = zero(parent(r.defining_pol))
@@ -1260,7 +1273,7 @@ function image(mF::NfToGFFmpzMor_easy, a::FacElem{AbsSimpleNumFieldElem, AbsSimp
       if denominator(k) % characteristic(Fq) == 0
         throw(BadPrime(characteristic(Fq)))
       end
-      s = _nf_to_gfp_fmpz_elem(k, t, p)
+      s = _nf_to_gfp_elem(k, t, p)
       if iszero(s)
         throw(BadPrime(1))
       end
@@ -1282,7 +1295,7 @@ function image(mF::NfToGFFmpzMor_easy, a::AbsSimpleNumFieldElem, n_quo::Int = 0)
   if denominator(a) % characteristic(Fq) == 0
     throw(BadPrime(characteristic(Fq)))
   end
-  return _nf_to_gfp_fmpz_elem(a, t, p)
+  return _nf_to_gfp_elem(a, t, p)
 end
 
 ################################################################################
@@ -1326,5 +1339,3 @@ end
 function fmpz_mod_ui(x::ZZRingElem, y::UInt)
   return ccall((:fmpz_fdiv_ui, libflint), UInt, (Ref{ZZRingElem}, UInt), x, y)
 end
-
-

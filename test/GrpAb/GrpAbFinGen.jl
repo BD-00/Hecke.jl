@@ -74,15 +74,15 @@
   @testset "Field access" begin
     S = abelian_group([3, 0])
     @test @inferred is_snf(S)
-    @test @inferred ngens(S) == 2
-    @test @inferred nrels(S) == 2
-    @test @inferred rels(S) == matrix(ZZ, 2, 2, [3, 0, 0, 0])
+    @test 2 == @inferred ngens(S)
+    @test 2 == @inferred nrels(S)
+    @test (@inferred rels(S)) == matrix(ZZ, 2, 2, [3, 0, 0, 0])
 
     G = abelian_group([3, 5])
     @test @inferred !is_snf(G)
-    @test @inferred ngens(G) == 2
-    @test @inferred nrels(G) == 2
-    @test @inferred rels(G) == matrix(ZZ, 2, 2, [3, 0, 0, 5])
+    @test 2 == @inferred ngens(G)
+    @test 2 == @inferred nrels(G)
+    @test (@inferred rels(G)) == matrix(ZZ, 2, 2, [3, 0, 0, 5])
   end
 
   @testset "Hermite normal form" begin
@@ -130,36 +130,36 @@
 
   @testset "Rank" begin
     G = abelian_group([3, 15])
-    @test @inferred torsion_free_rank(G) == 0
-    #@test @inferred rank(G) == 2
+    @test 0 == @inferred torsion_free_rank(G)
+    #@test 2 == @inferred rank(G)
 
     G = abelian_group([3, 5])
-    @test @inferred torsion_free_rank(G) == 0
-    #@test @inferred rank(G) == 1
+    @test 0 == @inferred torsion_free_rank(G)
+    #@test 1 == @inferred rank(G)
 
     G = abelian_group([3, 15, 0])
-    @test @inferred torsion_free_rank(G) == 1
-    #@test @inferred rank(G) == 3
+    @test 1 == @inferred torsion_free_rank(G)
+    #@test 3 == @inferred rank(G)
 
     G = abelian_group([3, 5, 0])
-    @test @inferred torsion_free_rank(G) == 1
-    #@test @inferred rank(G) == 2
+    @test 1 == @inferred torsion_free_rank(G)
+    #@test 2 == @inferred rank(G)
   end
 
   @testset "Order" begin
     G = abelian_group([3, 5])
-    @test @inferred order(G) == 15
+    @test 15 == @inferred order(G)
     G = abelian_group([3, 15])
-    @test @inferred order(G) == 45
+    @test 45 == @inferred order(G)
     G = abelian_group([3, 5, 0])
     @test_throws ErrorException order(G)
   end
 
   @testset "Exponent" begin
     G = abelian_group([3, 5])
-    @test @inferred exponent(G) == 15
+    @test 15 == @inferred exponent(G)
     G = abelian_group([3, 15])
-    @test @inferred exponent(G) == 15
+    @test 15 == @inferred exponent(G)
   end
 
   @testset "Trivial" begin
@@ -207,6 +207,24 @@
         @test is_zero(compose(inj[i], proj[j]))
       end
     end
+    K = direct_product(G)[1]
+    @test K !== G
+    @test is_isomorphic(G, K)
+    h = hom(G, G, gens(G))
+    hh = hom_direct_sum(K, K, [h;])
+    @test hh(K[1]) == K[1]
+
+    G = abelian_group(ZZ[2 0; 0 0])
+    H = abelian_group(ZZ[3 0; 0 0])
+    D = direct_product(G, H, task = :none)
+    inj = canonical_injections(D)
+    proj = canonical_projections(D)
+    factors = (G, H)
+    for i in 1:2, j in 1:2, g in gens(factors[i])
+      @test proj[j](inj[i](g)) == (i == j ? g : factors[j][0])
+    end
+    h = hom_direct_sum(D, D, [id_hom(G), id_hom(H)])
+    @test all(h(g) == g for g in gens(D))
   end
 
   @testset "Torsion" begin
@@ -388,6 +406,14 @@
   end
 
   @testset "Complement" begin
+    A = abelian_group([4])
+    B = abelian_group([6])
+    G, _, inj = biproduct(A, B)
+    fl, mC = Hecke.has_complement(inj[1])
+    @test fl
+    @test is_isomorphic(domain(mC), B)
+    @test is_trivial(intersect(inj[1], mC, false)[1])
+
     d = rand(2:1000)
     d1 = rand(2:1000)
     while !is_squarefree(d) || !is_squarefree(d1)
@@ -449,5 +475,17 @@
     V = saturate(U, G)
     @test is_pure(V, G)
     @test has_complement(V, G)[1]
+  end
+
+  let # cyclic
+    for G in [abelian_group([]), abelian_group([2]), abelian_group([2, 3])]
+      @test is_cyclic(G)
+      g = cyclic_generator(G)
+      @test order(g) == order(G)
+    end
+    for G in [abelian_group([2, 2]), abelian_group([2, 4, 6])]
+      @test !is_cyclic(G)
+      @test_throws ArgumentError cyclic_generator(G)
+    end
   end
 end

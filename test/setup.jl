@@ -10,17 +10,18 @@ import Hecke.AbstractAlgebra
 import Hecke: mul!
 
 const rng = MersenneTwister()
-const rand_seed = rand(UInt128)
 
 # tests if rand(rng, args...) gives reproducible results
 function reproducible(args...)
-  Random.seed!(rng)
-  x = rand(rng, args...)
-  Random.seed!(rng, rng.seed)
-  x == rand(rng, args...)
+  rng1 = copy(rng)
+  x = rand(rng1, args...)
+  rng2 = copy(rng)
+  return x == rand(rng2, args...)
 end
 
-Hecke.assertions(true)
+enable_assertions = get(ENV, "HECKE_TEST_ASSERTIONS",
+                        get(ENV, "CI", "false") == "true" ? "false" : "true")
+Hecke.assertions(enable_assertions in ["1", "true"])
 
 if (isdefined(Hecke, :long_test) && Hecke.long_test) ||
    (isdefined(Main, :long_test) && Main.long_test)

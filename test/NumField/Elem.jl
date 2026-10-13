@@ -74,6 +74,75 @@
       @test reproducible(m)
       @test reproducible(args...)
     end
+
+    @testset "field samplers" begin
+      K, _ = number_field(x^2 + 1)
+      Kns, _ = number_field([x^2 + 1, x^2 - 2], check = false)
+      Ky, y = polynomial_ring(K, "y")
+      L, _ = number_field(y^2 - 3)
+      Lns, _ = number_field([y^2 - 3, y^2 - 5], check = false)
+      fields = NumField[Kns]
+      for k in (K, Kns, L, Lns)
+        kt, t = polynomial_ring(k, "t")
+        F, _ = number_field(t^2 - 7, check = false)
+        Fns, _ = number_field([t^2 - 7, t^2 - 11], check = false)
+        F1, _ = number_field(t - 2, check = false)
+        append!(fields, [F, Fns, F1])
+      end
+
+      @testset for F in fields
+        for r in (1:9, -9:9, Int8(-9):Int8(9), UInt(1):UInt(9),
+                  big(-9):big(9), ZZ(-9):ZZ(9), Base.OneTo(9))
+          m = make(F, r)
+          for z in (rand(F, r), @inferred(rand(rng, F, r)),
+                    rand(m), rand(rng, m))
+            @test parent(z) === F
+            @test all(c -> denominator(c) == 1 && first(r) <= c <= last(r),
+                      absolute_coordinates(z))
+          end
+          @test rand(rng, m, 3) isa Vector{elem_type(F)}
+          @test reproducible(F, r)
+          @test reproducible(m)
+        end
+
+        @test iszero(rand(F, 0:0))
+        @test iszero(rand(F, 0:0, 1:9))
+        @test all(==(QQ(1)), absolute_coordinates(rand(F, 1:1)))
+        @test all(==(QQ(3//2)), absolute_coordinates(rand(F, 3:3, 2:2)))
+
+        for d in (2:9, -9:-2, Int8(2):Int8(9), UInt(2):UInt(9),
+                  big(2):big(9), ZZ(2):ZZ(9), Base.OneTo(9))
+          m = make(F, 1:1, d)
+          for z in (rand(F, 1:1, d), @inferred(rand(rng, F, 1:1, d)),
+                    rand(m), rand(rng, m))
+            c = absolute_coordinates(z)
+            @test parent(z) === F
+            @test all(==(c[1]), c)
+            @test abs(numerator(c[1])) == 1
+            @test first(d) <= inv(c[1]) <= last(d)
+          end
+          @test rand(rng, m, 3) isa Vector{elem_type(F)}
+          @test reproducible(F, 1:1, d)
+          @test reproducible(m)
+        end
+
+        rng1 = MersenneTwister(42)
+        rng2 = copy(rng1)
+        @test rand(rng1, F, -9:9, 1:9) ==
+              divexact(rand(rng2, F, -9:9), F(rand(rng2, 1:9)))
+
+        for d in (0:0, -1:1, ZZ(-1):ZZ(1))
+          rng1 = MersenneTwister(42)
+          rng2 = copy(rng1)
+          @test_throws ArgumentError rand(rng1, F, 1:1, d)
+          @test rand(rng1, UInt) == rand(rng2, UInt)
+          @test_throws ArgumentError rand(F, 1:1, d)
+          @test_throws ArgumentError rand(make(F, 1:1, d))
+        end
+        @test_throws ArgumentError rand(F, 1:0)
+        @test_throws ArgumentError rand(F, 1:1, 1:0)
+      end
+    end
   end
 
   @testset "NumField/Coordinates" begin
@@ -274,4 +343,48 @@ let
   LFw, w = LF["w"]
   r = roots(w^3 - (phi - srm)//2)
   @test length(r) == 1
+end
+
+let # issue #2079, Hanselmann
+
+  Kt, t = polynomial_ring(QQ, "t"; cached = false)
+  p = 1200*t^6 - 2800*t^5 - 2232*t^4 + 1444*t^3 + 346*t^2 - 384*t - 175
+  b = -25
+  c = 36//25*t^10 - 96//25*t^9 - 29//25*t^8 + 61//25*t^7 + 9//100*t^6 - 3//50*t^5 + 29//400*t^4 - 51//400*t^3 + 7//800*t^2 + 27//400*t + 9//400
+  L, o = number_field(p; cached = false)
+  Lu, u = polynomial_ring(L, "u"; cached = false)
+  f = L(b) * u^2 + L(c)
+  @test length(roots(f)) == 2
+end
+
+let
+  Qx, x = QQ["x"]
+  K, a = number_field([x^2 - 2, x^2 - 3])
+  @test absolute_minpoly(a[1])(x) == x^2 - 2
+end
+
+let # norm of polynomials
+  QQ, = rationals_as_number_field()
+  Qx, xQ = QQ["x"]
+  F, _ = number_field(xQ^2-2)
+  Fx, xF = F["x"]
+  d = degree(F)
+  @test norm(xF)(xQ) == xQ^(d)
+  for i in 1:11
+    @test norm(xF^i + xF^(i+1))(xQ) == xQ^(i*d) * norm(xF+1)(xQ)
+  end
+end
+
+let
+  QQ, = rationals_as_number_field()
+  Qx, xQ = QQ["x"]
+  F, a = number_field(xQ^2 - 2)
+  Fx, xF = F["x"]
+  L, z = number_field(xF^2 - 3)
+  Lt, t = L["t"]
+  d = degree(F)
+  @test norm(xF, F)(xQ) == xQ^(d)
+  for i in 1:11
+    @test norm(t^i + t^(i+1), F)(xF) == xF^(i*d) * norm(t + 1, F)(xF)
+  end
 end

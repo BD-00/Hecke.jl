@@ -83,7 +83,7 @@ function hlift_have_lcs_generic(
   @assert n > 0
   @assert r > 1
 
-  lc_evals = zeros(R, n + 1, r)
+  lc_evals = zeros_array(R, n + 1, r)
   for j in 1:r
     lc_evals[n + 1, j] = lcs[j]
     for i in n:-1:1
@@ -92,14 +92,14 @@ function hlift_have_lcs_generic(
     end
   end
 
-  A_evals = zeros(R, n + 1)
+  A_evals = zeros_array(R, n + 1)
   A_evals[n + 1] = A
   for i in n:-1:1
     A_evals[i] = AbstractAlgebra.MPolyFactor.eval_one(A_evals[i + 1],
                                                        minorvars[i], alphas[i])
   end
 
-  fac = zeros(R, r)
+  fac = zeros_array(R, r)
   for j in 1:r
     @assert is_constant(lc_evals[1, j])
     fac[j] = Auf[j]*divexact(lc_evals[1, j],
@@ -205,7 +205,7 @@ function hlift_have_lcs_crt(
   nf_lcc, bits = mfactor_martin_bounds(A)
 
   m = ZZRingElem(1)
-  Af = zeros(R, r)
+  Af = zeros_array(R, r)
 
   for p in PrimesSet(Hecke.p_start, -1)
 
@@ -222,8 +222,8 @@ function hlift_have_lcs_crt(
       pA = modular_proj(fqPolyRepFieldElem, A, me)
 
       # make sure no leading coeff vanishes
-      plcs = [modular_proj(fqPolyRepFieldElem, lc, me) for lc in lcs]
-      plcs = [[plcs[j][i] for j in 1:r] for i in 1:s]
+      plcs0 = [modular_proj(fqPolyRepFieldElem, lc, me) for lc in lcs]
+      plcs = [[plcs0[j][i] for j in 1:r] for i in 1:s]
       ok = true
       for i in 1:s, j in 1:r
         ok = ok && !iszero(plcs[i][j])
@@ -233,8 +233,8 @@ function hlift_have_lcs_crt(
       end
 
       # make sure univariate factorizations remain pairwise prime
-      pAuf = [modular_proj(fqPolyRepFieldElem, f, me) for f in Auf]
-      pAuf = [[pAuf[j][i] for j in 1:r] for i in 1:s]
+      pAuf0 = [modular_proj(fqPolyRepFieldElem, f, me) for f in Auf]
+      pAuf = [[pAuf0[j][i] for j in 1:r] for i in 1:s]
       ok = true
       for i in 1:s
         ok = ok && is_pairwise_coprime(pAuf[i])
@@ -243,8 +243,8 @@ function hlift_have_lcs_crt(
         continue
       end
 
-      palphas = [deepcopy(Hecke.modular_proj(alphas[j], me)) for j in 1:n]
-      palphas = [[palphas[j][i] for j in 1:n] for i in 1:s]
+      palphas0 = [deepcopy(Hecke.modular_proj(alphas[j], me)) for j in 1:n]
+      palphas = [[palphas0[j][i] for j in 1:n] for i in 1:s]
 
     catch ee
       if ee <: Hecke.BadPrime
@@ -253,7 +253,8 @@ function hlift_have_lcs_crt(
       rethrow(ee)
     end
 
-    pAf = [eltype(pA)[] for j in 1:r]
+    T_pA = eltype(pA)
+    pAf = [T_pA[] for j in 1:r]
     for i in 1:s
       ok, t = AbstractAlgebra.MPolyFactor.hlift_have_lcs(
                        pA[i], pAuf[i], plcs[i], mainvar, minorvars, palphas[i])

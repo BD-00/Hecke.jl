@@ -53,12 +53,12 @@ var(F::RelFinField) = F.var
 prime_field(F::RelFinField; cached::Bool = true) = prime_field(base_field(F), cached = cached)
 
 function defining_polynomial(F::RelFinField{T}) where T
-  return F.defining_polynomial::dense_poly_type(T)
+  return F.defining_polynomial::poly_type(T)
 end
 
 base_field_type(::Type{RelFinField{S}}) where S = parent_type(S)
 
-base_field(F::RelFinField{S}) where S= base_ring(F.defining_polynomial)::parent_type(S)
+base_field(F::RelFinField{S}) where S = base_ring(F.defining_polynomial)::parent_type(S)
 
 characteristic(F::RelFinField) = characteristic(base_field(F))
 
@@ -156,7 +156,7 @@ function zero!(x::RelFinFieldElem)
   return x
 end
 
-elem_type(::Type{RelFinField{T}}) where T = RelFinFieldElem{RelFinField{T}, dense_poly_type(T)}
+elem_type(::Type{RelFinField{T}}) where T = RelFinFieldElem{RelFinField{T}, poly_type(T)}
 
 parent_type(::Type{RelFinFieldElem{S, T}}) where {S, T}  = S
 
@@ -710,13 +710,13 @@ function absolute_field(F::RelFinField{T}; cached::Bool = true) where T <: FinFi
       aux[1, j] = coeff(x, j-1)
     end
     mul!(aux, aux, Minv)
-    el = F()
+    res = F()
     for i = 1:degree(K)
       if !iszero(aux[1, i])
-        el += F(aux[1, i])*abs_basis[i]
+        res += F(aux[1, i])*abs_basis[i]
       end
     end
-    return el
+    return res
   end
 
   Fpx = polynomial_ring(Fp)[1]
@@ -757,8 +757,9 @@ function factor(f::PolyRingElem{T}) where T <: RelFinFieldElem
 end
 
 function is_irreducible(f::PolyRingElem{T}) where T <: RelFinFieldElem
+  is_zero(f) && return false
   l = factor(f)
-  return length(l.fac) == 1
+  return sum(values(l.fac)) == 1
 end
 
 

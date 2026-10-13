@@ -68,6 +68,7 @@ rank(L::ZZLat)
 det(L::ZZLat)
 
 scale(L::ZZLat)
+level(::ZZLat)
 norm(L::ZZLat)
 iseven(L::ZZLat)
 is_integral(L::ZZLat)
@@ -158,6 +159,7 @@ See [`discriminant_group(L::ZZLat)`](@ref).
 ```@docs
 glue_map(L::ZZLat, S::ZZLat, R::ZZLat; check=true)
 overlattice(glue_map::TorQuadModuleMap)
+primitive_extension(glue_map::TorQuadModuleMap)
 local_modification(M::ZZLat, L::ZZLat, p)
 maximal_integral_lattice(L::ZZLat)
 ```
@@ -185,9 +187,18 @@ lll(L::ZZLat; same_ambient::Bool = true)
 ```@docs
 short_vectors
 shortest_vectors
+shortest_vectors_sublattice
 short_vectors_iterator
 minimum(L::ZZLat)
+center_density(::ZZLat)
+density(::ZZLat)
+hermite_number(::ZZLat)
 kissing_number(L::ZZLat)
+```
+
+### Vectors with given square and divisibility
+```@docs
+vectors_of_square_and_divisibility
 ```
 
 ### Short Vectors affine

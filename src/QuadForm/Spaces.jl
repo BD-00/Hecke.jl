@@ -335,37 +335,41 @@ diagonal_with_transform(V::AbstractSpace)
 ################################################################################
 
 # Clean this up
+#
+# Unlike a textbook Gram-Schmidt process, the elementary transformations here
+# are applied to F and S via targeted row/column operations (add_row!,
+# add_column!, swap_rows!, swap_cols!) instead of building a dense n x n
+# transformation matrix T and computing T * F * transpose(_map(T, a)) at
+# every step. The latter costs O(n^3) per pivot, i.e. O(n^4) overall, whereas
+# the elementary operations only ever touch the rows/columns that actually
+# change, giving the usual O(n^3) complexity of symmetric Gaussian
+# elimination. Zero-testing uses is_zero_entry(A, i, j), which for e.g.
+# QQMatrix/ZZMatrix avoids allocating a field/ring element just to inspect
+# a single entry (unlike A[i, j]).
 function _gram_schmidt(M::MatElem, a, nondeg = true)
   F = deepcopy(M)
   K = base_ring(F)
   n = nrows(F)
   S = identity_matrix(K, n)
-  T = identity_matrix(K, n)
-  okk = is_diagonal(F)
-  if !okk
+  if !is_diagonal(F)
     for i in 1:n
-      if iszero(F[i,i])
-        zero!(T)
-        for i in 1:nrows(T)
-          T[i, i] = 1
-        end
+      if is_zero_entry(F, i, i)
         ok = 0
         for j in (i + 1):n
-          if !iszero(F[j, j])
+          if !is_zero_entry(F, j, j)
             ok = j
             break
           end
         end
         if ok != 0 # ok !== nothing
           j = ok
-          T[i,i] = 0
-          T[j,j] = 0
-          T[i,j] = 1
-          T[j,i] = 1
+          swap_rows!(F, i, j)
+          swap_cols!(F, i, j)
+          swap_rows!(S, i, j)
         else
           ok = 0
           for j in (i + 1):n
-            if !iszero(F[i, j])
+            if !is_zero_entry(F, i, j)
               ok = j
               break
             end
@@ -374,35 +378,36 @@ function _gram_schmidt(M::MatElem, a, nondeg = true)
             if nondeg
               error("Matrix is not of full rank")
             end
-          else
-            j = ok
-            T[i, j] = 1 // (2 * F[j, i])
+            continue
           end
+          j = ok
+          c = inv(2 * F[j, i])
+          # T = I + c * E_{i,j}: row_i(F) += c * row_j(F), then
+          # col_i(F) += a(c) * col_j(F), and row_i(S) += c * row_j(S).
+          add_row!(F, c, j, i)
+          add_column!(F, a(c), j, i)
+          add_row!(S, c, j, i)
         end
-        if ok == 0
-          continue
-        end
-
-        #S = T * S
-        S = mul!(S, T, S)
-        #F = T * F * transpose(_map(T, a))
-        F = mul!(F, T, F)
-        F = mul!(F, F, transpose(_map(T, a)))
       end
 
-      zero!(T)
-      for i in 1:nrows(T)
-        T[i, i] = 1
-      end
-
+      # T = I + sum_{j>i} d_j * E_{j,i}: first row_j(F) += d_j * row_i(F)
+      # (and likewise for S) for every j, then, once row i is stable,
+      # col_j(F) += a(d_j) * col_i(F) for every j. The two phases must not
+      # be interleaved: a column update reads col_i(F) in *all* rows, so it
+      # needs every row update to have already zeroed out the entries below
+      # the pivot.
+      d = F[i, i]
+      ds = Vector{elem_type(K)}(undef, n)
       for j in (i + 1):n
-        T[j, i] = divexact(-F[j, i], F[i, i])
+        is_zero_entry(F, j, i) && continue
+        dj = divexact(-F[j, i], d)
+        ds[j] = dj
+        add_row!(F, dj, i, j)
+        add_row!(S, dj, i, j)
       end
-      #F = T * F * transpose(_map(T, a))
-      F = mul!(F, T, F)
-      F = mul!(F, F, transpose(_map(T, a)))
-      #S = T * S
-      S = mul!(S, T, S)
+      for j in (i + 1):n
+        isassigned(ds, j) && add_column!(F, a(ds[j]), i, j)
+      end
     end
     @assert is_diagonal(F)
   end
@@ -473,7 +478,7 @@ end
 
 Return whether the space `V` is positive definite.
 """
-function is_positive_definite(V::AbstractSpace)
+@attr Bool function is_positive_definite(V::AbstractSpace)
   E = base_ring(V)
   K = fixed_field(V)
   if (!is_totally_real(K)) || (is_hermitian(V) && !is_totally_complex(E))
@@ -493,7 +498,7 @@ end
 
 Return whether the space `V` is negative definite.
 """
-function is_negative_definite(V::AbstractSpace)
+@attr Bool function is_negative_definite(V::AbstractSpace)
   E = base_ring(V)
   K = fixed_field(V)
   if (!is_totally_real(K)) || (is_hermitian(V) && !is_totally_complex(E))
@@ -513,9 +518,16 @@ end
 
 Return whether the space `V` is definite.
 """
-function is_definite(V::AbstractSpace)
+@attr Bool function is_definite(V::AbstractSpace)
   return is_positive_definite(V) || is_negative_definite(V)
 end
+
+@doc raw"""
+    is_indefinite(V::AbstractSpace) -> Bool
+
+Return whether the space `V` is indefinite.
+"""
+@attr Bool is_indefinite(V::AbstractSpace) = is_regular(V) && !is_definite(V)
 
 ################################################################################
 #
@@ -668,13 +680,21 @@ Given a space `V` and a non-degenerate subspace `W` with basis matrix `M`,
 return the endomorphism of `V` corresponding to the projection onto the
 complement of `W` in `V`.
 """
-function orthogonal_projection(V::AbstractSpace, M::MatElem)
-  _Q = inner_product(V, M, M)
-  @req rank(_Q) == nrows(_Q) "Subspace must be non-degenerate for the inner product on V"
+function orthogonal_projection(V::AbstractSpace, M::MatElem; check::Bool=true)
+  if check
+    _Q = inner_product(V, M, M)
+    @req rank(_Q) == nrows(_Q) "Subspace must be non-degenerate for the inner product on V"
+  end
+  # slower than the version below because solve is slow and inv! seems to be fast
+  #G = gram_matrix(V)
+  #GMt = G*transpose(M)
+  #Y = solve(M*GMt, GMt; side=:left)
+  #return hom(V,V,one(G) - Y*M)
+
   U = orthogonal_complement(V, M)
   B = vcat(U, M)
   p = vcat(U, zero(M))
-  pr = inv(B)*p
+  pr = mul!(inv!(B), p)
   return hom(V, V, pr)
 end
 
@@ -684,12 +704,12 @@ end
 #
 ################################################################################
 
-function _biproduct(x::Vector{T}) where T <: AbstractSpace
+function _biproduct(x::Vector{T}; cached::Bool=true) where T <: AbstractSpace
   K = base_ring(x[1])
   @req all(i -> base_ring(x[i]) === K, 2:length(x)) "All spaces must be defined over the same field"
   @req is_quadratic(x[1]) ? all(i -> is_quadratic(x[i]), 2:length(x)) : all(i -> is_hermitian(x[i]), 1:length(x)) "Spaces must be all hermitian or all quadratic"
   G = diagonal_matrix(gram_matrix.(x))
-  V = is_quadratic(x[1]) ? quadratic_space(K, G) : hermitian_space(K, G)
+  V::T = is_quadratic(x[1]) ? quadratic_space(K, G;cached) : hermitian_space(K, G;cached)
   n = sum(dim.(x))
   inj = AbstractSpaceMor[]
   proj = AbstractSpaceMor[]
@@ -712,69 +732,81 @@ function _biproduct(x::Vector{T}) where T <: AbstractSpace
 end
 
 @doc raw"""
-    direct_sum(x::Vararg{T}) where T <: AbstractSpace -> T, Vector{AbstractSpaceMor}
+    direct_sum(x::T, y::T...) where T <: AbstractSpace -> T, Vector{AbstractSpaceMor}
     direct_sum(x::Vector{T}) where T <: AbstractSpace -> T, Vector{AbstractSpaceMor}
 
 Given a collection of quadratic or hermitian spaces $V_1, \ldots, V_n$,
-return their direct sum $V := V_1 \oplus \ldots \oplus V_n$,
+return their direct sum $V := V_1 \oplus \ldots \oplus V_n$ as vector spaces,
 together with the injections $V_i \to V$.
 
-For objects of type `AbstractSpace`, finite direct sums and finite direct
-products agree and they are therefore called biproducts.
+For vector spaces, finite direct sums and finite direct products agree and
+they are therefore called biproducts.
 If one wants to obtain `V` as a direct product with the projections $V \to V_i$,
 one should call `direct_product(x)`.
 If one wants to obtain `V` as a biproduct with the injections $V_i \to V$ and
 the projections $V \to V_i$, one should call `biproduct(x)`.
+
+!!! warning
+    The projections $V\to V_i$ are linear but do not define morphisms of
+    quadratic/hermitian spaces, since the associated forms are not preserved.
 """
-function direct_sum(x::Vector{T}) where T <: AbstractSpace
-  V, inj, = _biproduct(x)
+function direct_sum(x::Vector{T}; cached::Bool=true) where T <: AbstractSpace
+  V, inj, = _biproduct(x; cached)
   return V, inj
 end
 
-direct_sum(x::Vararg{AbstractSpace}) = direct_sum(collect(x))
+direct_sum(x::AbstractSpace, y::AbstractSpace...; cached::Bool=true) = direct_sum(collect((x, y...)); cached)
 
 @doc raw"""
-    direct_product(x::Vararg{T}) where T <: AbstractSpace -> T, Vector{AbstractSpaceMor}
+    direct_product(x::T, y::T...) where T <: AbstractSpace -> T, Vector{AbstractSpaceMor}
     direct_product(x::Vector{T}) where T <: AbstractSpace -> T, Vector{AbstractSpaceMor}
 
 Given a collection of quadratic or hermitian spaces $V_1, \ldots, V_n$,
-return their direct product $V := V_1 \times \ldots \times V_n$,
+return their direct product $V := V_1 \times \ldots \times V_n$ as vector spaces,
 together with the projections $V \to V_i$.
 
-For objects of type `AbstractSpace`, finite direct sums and finite direct
-products agree and they are therefore called biproducts.
+For vector spaces, finite direct sums and finite direct products agree and
+they are therefore called biproducts.
 If one wants to obtain `V` as a direct sum with the injections $V_i \to V$,
 one should call `direct_sum(x)`.
 If one wants to obtain `V` as a biproduct with the injections $V_i \to V$ and
 the projections $V \to V_i$, one should call `biproduct(x)`.
+
+!!! warning
+    The projections $V\to V_i$ are linear but do not define morphisms of
+    quadratic/hermitian spaces, since the associated forms are not preserved.
 """
-function direct_product(x::Vector{T}) where T <: AbstractSpace
-  V, _, proj = _biproduct(x)
+function direct_product(x::Vector{T};cached::Bool=true) where T <: AbstractSpace
+  V, _, proj = _biproduct(x; cached)
   return V, proj
 end
 
-direct_product(x::Vararg{AbstractSpace}) = direct_product(collect(x))
+direct_product(x::AbstractSpace, y::AbstractSpace...; cached::Bool=true) = direct_product(collect((x, y...)); cached)
 
 @doc raw"""
-    biproduct(x::Vararg{T}) where T <: AbstractSpace -> T, Vector{AbstractSpaceMor}, Vector{AbstractSpaceMor}
+    biproduct(x::T, y::T...) where T <: AbstractSpace -> T, Vector{AbstractSpaceMor}, Vector{AbstractSpaceMor}
     biproduct(x::Vector{T}) where T <: AbstractSpace -> T, Vector{AbstractSpaceMor}, Vector{AbstractSpaceMor}
 
 Given a collection of quadratic or hermitian spaces $V_1, \ldots, V_n$,
-return their biproduct $V := V_1 \oplus \ldots \oplus V_n$, together
-with the injections $V_i \to V$ and the projections $V \to V_i$.
+return their biproduct $V := V_1 \oplus \ldots \oplus V_n$ as vector spaces,
+together with the injections $V_i \to V$ and the projections $V \to V_i$.
 
-For objects of type `AbstractSpace`, finite direct sums and finite direct
-products agree and they are therefore called biproducts.
+For vector spaces, finite direct sums and finite direct products agree and
+they are therefore called biproducts.
 If one wants to obtain `V` as a direct sum with the injections $V_i \to V$,
 one should call `direct_sum(x)`.
 If one wants to obtain `V` as a direct product with the projections $V \to V_i$,
 one should call `direct_product(x)`.
+
+!!! warning
+    The projections $V\to V_i$ are linear but do not define morphisms of
+    quadratic/hermitian spaces, since the associated forms are not preserved.
 """
-function biproduct(x::Vector{T}) where T <: AbstractSpace
-  return _biproduct(x)
+function biproduct(x::Vector{T}; cached::Bool=true) where T <: AbstractSpace
+  return _biproduct(x; cached)
 end
 
-biproduct(x::Vararg{AbstractSpace}) = biproduct(collect(x))
+biproduct(x::AbstractSpace, y::AbstractSpace...; cached::Bool=true) = biproduct(collect((x, y...)); cached)
 
 ################################################################################
 #

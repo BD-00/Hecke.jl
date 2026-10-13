@@ -110,7 +110,9 @@ Return the identity homomorphism of `G`.
 """
 function id_hom(G::FinGenAbGroup)
   I = identity_matrix(ZZ, ngens(G))
-  return FinGenAbGroupHom(G, G, I, I)::FinGenAbGroupHom
+  m = FinGenAbGroupHom(G, G, I, I)
+  set_attribute!(m, :is_identity => true)
+  return m::FinGenAbGroupHom
 end
 
 @doc raw"""
@@ -146,11 +148,15 @@ function hom(
 
   if check
     m = reduce(vcat, ZZMatrix[x.coeff for x in A])
-    m = reduce(vcat, ZZMatrix[m, rels(G)])
-    T = kernel(transpose(m); side=:right)
-    i = ncols(T)
-    T = transpose(T)
-    T = sub(T, 1:nrows(T), 1:length(A))
+    nonzero_rels = [i for i = 1:nrows(rels(G)) if !is_zero_row(rels(G), i)]
+    mm = zero_matrix(ZZ, nrows(m) + length(nonzero_rels), ncols(m))
+    view(mm, 1:nrows(m), :) .= m
+    for (j, i) in enumerate(nonzero_rels)
+      view(mm, nrows(m) + j, :) .= view(rels(G), i, :)
+    end
+    m = mm
+    T = kernel(m; side=:left)
+    T = view(T, 1:nrows(T), 1:length(A))
     n = reduce(vcat, ZZMatrix[x.coeff for x in B])
     n = T*n
     @req can_solve(rels(H), n; side=:left) "Data does not define a homomorphism"
@@ -230,6 +236,7 @@ function hom(
     M::ZZMatrix;
     check::Bool=true,
   )
+  @req nrows(M) == ngens(G) && ncols(M) == ngens(H) "Matrix has wrong dimension"
   if check
     @req check_mat(G, H, M) "Matrix does not define a morphism of abelian groups"
   end
@@ -315,19 +322,10 @@ of $h$.
 function kernel(h::FinGenAbGroupHom, add_to_lattice::Bool = true)
   G = domain(h)
   H = codomain(h)
-  m = zero_matrix(ZZ, nrows(h.map)+nrows(rels(H)),
-                           ncols(h.map))
-  for i=1:nrows(h.map)
-    for j=1:ncols(h.map)
-      m[i,j]=h.map[i,j]
-    end
-  end
+  m = zero_matrix(ZZ, nrows(h.map)+nrows(rels(H)), ncols(h.map))
+  view(m, 1:nrows(h.map), :) .= h.map
   if !is_snf(H)
-    for i=1:nrels(H)
-      for j=1:ngens(H)
-        m[nrows(h.map) + i, j] = H.rels[i, j]
-      end
-    end
+    view(m, nrows(h.map)+1:nrows(h.map)+nrows(H.rels), :) .= H.rels
   else
     for i=1:length(H.snf)
       m[nrows(h.map) + i, i] = H.snf[i]
@@ -336,7 +334,14 @@ function kernel(h::FinGenAbGroupHom, add_to_lattice::Bool = true)
   hn, t = hnf_with_transform(m)
   for i = 1:nrows(hn)
     if is_zero_row(hn, i)
-      return sub(G, sub(t, i:nrows(t), 1:ngens(G)), add_to_lattice)
+      vt = view(t, 1:nrows(t), 1:ngens(G))
+      j = [j for j=i:nrows(t) if !is_zero_row(vt, j)]
+      nt = zero_matrix(ZZ, length(j), ngens(G))
+      for l=1:length(j)
+        view(nt, l, :) .= view(vt, j[l], :)
+      end
+
+      return sub(G, nt, add_to_lattice)
     end
   end
   # if the Hermite form has no zero-row, there is no
@@ -556,6 +561,39 @@ end
 
 (p::QQPolyRingElem)(f::FinGenAbGroupHom) = evaluate(p, f)
 
+function matrix(f::InverseMap{FinGenAbGroup, FinGenAbGroup})
+  if isa(f.origin, FinGenAbGroupHom)
+    if isdefined(f.origin, :imap)
+      return f.origin.imap
+    end
+  end
+  im = try
+    reduce(vcat, [f(d).coeff for d=gens(domain(f))])
+  catch e
+    #can happen if the map was e.g. subgroup inclusion
+    if isa(e, ErrorException) && e.msg == "element is not in the image"
+      return nothing
+    else
+      rethrow(e)
+    end
+  end
+  f.origin.imap = im
+  return im
+end
+
+function matrix(f::Generic.CompositeMap{FinGenAbGroup, FinGenAbGroup})
+  if isa(codomain(f.map1), FinGenAbGroup)
+    # in this case domain(f.map2) is also a FinGenAbGroup, so matrix might work
+    m1 = matrix(f.map1)
+    m2 = matrix(f.map2)
+    if !isa(m1, Nothing) && !isa(m2, Nothing)
+      return m1*m2
+    end
+  end
+  return reduce(vcat, [f(d).coeff for d=gens(domain(f))])
+end
+
+
 ###############################################################################
 
 struct MapParent
@@ -626,7 +664,7 @@ function hom(G::FinGenAbGroup, H::FinGenAbGroup; task::Symbol = :map)
     local mm = transpose(reduce(vcat, [preimage(mH, r(mG(sG[i]))).coeff for i = 1:ngens(sG)]))
     return R([divexact(mm[j,i], c[(i-1)*m+j]) for i=1:n for j=1:m])
   end
-  return R, MapFromFunc(R, MapParent(G, H, "homomorphisms"), phi, ihp)
+  return R, map_from_func(R, MapParent(G, H, "homomorphisms"), phi, ihp)
 end
 
 ################################################################################

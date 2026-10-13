@@ -40,13 +40,14 @@ end
 const QmodnZID = AbstractAlgebra.CacheDictType{Tuple{Bool, ZZRingElem, ZZRingElem}, QmodnZ}()
 
 function show(io::IO, G::QmodnZ)
+  io = pretty(io)
   if G.trivialmodulus
-    print(io, "Q/Z")
+    print(io, LowercaseOff(), "Q/Z")
   else
     if isone(G.d)
-      print(io, "Q/", G.n, "Z")
+      print(io, LowercaseOff(), "Q/", G.n, "Z")
     else
-      print(io, "Q/(", G.n, "/", G.d, ")Z")
+      print(io, LowercaseOff(), "Q/(", G.n, "/", G.d, ")Z")
     end
   end
 end
@@ -233,7 +234,7 @@ function dual(G::FinGenAbGroup, u::QmodnZElem)
   QZ = parent(u)
   R, phi = hom(G, H)
   R::FinGenAbGroup
-  ex = MapFromFunc(H, parent(u), x -> x[1]*u, y -> H(ZZRingElem[numerator(y.elt) * div(o, denominator(y.elt))]))
+  ex = map_from_func(H, parent(u), x -> x[1]*u, y -> H(ZZRingElem[numerator(y.elt) * div(o, denominator(y.elt))]))
   local mu
   let phi = phi, G = G, QZ = QZ, u = u
     function mu(r::FinGenAbGroupElem)
@@ -249,7 +250,7 @@ function dual(G::FinGenAbGroup, u::QmodnZElem)
       return preimage(phi, g)
     end
   end
-  return R, MapFromFunc(R, MapParent(G, parent(u), "homomorphisms"), mu, nu)
+  return R, map_from_func(R, MapParent(G, parent(u), "homomorphisms"), mu, nu)
 end
 
 parent(f::GrpAbFinGenToQmodnZ) = MapParent(domain(f), codomain(f), "homomorphisms")
@@ -316,3 +317,6 @@ function H2_G_QmodZ_restriction(G::FinGenAbGroup, U::Vector{FinGenAbGroup})
   return phi
 end
 
+matrix(::Hecke.GrpAbFinGenToQmodnZ) = nothing
+matrix(::Map{QmodnZ, FinGenAbGroup}) = nothing
+matrix(::Map{FinGenAbGroup, QmodnZ}) = nothing

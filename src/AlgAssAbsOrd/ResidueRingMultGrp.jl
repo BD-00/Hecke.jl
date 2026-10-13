@@ -241,11 +241,11 @@ function _multgrp_mod_p(p::AlgAssAbsOrdIdl, P::AlgAssAbsOrdIdl)
 
   function disc_log(x::AlgAssAbsOrdElem)
     xx = OAtoOAP(OA(x))
-    g = GtoOAP\xx
-    b, h = has_preimage_with_preimage(HtoG, g)
-    @assert b
-    b, s = has_preimage_with_preimage(StoH, h)
-    @assert b
+    gx = GtoOAP\xx
+    fl, h = has_preimage_with_preimage(HtoG, gx)
+    @assert fl
+    fl2, s = has_preimage_with_preimage(StoH, h)
+    @assert fl2
     return [ s.coeff[1, i] for i = 1:ngens(S) ]
   end
 
@@ -401,7 +401,7 @@ function _1_plus_pu_plus_q_mod_1_plus_pv_plus_q(puq::AlgAssAbsOrdIdl, pvq::AlgAs
     mul!(y_fakemat2, y_fakemat, M)
     #@assert y_fakemat2 == y_fakemat * M
     denominator(y_fakemat2) != 1 && error("Element is in the ideal")
-    return vec(Array(numerator(y_fakemat2)))
+    return vec(Matrix{ZZRingElem}(numerator(y_fakemat2)))
   end
 
   return gens, rels(S), disc_log

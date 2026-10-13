@@ -29,18 +29,19 @@ function mod_p(R::Vector{FacElem{AbsSimpleNumFieldElem, AbsSimpleNumField}}, Q::
     end
     x = rand(F)
   end
-  if nbits(pp) < 19 # seems to be a reasonable cutoff
+  if nbits(pp) < 4 # 19 does seem to be a reasonable cutoff. It computes 2^19 = 524288 elements
     y = one(F)
     for i = 0:pp-1
       dl[y] = i
       y *= x
     end
   end
+  gen_x = x
   ma = Vector{Int}(undef, length(R))
   for i in 1:length(R)
     imgd = image(mF1, R[i], D[i], cached, pp)^e
     ma[i] = get!(dl, imgd) do
-      Hecke.baby_step_giant_step(x, pp, imgd, dl) % p
+      Hecke.baby_step_giant_step(gen_x, pp, imgd, dl) % p
     end
   end
   return matrix(T, 1, length(R), ma)
@@ -421,6 +422,7 @@ function saturate!(d::Hecke.ClassGrpCtx, U::Hecke.UnitGrpCtx, n::Int, stable::Fl
   K = Hecke.nf(U)
   @vprintln :Saturate 1 "Simplifying the context"
   @vtime :Saturate 1 c = simplify(d, U, n, use_LLL = use_LLL)
+
   success = false
   restart = false
   while true
@@ -431,6 +433,7 @@ function saturate!(d::Hecke.ClassGrpCtx, U::Hecke.UnitGrpCtx, n::Int, stable::Fl
     @vprintln :Saturate 1 "Computing candidates for the saturation"
     R = relations(c)
     @vtime :Saturate 1 e = compute_candidates_for_saturate(R, n, stable)
+
     if nrows(e) == 0
       @vprintln :Saturate 1 "sat yielded nothing new at $stable, $success"
       return success
@@ -452,7 +455,9 @@ function saturate!(d::Hecke.ClassGrpCtx, U::Hecke.UnitGrpCtx, n::Int, stable::Fl
         end
       end
 
-      decom = Dict{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}, ZZRingElem}((c.FB.ideals[k], v) for (k, v) = fac_a)
+      ideals = c.FB.ideals
+      decom = Dict{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}, ZZRingElem}((ideals[k], v) for (k, v) = fac_a)
+
       @vprintln :Saturate 1 "Testing if element is an n-th power"
       @vtime :Saturate 1 fl, x = is_power(a, n, decom = decom, easy = easy_root)
       if fl
@@ -537,6 +542,8 @@ function simplify(c::Hecke.ClassGrpCtx, U::Hecke.UnitGrpCtx, cp::Int = 0; use_LL
     end
     push!(new_rels, y)
     push!(vals_new_rels, deepcopy(c.M.basis.rows[i]))
+    # the following should hold, but is too expensive to test
+    # @assert evaluate(y)*order(c) == prod(c.FB.ideals[p]^v for (p,v) = c.M.basis.rows[i])
   end
   if use_LLL && !isempty(new_rels)
     M = sparse_matrix(ZZ)

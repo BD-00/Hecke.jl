@@ -141,22 +141,46 @@ end
 #
 ################################################################################
 
+function _gens_for_show(a::RelNumFieldOrderIdeal)
+  res = elem_type(order(a))[]
+  for (x, b) in pseudo_basis(a; copy = false)
+    append!(res, order(a).(x .* _gens_for_show(b)))
+  end
+  if any(is_unit, res)
+    return [1]
+  else
+    return unique!(res)
+  end
+end
+
 function show(io::IO, s::NfRelOrdIdlSet)
+  io = pretty(io)
   print(io, "Set of ideals of ")
-  print(io, s.order)
+  print(io, Lowercase(), s.order)
 end
 
 function show(io::IO, a::RelNumFieldOrderIdeal)
-  compact = get(io, :compact, false)
-  if compact
-    print(io, "Ideal with basis pseudo-matrix\n")
-    show(IOContext(io, :compact => true), basis_pmatrix(a, copy = false))
-  else
-    print(io, "Ideal of\n")
-    show(IOContext(io, :compact => true), order(a))
-    print(io, "\nwith basis pseudo-matrix\n")
-    show(IOContext(io, :compact => true), basis_pmatrix(a, copy = false))
+  io = pretty(io)
+  print(io, "<")
+  _gens = _gens_for_show(a)
+  print(io, join(_gens, ", "), ">")
+end
+
+function show(io::IO, ::MIME"text/plain", a::RelNumFieldOrderIdeal)
+  io = pretty(io)
+  print(io, "Ideal of ")
+  print(io, Lowercase(), order(a))
+  print(io, "\nwith pseudo-basis")
+  pb = pseudo_basis(a, copy = false)
+  print(io, Indent())
+  for i = 1:length(pb)
+    print(io, "\n(")
+    print(io, pb[i][1])
+    print(io, ", ")
+    print(io, pb[i][2])
+    print(io, ")")
   end
+  print(io, Dedent())
 end
 
 ################################################################################
@@ -964,7 +988,11 @@ function pradical(O::RelNumFieldOrder{S, T, U}, P::AbsNumFieldOrderIdeal{AbsSimp
         elM1 = imF(B[j, i]).elem_in_nf
         mul!(elM1, elM1, elts_with_val[j])
         divexact!(elM1, elM1, t)
-        M1[i, j] = mod(elM1, p)
+        if is_defining_polynomial_nice(K)
+          M1[i, j] = mod(elM1, p)
+        else
+          M1[i, j] = elM1
+        end
       end
     end
   end

@@ -25,7 +25,7 @@ function number_field(CF::ClassField{S, T}; redo::Bool = false, using_norm_relat
   for i=1:ngens(G)
     o = G.snf[i]
     lo = factor(o)
-    for (p, e) = lo.fac
+    for (p, e) in lo
       q[i] = p^e*G[i]
       S1, mQ = quo(G, q, false)
       if using_norm_relation && !divides(ZZRingElem(ord), order(S1))[1]
@@ -46,6 +46,30 @@ function number_field(CF::ClassField{S, T}; redo::Bool = false, using_norm_relat
   end
   return CF.A
 end
+
+@doc raw"""
+    number_field(AbsSimpleNumField, CF::ClassField) -> RelNonSimpleNumField{AbsSimpleNumFieldElem}
+
+Given a (formal) abelian extension, compute the class field by finding an
+absolute primitive element thus return a simple extension of Q.
+"""
+function number_field(::Type{AbsSimpleNumField}, CF::ClassField{S, T}; redo::Bool = false, using_norm_relation::Bool = false, over_subfield::Bool = false, using_stark_units::Bool = false, simplify::Bool = false) where {S, T}
+  K = number_field(CF; redo, using_norm_relation, over_subfield, using_stark_units)
+  return absolute_simple_field(K; simplify)[1]
+end
+
+@doc raw"""
+    number_field(SimpleNumField, CF::ClassField) -> RelNonSimpleNumField{AbsSimpleNumFieldElem}
+
+Given a (formal) abelian extension, compute the class field by finding an
+primitive element over the base field of the class field, thus return a simple
+extension of the base field.
+"""
+function number_field(::Type{SimpleNumField}, CF::ClassField{S, T}; redo::Bool = false, using_norm_relation::Bool = false, over_subfield::Bool = false, using_stark_units::Bool = false) where {S, T}
+  K = number_field(CF; redo, using_norm_relation, over_subfield, using_stark_units)
+  return simple_extension(K)[1]
+end
+
 
 function ray_class_field_cyclic_pp(CF::ClassField{S, T}, mQ::FinGenAbGroupHom; over_subfield::Bool = false, using_stark_units::Bool = false) where {S, T}
   @vprintln :ClassField 1 "cyclic prime power class field of degree $(degree(CF))"
@@ -78,6 +102,35 @@ function ray_class_field_cyclic_pp(CFpp::ClassField_pp; using_stark_units::Bool 
   @vprintln :ClassField 1 "descending ..."
   @vtime :ClassField 1 _rcf_descent(CFpp)
   return CFpp
+end
+
+@doc raw"""
+    quadratic_kummer_generator(C::ClassField) -> FacElem
+
+Return a factored Kummer generator for the formal quadratic class field `C`,
+reduced modulo squares. This does not materialize the relative class field.
+"""
+function quadratic_kummer_generator(CF::ClassField{S, T}) where {S, T}
+  degree(CF) == 2 || throw(ArgumentError(
+    "Kummer generator extraction requires a quadratic class field"))
+
+  CFpp = ClassField_pp{S, T}()
+  CFpp.rayclassgroupmap = CF.rayclassgroupmap
+  CFpp.quotientmap = CF.quotientmap
+  _rcf_S_units(CFpp)
+  _rcf_find_kummer(CFpp)
+
+  isdefined(CFpp, :o) && CFpp.o == 2 || error(
+    "failed to find a quadratic Kummer generator")
+  isdefined(CFpp, :defect) && isone(CFpp.defect) || error(
+    "quadratic Kummer generator has a descent defect")
+  isdefined(CFpp, :sup_known) && CFpp.sup_known || error(
+    "support of the quadratic Kummer generator is not known")
+
+  a = reduce_mod_powers(CFpp.a, 2, CFpp.sup)
+  base_ring(a) === base_field(CF) || error(
+    "quadratic Kummer generator is not defined over the class field base")
+  return a
 end
 
 ################################################################################
@@ -144,8 +197,7 @@ function _rcf_S_units_enlarge(CE, CF::ClassField_pp)
   @vtime :ClassField 3 S, mS = NormRel._sunit_group_fac_elem_quo_via_brauer(nf(OK), lP, e, saturate_units = true)
   KK = kummer_extension(e, FacElem{AbsSimpleNumFieldElem, AbsSimpleNumField}[mS(S[i]) for i=1:ngens(S)])
   CF.bigK = KK
-  lf = factor(minimum(defining_modulus(CF)[1]))
-  lfs = Set(collect(keys(lf.fac)))
+  lfs = Set(prime_divisors(minimum(defining_modulus(CF)[1])))
   CE.kummer_exts[lfs] = (lP, KK)
   _rcf_find_kummer(CF)
   return nothing
@@ -181,8 +233,8 @@ end
 function _s_unit_for_kummer_using_Brauer(C::CyclotomicExt, f::ZZRingElem)
 
   e = C.n
-  lf = factor(f)
-  lfs = Set(collect(keys(lf.fac)))
+  fps = prime_divisors(f)
+  lfs = Set(fps)
   for (k, v) in C.kummer_exts
     if issubset(lfs, k)
       return v
@@ -197,7 +249,7 @@ function _s_unit_for_kummer_using_Brauer(C::CyclotomicExt, f::ZZRingElem)
 
   lP = Hecke.AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}[]
 
-  for p = keys(lf.fac)
+  for p in fps
     #I remove the primes that can't be in the conductor
     lp = prime_decomposition(ZK, p)
     for (P, s) in lp
@@ -468,8 +520,8 @@ end
 function _s_unit_for_kummer(C::CyclotomicExt, f::ZZRingElem)
 
   e = C.n
-  lf = factor(f)
-  lfs = Set(collect(keys(lf.fac)))
+  fps = prime_divisors(f)
+  lfs = Set(fps)
   for (k, v) in C.kummer_exts
     if issubset(lfs, k)
       return v
@@ -480,14 +532,14 @@ function _s_unit_for_kummer(C::CyclotomicExt, f::ZZRingElem)
   ZK = maximal_order(K)
   @vprintln :ClassField 2 "Class group of cyclotomic extension: $K"
   c, mc = class_group(ZK)
-  allow_cache!(mc)
+  AbstractAlgebra.allow_cache!(mc)
   @vprintln :ClassField 2 "... $c"
   c, mq = quo(c, e, false)
   mc = compose(pseudo_inv(mq), mc)
 
   lP = Hecke.AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}[]
 
-  for p = keys(lf.fac)
+  for p in fps
      #I remove the primes that can't be in the conductor
      lp = prime_decomposition(ZK, p)
      for (P, s) in lp
@@ -704,6 +756,11 @@ function find_orbit(auts, AutG, x)
   t = ngens(AutG)
   order = 1
   elements = Tuple{FinGenAbGroupElem, RelSimpleNumFieldElem{AbsSimpleNumFieldElem}}[(id(AutG), x)]
+
+  if Hecke.order(AutG) == 1
+    return elements
+  end
+
   g = S[1]
 
   while !iszero(g)
@@ -871,7 +928,7 @@ function _extend_auto(K::Hecke.RelSimpleNumField{AbsSimpleNumFieldElem}, h::NumF
   dict[h(a)] = 1
   if r <= div(degree(K), 2)
     add_to_key!(dict, a, -r)
-    aa = FacElem(dict)
+    aa = FacElem(k, dict)
     @vtime :ClassField 3 fl, b = is_power(aa, degree(K), with_roots_unity = true)
     if !fl
       throw(ExtendAutoError())
@@ -887,7 +944,6 @@ function _extend_auto(K::Hecke.RelSimpleNumField{AbsSimpleNumFieldElem}, h::NumF
     return hom(K, K, h, evaluate(b)*gen(K)^(r-degree(K)))
   end
 end
-
 
 function _rcf_descent(CF::ClassField_pp)
   if isdefined(CF, :A)
@@ -993,9 +1049,9 @@ function _rcf_descent(CF::ClassField_pp)
     @vprintln :ClassField 2 "finding Artin map..."
     #TODO can only use non-indx primes, easy primes...
     cp = lcm([minimum(defining_modulus(CF)[1]), index(Zk), index(ZK)])
-    #@vtime :ClassField 2 lp, f1 = find_gens(MapFromFunc(IdealSet(Zk), AutA, canFrob),
+    #@vtime :ClassField 2 lp, f1 = find_gens(map_from_func(IdealSet(Zk), AutA, canFrob),
     #                  PrimesSet(200, -1), cp)
-    lp, f1 = find_gens_descent(MapFromFunc(IdealSet(Zk), AutA, canFrob), CF, cp)
+    lp, f1 = find_gens_descent(map_from_func(IdealSet(Zk), AutA, canFrob), CF, cp)
     imgs = FinGenAbGroupElem[image(CF.quotientmap, preimage(CF.rayclassgroupmap, p1)) for p1 = lp]
     h = hom(parent(first(f1)), parent(first(imgs)), f1, imgs)
     @hassert :ClassField 1 is_surjective(h)

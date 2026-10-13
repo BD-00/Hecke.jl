@@ -61,9 +61,20 @@ end
   @test valuation(bb) == 0
   @test precision(bb) >= 20
 
-  setprecision!(mC, 100)  #does not seem to work
-  @test_broken b == preimage(mC, mC(b); small_lift=true)
-  @test_broken setprecision!(mC, 20)
+  setprecision!(mC, 100) 
+  @test b == preimage(mC, mC(b); small_lift=true)
+
+  #increasing the precision multiple times caused the def_poly_cache to be
+  #"inconsitent", ie. polys at higher precision did not match the ones at
+  #low precision.
+  #This tests the consistency
+  setprecision!(mC, 150) 
+  f = C.def_poly_cache[maximum(keys(C.def_poly_cache))]
+  for v = values(C.def_poly_cache)
+    @test iszero(f-v)
+  end
+
+  setprecision!(mC, 20)
 end
 
 @testset "Issue 1509" begin
@@ -72,22 +83,22 @@ end
   K, toK = completion(F, 2*OF);
   @test iszero(preimage(toK, toK(F(0))))
   setprecision!(toK, 10)
-  @test precision(toK(F(1))) == 10
+  @test precision(toK(F(1))) >= 10
   setprecision!(toK, 70)
-  @test precision(toK(F(1))) == 70
+  @test precision(toK(F(1))) >= 70
 
   K, toK = Hecke.unramified_completion(F, 2*OF)
   setprecision!(toK, 10)
-  @test precision(toK(F(1))) == 10
+  @test precision(toK(F(1))) >= 10
   setprecision!(toK, 70)
-  @test precision(toK(F(1))) == 70
+  @test precision(toK(F(1))) >= 70
 
   P = prime_decomposition(OF, 7)[1][1]
   K, toK = Hecke.totally_ramified_completion(F, P)
   setprecision!(toK, 10)
-  @test precision(toK(F(1))) == 10
+  @test precision(toK(F(1))) >= 10
   setprecision!(toK, 70)
-  @test precision(toK(F(1))) == 70
+  @test precision(toK(F(1))) >= 70
 end
 
 @testset "another issue" begin

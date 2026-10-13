@@ -66,12 +66,13 @@ codomain(f::MultTableGroupHom) = f.codomain
 
 id_hom(G::MultTableGroup) = MultTableGroupHom(G, G, collect(G))
 
-image(GtoH::MultTableGroupHom) = sub(GtoH.codomain, unique(GtoH.img))
+image(GtoH::MultTableGroupHom) = sub(GtoH.codomain, unique(GtoH.img); complete = true)
 
 function kernel(GtoH::MultTableGroupHom)
   G = GtoH.domain
   H = GtoH.codomain
-  return sub(G, getindex.(Ref(G), findall(x-> GtoH(x) == id(H), collect(G))))
+  return sub(G, getindex.(Ref(G), findall(x-> GtoH(x) == id(H), collect(G)));
+             complete = true)
 end
 
 function is_surjective(GtoH::MultTableGroupHom)
@@ -97,6 +98,56 @@ end
 #  Find Morphisms
 #
 ################################################################################
+
+function _is_small_group(G::MultTableGroup, id::Tuple{Int, Int}; DB = DefaultSmallGroupDB())
+  l = order(G)
+  @assert id[1] == l
+  D = DB.db
+  H = D[l][id[2]]
+
+  elements_by_orders = Dict{Int, Vector{MultTableGroupElem}}()
+  idG = Hecke.id(G)
+
+  for i in 1:l
+    g = G[i]
+    o = order(g)
+    if haskey(elements_by_orders, o)
+      push!(elements_by_orders[o], g)
+    else
+      elements_by_orders[o] = [g]
+    end
+  end
+
+  for o in H.gens
+    if !haskey(elements_by_orders, order(o))
+      return false
+    end
+  end
+
+  elbyord = [elements_by_orders[order(o)] for o in H.gens]
+
+  it = Iterators.product(elbyord...)
+
+  words = H.rels
+
+  for poss in it
+    is_hom = true
+    for w in words
+      if eval_word(collect(poss), w) != idG
+        is_hom = false
+        break
+      end
+    end
+
+    if is_hom
+      if length(closure(collect(poss), *, idG)) == order(G)
+        # Found it!
+        return true
+      end
+    end
+  end
+  return false
+end
 
 # TODO: Cache the orders of the generators of the small_groups.
 #       Do not recompute it here.

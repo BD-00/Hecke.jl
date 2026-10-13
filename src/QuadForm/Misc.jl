@@ -348,10 +348,10 @@ function _strong_approximation_easy(S, ep, xp)
   if length(S) == 1
     p = S[1]
     ap = uniformizer(p)
-    z = xp[1] - ap^(ep[1])
-    @assert valuation(xp[1] - z, S[1]) == ep[1]
-    @assert z == 0 || all(p -> (valuation(z, p) >= 0 || p in S), support(z * order(S[1])))
-    return z
+    z1 = xp[1] - ap^(ep[1])
+    @assert valuation(xp[1] - z1, S[1]) == ep[1]
+    @assert z1 == 0 || all(p -> (valuation(z1, p) >= 0 || p in S), support(z1 * order(S[1])))
+    return z1
   end
   OK = order(S[1])
   # assume ep non-negative and xp in R
@@ -902,7 +902,7 @@ function _find_quaternion_algebra(b, P, I)
         end
         o = order(mQ(mCl\(q)))
         c = -(hh\(o * (mCl\(q))))
-        fl, x = is_principal_with_data(q * prod(__P[i]^mod(Int(c.coeff[i]), Int(_orders[i])) for i in 1:length(__P)))
+        fl, x = is_principal_with_data(q^o * prod(__P[i]^mod(Int(c.coeff[i]), Int(_orders[i])) for i in 1:length(__P)))
         @assert fl
         v = sign_vector(elem_in_nf(x))
         if rank(M) == rank(vcat(M, v + target))
@@ -1068,11 +1068,17 @@ function _non_norm_rep(E, K, p)
       end
       B = elem_in_nf.(basis(p))
       k = 0
+      OK = maximal_order(K)
       while true
         if k > 10000
           error("Something wrong in non_norm_rep")
         end
-        y = rand(K, -5:5)
+        # we need OK here and not
+        # ZZ[a] where a=gen(K)
+        # because otherwise if ZZ[a] is not maximal at p
+        # we may not find a non-norm
+        # of valuation 0
+        y = K(rand(OK, -10:10))
         if iszero(y)
           continue
         end

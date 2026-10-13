@@ -1,91 +1,25 @@
-
-function _reduce(a::fqPolyRepFieldElem)
-  A = parent(a)
-  if a.length < 2*degree(A)
-    ccall((:fq_nmod_reduce, libflint), Nothing, (Ref{fqPolyRepFieldElem}, Ref{fqPolyRepField}), a, A)
-  else
-    ccall((:nmod_poly_rem, libflint), Nothing, (Ref{fqPolyRepFieldElem}, Ref{fqPolyRepFieldElem}, Ref{Nothing}, Ref{Nothing}), a, a, pointer_from_objref(A)+6*sizeof(Int) + sizeof(Ptr{Nothing}), pointer_from_objref(A)+sizeof(ZZRingElem))
-  end
-end
-
-function _reduce(a::FqPolyRepFieldElem)
-  A = parent(a)
-  #if a.length < 2*degree(A)
-    ccall((:fq_reduce, libflint), Nothing, (Ref{FqPolyRepFieldElem}, Ref{FqPolyRepField}), a, A)
-  #else
-  #  ccall((:fmpz_mod_poly_rem, libflint), Nothing, (Ref{FqPolyRepFieldElem}, Ref{FqPolyRepFieldElem}, Ref{Nothing}, Ref{Nothing}), a, a, pointer_from_objref(A)+6*sizeof(Int) + 2*sizeof(Ptr{Nothing}), pointer_from_objref(A)+sizeof(ZZRingElem))
-  #end
-end
-
-
-#TODO: move elsewhere - and use. There are more calls to nmod_set/reduce
-function (A::fqPolyRepField)(x::zzModPolyRingElem)
-  u = A()
-  ccall((:fq_nmod_set, libflint), Nothing,
-                     (Ref{fqPolyRepFieldElem}, Ref{zzModPolyRingElem}, Ref{fqPolyRepField}),
-                                     u, x, A)
-  _reduce(u)
-  return u
-end
-
-function (A::fqPolyRepField)(x::fpPolyRingElem)
-  u = A()
-  ccall((:fq_nmod_set, libflint), Nothing,
-                     (Ref{fqPolyRepFieldElem}, Ref{fpPolyRingElem}, Ref{fqPolyRepField}),
-                                     u, x, A)
-  _reduce(u)
-  return u
-end
-
+# Reduce `b` into `a`, which must have parent `K`. The polynomial `a_tmp` is
+# scratch space over GF(p), reused across calls to avoid allocations.
+# The denominator of `b` must be invertible modulo p.
 function _nf_to_fq!(a::fqPolyRepFieldElem, b::AbsSimpleNumFieldElem, K::fqPolyRepField, a_tmp::zzModPolyRingElem)
-  Nemo.nf_elem_to_nmod_poly!(a_tmp, b)
-  ccall((:fq_nmod_set, libflint), Nothing,
-                     (Ref{fqPolyRepFieldElem}, Ref{zzModPolyRingElem}, Ref{fqPolyRepField}),
-                                     a, a_tmp, K)
-  _reduce(a)
-end
-
-function _nf_to_fq!(a::fqPolyRepFieldElem, b::AbsSimpleNumFieldElem, K::fqPolyRepField, a_tmp::fpPolyRingElem)
-  Nemo.nf_elem_to_gfp_poly!(a_tmp, b)
-  ccall((:fq_nmod_set, libflint), Nothing,
-                     (Ref{fqPolyRepFieldElem}, Ref{fpPolyRingElem}, Ref{fqPolyRepField}),
-                                     a, a_tmp, K)
-  _reduce(a)
-end
-
-function _nf_to_fq!(a::FqPolyRepFieldElem, b::AbsSimpleNumFieldElem, K::FqPolyRepField, a_tmp::FpPolyRingElem)
-  Nemo.nf_elem_to_gfp_fmpz_poly!(a_tmp, b)
-  ccall((:fq_set, libflint), Nothing,
-                     (Ref{FqPolyRepFieldElem}, Ref{FpPolyRingElem}, Ref{FqPolyRepField}),
-                                     a, a_tmp, K)
-  _reduce(a)
-end
-
-function _nf_to_fq!(a::FqFieldElem, b::AbsSimpleNumFieldElem, K::FqField)#, a_tmp::FpPolyRingElem)
-  # AbsSimpleNumFieldElem -> QQPolyRingElem
-  z = QQPolyRingElem()
-  ccall((:nf_elem_get_fmpq_poly, libantic), Nothing,
-        (Ref{QQPolyRingElem}, Ref{AbsSimpleNumFieldElem}, Ref{AbsSimpleNumField}), z, b, parent(b))
-  z.parent = Globals.Qx
-  # QQPolyRingElem -> ZZPolyRingElem, ZZRingElem
-  zz = ZZPolyRingElem()
-  ccall((:fmpq_poly_get_numerator, libflint), Nothing, (Ref{ZZPolyRingElem}, Ref{QQPolyRingElem}), zz, z)
-  zz.parent = Globals.Zx
-  zzz = ZZRingElem()
-  ccall((:fmpq_poly_get_denominator, libflint), Nothing, (Ref{ZZRingElem}, Ref{QQPolyRingElem}), zzz, z)
-  ccall((:fq_default_set_fmpz_poly, libflint), Nothing, (Ref{FqFieldElem}, Ref{ZZPolyRingElem}, Ref{FqField}), a, zz, K)
-  # invert the denominator
-  c = characteristic(K)
-  ccall((:fmpz_invmod, libflint), Cint,
-        (Ref{ZZRingElem}, Ref{ZZRingElem}, Ref{ZZRingElem}), zzz, zzz, c)
-  ccall((:fq_default_mul_fmpz, libflint), Nothing, (Ref{FqFieldElem}, Ref{FqFieldElem}, Ref{ZZRingElem}, Ref{FqField}), a, a, zzz, K)
-    #ccall((:fq_set, libflint), Nothing,
-  #                   (Ref{FqPolyRepFieldElem}, Ref{FpPolyRingElem}, Ref{FqPolyRepField}),
-  #                                   a, a_tmp, K)
-  #_reduce(a)
+  set!(a, Nemo.nf_elem_to_nmod_poly!(a_tmp, b))
   return a
 end
 
+function _nf_to_fq!(a::fqPolyRepFieldElem, b::AbsSimpleNumFieldElem, K::fqPolyRepField, a_tmp::fpPolyRingElem)
+  set!(a, Nemo.nf_elem_to_gfp_poly!(a_tmp, b))
+  return a
+end
+
+function _nf_to_fq!(a::FqPolyRepFieldElem, b::AbsSimpleNumFieldElem, K::FqPolyRepField, a_tmp::FpPolyRingElem)
+  set!(a, Nemo.nf_elem_to_gfp_fmpz_poly!(a_tmp, b))
+  return a
+end
+
+function _nf_to_fq!(a::FqFieldElem, b::AbsSimpleNumFieldElem, K::FqField, a_tmp::FpPolyRingElem)
+  set!(a, Nemo.nf_elem_to_gfp_fmpz_poly!(a_tmp, b))
+  return a
+end
 
 ################################################################################
 #
@@ -125,7 +59,7 @@ end
 #
 ################################################################################
 
-function primitive_element(F::T; n_quo::Int = -1) where T <: Union{FqPolyRepField, fqPolyRepField, fpField, Nemo.FpField, FqField}
+function _primitive_element(F::T, n_quo::Int) where T <: Union{FqPolyRepField, fqPolyRepField, fpField, Nemo.FpField, FqField}
   n = order(F)-1
   k = ZZRingElem(1)
   if n_quo != -1
@@ -134,7 +68,7 @@ function primitive_element(F::T; n_quo::Int = -1) where T <: Union{FqPolyRepFiel
     end
     n, k = ppio(n, ZZRingElem(n_quo))
   end
-  primefactors_n = collect(keys(factor(n).fac))
+  primefactors_n = prime_divisors(n)
 
   x = rand(F)^k
   while iszero(x)
@@ -159,6 +93,26 @@ function primitive_element(F::T; n_quo::Int = -1) where T <: Union{FqPolyRepFiel
   return x
 end
 
+@doc raw"""
+    multiplicative_generator(F::FinField) -> FinFieldElem
+
+Return a generator of the multiplicative group of the finite field $F$.
+
+The result is cached on the finite field, so repeated calls return the same
+element.
+"""
+@attr elem_type(F) function multiplicative_generator(F::T) where T <: Union{FqPolyRepField, fqPolyRepField, fpField, Nemo.FpField, FqField}
+  return _primitive_element(F, -1)
+end
+
+function primitive_element(F::T; n_quo::Int = -1) where T <: Union{FqPolyRepField, fqPolyRepField, fpField, Nemo.FpField, FqField}
+  if n_quo == -1
+    # to exploit caching
+    return multiplicative_generator(F)
+  end
+  return _primitive_element(F, n_quo)
+end
+
 
 function unit_group(F::T; n_quo::Int = -1) where T <: FinField
 
@@ -172,7 +126,7 @@ function unit_group(F::T; n_quo::Int = -1) where T <: FinField
     inv = invmod(nnpart, npart)
   end
 
-  G = abelian_group(Int[k])
+  G = abelian_group([k])
   ex = div(order(F) - 1, npart)
   function disc_log(x)
     @assert typeof(x) == elem_type(F)
@@ -189,10 +143,11 @@ function unit_group(F::T; n_quo::Int = -1) where T <: FinField
         end
         el *= g
       end
-      return G([mod(c*inv, k)])
+      dl = mod(c*inv, k)
     else
-      return G([mod(inv*disc_log_bs_gs(g, y, npart), k)])
+      dl = mod(inv*disc_log_bs_gs(g, y, npart), k)
     end
+    return G([dl])
   end
   mG = FiniteFieldMultGrpMap{T, elem_type(F)}(G, F, g, disc_log)
   return G, mG
@@ -209,7 +164,7 @@ function find_morphism(k::fqPolyRepField, K::fqPolyRepField)
    if degree(k) > 1
     phi = Nemo.find_morphism(k, K) #avoids embed - which stores the info
   else
-    phi = MapFromFunc(k, K, x->K((coeff(x, 0))), y->k((coeff(y, 0))))
+    phi = map_from_func(k, K, x->K((coeff(x, 0))), y->k((coeff(y, 0))))
   end
   return phi
 end
@@ -218,7 +173,7 @@ function find_morphism(k::FqField, K::FqField)
   if degree(k) > 1
     phi = Nemo.find_morphism(k, K) #avoids embed - which stores the info
   else
-    phi = MapFromFunc(k, K, x -> K(lift(ZZ, x)), y -> k(lift(ZZ, y)))
+    phi = map_from_func(k, K, x -> K(lift(ZZ, x)), y -> k(lift(ZZ, y)))
   end
   return phi
 end
@@ -231,7 +186,7 @@ function find_morphism(k::FqField, K::fqPolyRepField)
       @assert all(is_zero(coeff(x, i)) for i in 1:(degree(K) - 1))
       return k(coeff(x, 0))
     end
-    return MapFromFunc(k, K, x -> K(lift(ZZ, x)), pre)
+    return map_from_func(k, K, x -> K(lift(ZZ, x)), pre)
   end
 
   # build K as FqField, then find isomorphism, then go back
@@ -249,7 +204,7 @@ function find_morphism(k::FqField, K::fqPolyRepField)
 
   phi_k_to_KK = Nemo.embed_any(k, KK)
 
-  phi = MapFromFunc(k, K, x -> KKtoK(phi_k_to_KK(x)), x -> phi_k_to_KK\(KtoKK(x)))
+  phi = map_from_func(k, K, x -> KKtoK(phi_k_to_KK(x)), x -> phi_k_to_KK\(KtoKK(x)))
 end
 
 
@@ -321,7 +276,7 @@ end
 function splitting_field(f::PolyRingElem{<:FinFieldElem}; do_roots::Bool = false)
   lf = factor(f)
   k = base_ring(f)
-  d = reduce(lcm, [degree(x) for x = keys(lf.fac)], init = 1)
+  d = reduce(lcm, [degree(x) for (x, _) in lf], init = 1)
   if isa(k,  Nemo.fpField) || isa(k, Nemo.fqPolyRepField)
     K = GF(Int(characteristic(k)), absolute_degree(k)*d)
   else
@@ -334,4 +289,23 @@ function splitting_field(f::PolyRingElem{<:FinFieldElem}; do_roots::Bool = false
     return K, roots(K, f)
   end
   return K
+end
+
+@doc raw"""
+    disc_log(b::T, x::T) where {T <: FinFieldElem}
+
+Return an integer `s` such that $b^s = x$.
+If no such `x` exists, an exception is thrown.
+
+# Examples
+```jldoctest
+julia> F = GF(3,4); a = gen(F)^21;
+
+julia> disc_log(gen(F), a)
+21
+```
+"""
+function disc_log(b::T, x::T) where {T <: FinFieldElem}
+  @assert parent(b) === parent(x)
+  return Hecke.disc_log_bs_gs(b, x, order(parent(b)))
 end

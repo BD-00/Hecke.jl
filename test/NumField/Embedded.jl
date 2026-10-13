@@ -21,7 +21,7 @@
   @test sprint(show, a) isa String
   @test sprint(show, "text/plain", a) isa String
   @test E([1, 2]) == 1 + 2*a
-  ConformanceTests.test_Ring_interface(E)
+  ConformanceTests.test_Field_interface_recursive(E)
   # trigger expressify
   Et, t = E["t"]
   @test sprint(show, a * t) isa String
@@ -137,5 +137,19 @@
       @test round(e, RoundNearest) == rn && parent(round(e, RoundNearest)) === K
       @test round(ZZRingElem, e, RoundNearest) == rn && round(ZZRingElem, e, RoundNearest) isa ZZRingElem
     end
+  end
+
+  let
+    C, = cyclotomic_real_subfield(19)
+    K, a = embedded_number_field(minpoly(gen(C)), 1.1)
+    u = algebraic_closure(QQ)(a)
+    @test is_zero(minpoly(data(a))(u))
+    @test 1.08 < real_field()(u) < 1.1
+
+    f = defining_polynomial(C)
+    Qt, t = rationals_as_number_field()[1]["t"]
+    L, o = number_field(f(t), "o")
+    K, a = Hecke.embedded_field(L, complex_embeddings(L)[1])
+    @test is_one(algebraic_closure(QQ)(one(K)))
   end
 end

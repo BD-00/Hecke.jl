@@ -1,37 +1,59 @@
 #XXX: valuation(Q(0)) == 0 !!!!!
-function newton_lift(f::ZZPolyRingElem, r::QadicFieldElem, prec::Int = precision(parent(r)), starting_prec::Int = 2)
+
+# Assumes f has integral coefficients (i.e., f in Z_q[X])
+# Assumes the lift is possible, i.e., v_p(f(r)) > 2*v_p(f'(r));
+#   see "Handbook of Elliptic and Hyperelliptic Curve Cryptography", Lemma 12.8.
+# Takes the derivative df as input for efficiency (caller typically needs it
+#   anyway to verify the Newton lift precondition).
+function _newton_lift(f::PolyRingElem{QadicFieldElem}, df::PolyRingElem{QadicFieldElem}, r::QadicFieldElem, prec::Int = precision(parent(r)), starting_prec::Int = 2)
   Q = parent(r)
+
+  o = Q(r)
+  starting_prec = min(starting_prec, precision(o))
+  @assert precision(o) >= starting_prec
+
+  o = df(o)
+  vo = valuation(o)
+  o = inv(o)
+
   n = prec
   i = n
   chain = [n]
   while i>starting_prec
-    i = div(i+1, 2)
+    i = div(i+1+vo, 2)
     push!(chain, i)
   end
-  fs = derivative(f)
-  qf = change_base_ring(Q, f, cached = false)
-  qfs = change_base_ring(Q, fs, cached = false)
-  r = setprecision(r, 1)
-  o = Q(r)
-  s = qf(r)
-  o = inv(setprecision(qfs, 1)(o))
-  @assert r.N == 1
+
   for p = reverse(chain)
     setprecision!(r, p)
     setprecision!(o, p)
     setprecision!(Q, r.N)
     if r.N > precision(Q)
-      setprecision!(qf, r.N)
-      setprecision!(qfs, r.N)
+      setprecision!(f, r.N)
+      setprecision!(df, r.N)
     end
-    r = r - qf(r)*o
+    r = r - f(r)*o
     if r.N >= n
       setprecision!(Q, n)
       return r
     end
-    o = o*(2-qfs(r)*o)
+    o = o*(2-df(r)*o)
   end
   return r
+end
+
+function newton_lift(f::Union{PolyRingElem{ZZRingElem}, PolyRingElem{QadicFieldElem}}, r::QadicFieldElem, prec::Int = precision(parent(r)), starting_prec::Int = 2)
+  Q = parent(r)
+
+  if base_ring(f) == ZZ
+    qf = change_base_ring(Q, f, cached = false)
+    qfs = change_base_ring(Q, derivative(f), cached = false)
+  else
+    qf = f
+    qfs = derivative(f)
+  end
+
+  return _newton_lift(qf, qfs, r, prec, starting_prec)
 end
 
 function newton_lift(f::ZZPolyRingElem, r::LocalFieldElem, precision::Int = precision(parent(r)), starting_prec::Int = 2)
@@ -69,14 +91,23 @@ end
 @doc raw"""
     roots(Q::QadicField, f::ZZPolyRingElem; max_roots::Int = degree(f)) -> Vector{QadicFieldElem}
 
-The roots of $f$ in $Q$, $f$ has to be square-free (at least the roots have to be simple roots).
+The roots of $f$ in $Q$. The current implementation uses Newton lifting from
+the residue field, so only simple roots (in the residue field) are considered:
+a root $r$ in the residue field with $f(r) = 0$ is lifted to a root in $Q$
+only if $f'(r) \neq 0$.
 """
 function roots(Q::QadicField, f::ZZPolyRingElem; max_roots::Int = degree(f))
   k, mk = residue_field(Q)
   rt = roots(k, f)
+
+  qf = change_base_ring(Q, f, cached = false)
+  qfs = change_base_ring(Q, derivative(f), cached = false)
+
   RT = QadicFieldElem[]
   for r = rt
-    push!(RT, newton_lift(f, preimage(mk, r)))
+    qr = preimage(mk, r)
+    valuation(qfs(qr)) > 0 && continue # for now we handle only simple roots
+    push!(RT, _newton_lift(qf, qfs, qr))
     if length(RT) >= max_roots
       return RT
     end
@@ -133,7 +164,8 @@ mutable struct qAdicConj
     =#
     if splitting_field
       Zx = polynomial_ring(ZZ, cached = false)[1]
-      C = qAdicRootCtx(Zx(K.pol), p, splitting_field = true)
+      d = denominator(K.pol)
+      C = qAdicRootCtx(numerator(K.pol*d, Zx), p, splitting_field = true)
       r = new()
       r.C = C
       r.K = K
@@ -147,7 +179,7 @@ mutable struct qAdicConj
     Dp = get_cached!(D, p, cached) do
       Zx = polynomial_ring(ZZ, cached = false)[1]
       d = lcm(map(denominator, coefficients(K.pol)))
-      C = qAdicRootCtx(Zx(K.pol*d), p)
+      C = qAdicRootCtx(numerator(K.pol*d, Zx), p)
       return (C, Dict{AbsSimpleNumFieldElem, Any}())
     end
 
@@ -222,16 +254,20 @@ end
 #TODO: implement a proper Frobenius - with caching of the frobenius_a element
 function _conjugates(a::AbsSimpleNumFieldElem, C::qAdicConj, n::Int, op::Function)
   R = roots(C.C, n)
-  @assert parent(a) == C.K
-  Zx = polynomial_ring(ZZ, cached = false)[1]
-  d = denominator(a)
-  f = Zx(d*a)
-  res = QadicFieldElem[]
-  for x = R
-    a = op(inv(parent(x)(d))*f(x))::QadicFieldElem
-    push!(res, a)
+  setprecision(parent(R[1]), n) do
+    setprecision(base_field(parent(R[1])), n) do
+      @assert parent(a) == C.K
+      Zx = polynomial_ring(ZZ, cached = false)[1]
+      d = denominator(a)
+      f = Zx(d*a)
+      res = QadicFieldElem[]
+      for x = R
+        a = op(inv(parent(x)(d))*f(x))::QadicFieldElem
+        push!(res, a)
+      end
+      return res
+    end
   end
-  return res
 end
 
 function _log(a::QadicFieldElem)
@@ -287,7 +323,7 @@ function conjugates_log(a::FacElem{AbsSimpleNumFieldElem, AbsSimpleNumField}, C:
         lp = prime_decomposition(maximal_order(parent(k)), C.C.p)
         @assert Base.all(x -> has_2_elem_normal(x[1]), lp)
         val = map(x -> valuation(k, x[1]), lp)
-        pe = prod(lp[i][1].gen_two^val[i] for i = 1:length(lp) if val[i] != 0)
+        pe = prod(elem_in_nf(lp[i][1].gen_two)^val[i] for i = 1:length(lp) if val[i] != 0)
         aa = k//pe
         y = conjugates_log(aa, C, n, all = false, flat = false)
         if first
@@ -334,8 +370,8 @@ function special_gram(m::Vector{Vector{QadicFieldElem}})
 end
 
 function special_gram(m::Vector{Vector{PadicFieldElem}})
-  n = transpose(matrix(m))
-  n = transpose(n)*n
+  mt = transpose(matrix(m))
+  n = transpose(mt)*mt
   return [[n[i,j] for j=1:ncols(n)] for i = 1:nrows(n)]
 end
 
@@ -375,8 +411,8 @@ function regulator_iwasawa(u::Vector{T}, C::qAdicConj, n::Int = 10) where {T<: U
   k = base_ring(u[1])
   @assert is_totally_real(k)
   c = map(x -> conjugates_log(x, C, n, all = true, flat = false), u)
-  m = matrix(c)
-  m = vcat(m, matrix(base_ring(m), 1, ncols(m), [one(base_ring(m)) for i=1:ncols(m)]))
+  m0 = matrix(c)
+  m = vcat(m0, matrix(base_ring(m0), 1, ncols(m0), [one(base_ring(m0)) for i=1:ncols(m0)]))
   return det(m)//degree(k)
 end
 
@@ -543,14 +579,14 @@ function completion(K::AbsSimpleNumField, ca::QadicFieldElem; cached::Bool = tru
   i = findfirst(x->parent(r[x]) == parent(ca) && r[x] == ca, 1:length(r))
   Zx = polynomial_ring(ZZ, cached = false)[1]
   function inj(a::AbsSimpleNumFieldElem)
-    d = denominator(a)
+    den = denominator(a)
     pr = precision(parent(ca))
     if pr > precision(ca)
       ri = roots(C.C, precision(parent(ca)))[i]
     else
       ri = ca
     end
-    return inv(parent(ca)(d))*(Zx(a*d)(ri))
+    return inv(parent(ca)(den))*(Zx(a*den)(ri))
   end
   # gen(K) -> conj(a, p)[i] -> a = sum a_i o^i
   # need o = sum o_i a^i
@@ -597,27 +633,27 @@ function completion(K::AbsSimpleNumField, ca::QadicFieldElem; cached::Bool = tru
       #XXX this changes (c, pc) inplace as a cache
       #probably should be done with a new map type that can
       #store c, pc on the map.
-      d = lift_root(f, a, b, p, precision(x))
+      rt = lift_root(f, a, b, p, precision(x))
 #  Kjj = number_field(lf[jj][1], check = false, cached = false)[1]
 #  ajj = Kjj(parent(Kjj.pol)(a))
 #  bjj = Kjj(parent(Kjj.pol)(b))
 #  djj = lift_root(f, ajj, bjj, p, 10)
-#  d = K(parent(K.pol)(djj))
-      ccall((:nf_elem_set, libantic), Nothing, (Ref{AbsSimpleNumFieldElem}, Ref{AbsSimpleNumFieldElem}, Ref{AbsSimpleNumField}), c, d, K)
+#  rt = K(parent(K.pol)(djj))
+      ccall((:nf_elem_set, libflint), Nothing, (Ref{AbsSimpleNumFieldElem}, Ref{AbsSimpleNumFieldElem}, Ref{AbsSimpleNumField}), c, rt, K)
       set!(pc, precision(x))
     elseif precision(x) < pc
-      d = mod_sym(c, p^precision(x))
+      rt = mod_sym(c, p^precision(x))
     else
-      d = c
+      rt = c
     end
     n = x.length
-    r = K(lift(ZZ, coeff(x, n-1)))
+    res = K(lift(ZZ, coeff(x, n-1)))
     pk = p^precision(x)
     while n > 1
       n -= 1
-      r = mod_sym(r*d, pk) + lift(ZZ, coeff(x, n-1))
+      res = mod_sym(res*rt, pk) + lift(ZZ, coeff(x, n-1))
     end
-    return r#*K(p)^valuation(x)
+    return res#*K(p)^valuation(x)
   end
-  return parent(ca), MapFromFunc(K, parent(ca), inj, lif)
+  return parent(ca), map_from_func(K, parent(ca), inj, lif)
 end

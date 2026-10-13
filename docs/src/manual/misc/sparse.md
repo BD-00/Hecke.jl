@@ -165,7 +165,6 @@ hnf_extend!(::SMat{ZZRingElem}, ::SMat{ZZRingElem})
 is_diagonal(::SMat)
 det(::SMat{ZZRingElem})
 det_mc(::SMat{ZZRingElem})
-valence_mc(::SMat)
 saturate(::SMat{ZZRingElem})
 Hecke.hnf_kannan_bachem(::SMat{ZZRingElem})
 diagonal_form(::SMat{ZZRingElem})
@@ -210,6 +209,8 @@ Various products:
 *(::SMat{T}, ::AbstractMatrix{T})  where {T}
 *(::SMat{T}, ::MatElem{T}) where {T}
 *(::SRow{T}, ::SMat{T}) where {T}
+mul_sparse(::SMat{T}, ::SMat{T}) where {T}
+mul_dense(::SMat{T}, ::SMat{T}) where {T}
 ```
 
 ```@docs

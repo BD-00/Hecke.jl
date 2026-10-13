@@ -1,8 +1,7 @@
 ################################################################################
 #
-#          RieSrf/Theta.jl : Functions for computing theta functions
+#          RieSrf/ThetaFlint.jl : Functions for computing theta functions
 #
-# (C) 2023 Jeroen Hanselman
 #
 ################################################################################
 
@@ -12,272 +11,408 @@
 #
 ################################################################################
 
-#Based on Computing Theta Functions with Julia by Daniele Agostini and Lynn Chua
+#This is an interface to the Theta code by Jean Kieffer and Noam Elkies
+
+export theta
+# don't export for now. maybe rename to theta_all, theta_derivative etc
+#, theta_dz, thetas, theta_jets, theta_dzs, theta_dtaus, siegel_reduction,
+#siegel_transform, cholesky_decomposition
 
 @doc raw"""
-    theta(z::Vector{AcbFieldElem},  tau::AcbMatrix}; char::Vector{Vector{Int}},
-    dz::Vector{Vector{Int}}, dtau::Vector{Vector{Int}}, prec::Int) -> AcbFieldElem
+    theta(z::Vector{AcbFieldElem}, tau::AcbMatrix, theta_characteristic)
+     -> AcbFieldElem
 
-Compute the value of the theta(tau, z) with characteristic char with
-precision the minimum of prec, the precision of z and the precision of
-tau. Optionally one can set dz to be a list of elements of a standard basis
-to compute the derivative of the Theta function with characteristic char at
-the point z in the specified directions. (E.g. in genus 3 setting
- dz = [[1,0,0], [0,0,1]] would compute dtheta(z, tau)/(dx1 dx3).
-Similarly, one can set dtau to be a list of integers tuples to take the
-derivative with respect to the period matrix tau. (E.g. dtau = [[1,2]]
-would compute dtheta(z, tau)/dtau_{1,3})
+Computes theta(a, b)(z, tau) where theta(a, b) is the Riemann theta function
+(of level 2) of characteristic
+(a,b). If one wants to compute multiple theta characteristics, it is more efficient
+to use `thetas`.
+
+Clarification of input:
+Let [a,b] be a tuple with a, b in {0,1}^g be a representative of the
+characteristic. The variable `theta_characteristic` can be given as either:
+
+- An integer whose bit representation (most significant bit first) is equal to [a,b]
+- A single array which is the concatenation of a and b
+- A pair of arrays a and b
+For example, for `g = 2`, letting `theta_characteristic` be either
+`11`, `[1,0,1,1]` or `[[1,0],[1,1]]` would all give the same output.
 """
-function theta(z::Vector{AcbFieldElem}, tau::Vector{AcbFieldElem}; char::Vector{Vector{Int}} = [zeros(Int, 1), zeros(Int, 1)], dz::Vector{Vector{Int}}=Vector{Int}[], dtau::Vector{Vector{Int}}= Vector{Int}[], prec::Int = 0)
-  return _theta(z, matrix(tau), char, dz, dtau, prec)
-end
-
-function theta(z::Vector{AcbFieldElem}, tau::AcbMatrix; char::Vector{Vector{Int}} = [zeros(Int, nrows(tau)), zeros(Int, nrows(tau))], dz::Vector{Vector{Int}}=Vector{Int}[], dtau::Vector{Vector{Int}}= Vector{Int}[], prec::Int = 0)
-  return _theta(z, tau, char, dz, dtau, prec)
-end
-
-function _theta(z::Vector{AcbFieldElem}, tau::AcbMatrix, char::Vector{Vector{Int}}, dz::Vector{Vector{Int}}, dtau::Vector{Vector{Int}}, prec::Int = 0)
-
+function theta(z::Vector{AcbFieldElem}, tau::AcbMatrix, ab_int::Int = 0)
   g = nrows(tau)
-
-  if length(char[1])!= g || length(char[2])!= g
-    error("Characteristic needs to be of length g")
+  zd = length(z)
+  if g != zd
+    error("Dimension mismatch. tau is of dimension $g, but z is of dimension $zd")
   end
 
-  #tau = X + i*Y
-  X = real(tau)
-  Y = imag(tau)
+  CC = base_ring(tau)
+  prec = precision(CC)
 
-  #Find T upper-triangular with transpose(T)*T = Y
-  T = transpose(cholesky_decomposition(Y))
+  th = acb_vec(1)
+  zzs = acb_vec(z)
 
+  ccall((:acb_theta_one, Hecke.libflint), Nothing, (Ptr{acb_struct},
+  Ptr{acb_struct}, Ref{AcbMatrix},UInt, Int), th, zzs, tau, ab_int, prec)
 
-  if length(z)!= g
-    error("z needs to be an element of C^g")
+  res = array(CC, th, 1)
+  acb_vec_clear(th, 1)
+  acb_vec_clear(zzs, g)
+  return res
+end
+
+function theta(z::Vector{AcbFieldElem},  tau::AcbMatrix, theta_ab::Vector{Int})
+  ab = parse_theta_characteristic(theta_ab)
+  return theta(z,  tau, ab)
+end
+
+function theta(z::Vector{AcbFieldElem},  tau::AcbMatrix, ab_vec::Vector{Vector{Int}})
+  ab = parse_theta_characteristic(ab_vec)
+  return theta(z,  tau, ab)
+end
+
+@doc raw"""
+    thetas(z::Vector{AcbFieldElem}, tau::AcbMatrix; squared::Bool = false)
+     -> Dict{Vector{Int},AcbFieldElem}
+
+Computes theta(a,b)(z, tau) for all possible tuples [a,b] with a, b
+in {0,1}^g. Output is returned as a dictionary with key entries Vectors
+in {0,1}^(2g) and as values the corresponding theta values.
+
+For example, if `D = thetas(z, tau)` for `z` in C^2 and `tau` a 2 by 2 matrix
+then `D[0,1,1,1]` will correspond to `theta([0,1],[1,1])(z, tau)`.
+
+If the optional parameter `squared` is set to `true`, the algorithm will be
+faster, but will return the squares of the theta values instead.
+"""
+function thetas(z::Vector{AcbFieldElem},  tau::AcbMatrix; squared::Bool = false)
+  g = nrows(tau)
+  zd = length(z)
+  if (g != zd)
+    error("Dimension mismatch. tau is of dimension $g, but z is of dimension $zd")
   end
 
-  if prec > 0
-    prec = min(prec, precision(parent(z[1])), precision(parent(tau[1, 1])))
-  else
-    prec = min(precision(parent(z[1])), precision(parent(tau[1, 1])))
+  CC = base_ring(tau)
+  prec = precision(CC)
+
+  num_of_thetas = 2^(2*g)
+
+  th = acb_vec(num_of_thetas)
+  zzs = acb_vec(z)
+
+  ccall((:acb_theta_all, libflint), Nothing, (Ptr{acb_struct},
+  Ptr{acb_struct}, Ref{AcbMatrix}, Cint, Int), th, zzs, tau, squared, prec)
+
+  theta_values = array(CC, th,   num_of_thetas)
+  theta_indices = theta_characteristics_indices(g)
+  result = Dict([(theta_indices[i], theta_values[i]) for i in (1:num_of_thetas)])
+
+  acb_vec_clear(th, num_of_thetas)
+  acb_vec_clear(zzs, g)
+  return result
+end
+
+
+@doc raw"""
+    theta_dz(z::Vector{AcbFieldElem}, tau::AcbMatrix, theta_characteristic,
+    dz::Vector{Int}) -> AcbFieldElem
+
+Computes the partial derivative with respect to the multi-index given by `dz`
+of theta(a,b)(`z`, `tau`) where theta(a,b) is the Riemann theta function
+(of level 2) of characteristic (a,b). If one wants to compute multiple partial
+derivatives for different theta characteristics, it is more efficient to use
+`theta_dzs`.
+
+Clarification of input:
+Let [a,b] be a tuple with a, b in {0,1}^g be a representative of the
+characteristic. The variable `theta_characteristic` can be given as either:
+- An integer whose bit representation (most significant bit first)
+  is equal to [a,b]
+- A single array which is the concatenation of a and b
+- A pair of arrays a and b
+
+For example, for `g = 2`, letting `theta_characteristic` be either
+`11, `[1,0,1,1]` or `[[1,0],[1,1]]` would all give the same output.
+
+The variable `dz` can be used to indicate which partial derivative you are computing.
+
+For example, for `g = 2`, `dz = [2,3]` would mean computing
+d^5(theta_(a,b))/(dz_1^2 *dz_2^3).
+"""
+function theta_dz(z::Vector{AcbFieldElem},  tau::AcbMatrix, theta_characteristic::Vector{Int}, dz::Vector{Int})
+  g = nrows(tau)
+  if (g != length(dz))
+    error("dz should have length $g")
   end
+  d = sum(dz)
+  D = theta_dzs(z, tau, d)
+  return D[theta_characteristic...][dz...]
+end
 
-  n = floor(prec*log(2)/log(10))
+function theta_dz(z::Vector{AcbFieldElem},  tau::AcbMatrix,
+  theta_characteristic::Vector{Vector{Int}}, dz::Vector{Int})
+  return theta_dz(z, tau, reduce(vcat, theta_characteristic), dz)
+end
 
-  Cc = AcbField(prec)
-  Rc = ArbField(prec)
-  piR = const_pi(Rc)
-  i = onei(Cc)
+function theta_dz(z::Vector{AcbFieldElem},  tau::AcbMatrix,
+  theta_characteristic::Int, dz::Vector{Int})
+  g = nrows(tau)
+  @req 0 <= theta_characteristic <= 2^(g-1) "theta_characteristic has to be either an integer between 0 or 2^(g-1),"
+  char_index = reverse(digits(theta_characteristic, base=2, pad=2*g))
+  return theta_dz(z, tau, char_index, dz)
+end
 
+@doc raw"""
+    theta_dtaus(z::Vector{AcbFieldElem}, tau::AcbMatrix)
+    -> Dict{Vector{Int},AcbFieldElem}
 
+Computes the partial derivatives of theta(a,b)(`z`, `tau`) with respect to the
+entries of `tau` for all possible tuples [a,b] with a, b in {0,1}^g.
+Output is returned as a dictionary with key entries Vectors in {0,1}^(2g)
+and as values matrices whose (i,j)-th entry corresponds to the derivative
+with respect to `tau[i,j]`.
 
-  eps = Rc(10^(-n)) #Should depend on precision
+For example, if `D = theta_dtaus(z, tau)` for `z` in C^2 and `tau` a 2 by 2 matrix
+then `D[0,1,1,1][1,2]` will correspond to the derivative of
+theta([0,1],[1,1])(z, tau) with respect to `tau[1,2]`.
+"""
+function theta_dtaus(z::Vector{AcbFieldElem},  tau::AcbMatrix)
+  g = nrows(tau)
+  dz = zeros(Int, g)
+  D = theta_dzs(z, tau, 2)
 
-  #In Agostini and Chua's code rho = is taken to be the square of the norm of the shortest vector times sqrt(pi)) for some reason.
-  #This could affect the error bounds
+  CC = base_ring(tau)
+  piCC = CC(pi)
+  I = onei(CC)
 
-  rho = norm(shortest_vectors(transpose(T))[1]*sqrt(piR))
+  theta_indices = theta_characteristics_indices(g)
+  result = Dict(zip(theta_indices, [zero_matrix(CC,g, g) for i in (1:2^(2*g))] ))
 
-  factor = one(Cc)
-  for ij in dtau
-    if ij[1] == ij[2]
-      factor //= (4 * piR * i)
-    else
-      factor //= (2 * piR * i)
-    end
-    deriv = [zeros(g), zeros(g)]
-    deriv[1][ij[1]] = 1
-    deriv[2][ij[2]] = 1
-    dz = vcat(dz, deriv)
-  end
-
-  N = Int(sum(map(t-> sum(t; init = 0), dz); init = 0))
-
-  R0 = (sqrt(g + 2*N + sqrt(g^2 + 8*N)) + rho)//2
-
-  T_inv_norm = norm(inv(T))
-
-  #We compute the radius of the ellipsoid over which we take the sum needed to bound the error in the sum by eps (See Theorem 3.1 in Agostini, Chua)
-  R_function = function(x::ArbFieldElem, eps::ArbFieldElem)
-    Rc = parent(x)
-    return (2*piR)^N * g//2 * (2//rho)^g * sum([binomial(N, j) * inv(pi^(j//2))* T_inv_norm^j * sqrt(g)^(N - j) * gamma(Rc((g + j)//2), (x - rho//2)^2) for j in (0:N)]; init = zero(Rc)) - eps
-  end
-
-  #We want to find the max(R0, x) where x is the solution to R_function(x, eps) = 0
-  #Taking x bigger will only improve the error bound, but we want x to be as small as possible
-  #to speed up later computations. We therefore look for an x for which R_function(x, eps) is small
-  #and negative.
-  #As R_function is monotonic descending we first determine an R1 for which R_function(R1, eps) <0
-  #and then subdivide intervals until we find a solution that satisfies our requirements
-
-  R1 = R0
-  err = Rc(10^(-n))
-
-  #Find an R1 such that R_function becomes negative
-  while R_function(R1, eps) > 0
-    R1 = R1 + R0
-  end
-
-  if R1 != R0
-    while 0 < R_function(R0, eps) || R_function(R0, eps) < -err
-      Rmid = (R0 + R1)/2
-      middle = R_function(Rmid, eps)
-      if middle < 0
-        R1 = Rmid
+  for i in (1:g)
+    for j in (1:g)
+      dz = zeros(Int, g)
+      dz[i] = 1
+      dz[j] = 1
+      if i == j
+        delta = 1
       else
-        R0 = Rmid
+        delta = 0
+      end
+      factor = 1/(2*piCC*I*(1+delta))
+
+      for theta_characteristic in theta_indices
+        result[theta_characteristic...][i,j] =
+        D[theta_characteristic...][dz...] * factor
       end
     end
   end
+  return result
+end
 
-  radius_ellipsoid = R1
-  error_epsilon = R_function(R1, zero(Rc))
+@doc raw"""
+    theta_jets(z::Vector{AcbFieldElem}, tau::AcbMatrix, d::Int) ->
+     Dict{NTuple, Dict{Tuple, AcbFieldElem}}
 
-  ellipsoid_points = Hecke.enumerate_using_gram(Y, R1^2//piR)
-  for i in (1:g)
-    Lat1 = Vector{ZZRingElem}[]
-    pad = zeros(ZZRingElem, g)
-    pad[i] = 1
-    for l in ellipsoid_points
-      push!(Lat1, l + pad)
-      push!(Lat1, l - pad)
-    end
-    ellipsoid_points = union(ellipsoid_points, Lat1)
+Computes the coefficients of the Taylor series expansion up to order `d`
+of theta(a,b)(z, tau) where theta(a,b) is the Riemann theta function
+(of level 2) of characteristic (a,b).
+
+The output will be given as a dictionary of dictionaries.
+The key set of the first dictionary will consist of the
+theta_characteristics.
+
+Clarification of keys:
+Let [a,b] be a tuple with a, b in {0,1}^g be a representative of the characteristic. The variable `theta_characteristic` can be
+given as either:
+- An integer whose bit representation (most significant bit first) is equal to [a,b]
+- A single array which is the concatenation of a and b
+- A pair of arrays a and b
+For example, for `g = 2`, letting `theta_characteristic` be either
+`11`, `[1,0,1,1]` or `[[1,0],[1,1]]` would all give the same output.
+
+The key set of the second dictionary will consist of the
+integer arrays determining a term in the Taylor expansion.
+
+For example, if `D = theta_jets(z, tau, 3)` for `z` in C^2 and `tau` a 2 by 2 matrix
+then `D` will contain all coefficients for all theta characteristics
+up to order 3, and
+
+`D[0,1,1,1][1,2]` will correspond to the term of theta([0,1],[1,1])(`z`, `tau`)
+related to `z_1^1 * z_2^2`.
+
+Note that the output of `theta_jets` and `theta_derivatives` is very similar.
+The elements of `theta_jets` are normalized in the way one would normalize
+coefficients of a Taylor expansion, i.e. the coefficient of the monomial with
+multidegree (k0, k_{g-1}) will be
+1/k0! * ... * 1/k_{g-1}! * d^k/(dz_1^k0 ... dz_{g-1}^k_{g-1}).
+"""
+function theta_jets(z::Vector{AcbFieldElem},  tau::AcbMatrix, order_of_derivatives::Int;)
+  g = nrows(tau)
+  zd = length(z)
+  if (g != zd)
+    error("Dimension mismatch. tau is of dimension $g, but z is of dimension $zd")
   end
 
+  #Get total number of derivatives
+  n = ccall((:acb_theta_jet_nb, libflint), Int, (Int, Int), order_of_derivatives, g)
+  tups = zeros(Int, n*g)
+  tupss = pointer(tups)
+  #Get the tuples representing the partial derivatives.
+  GC.@preserve tups ccall((:acb_theta_jet_tuples, libflint), Nothing, (Ptr{Int}, Int,Int),
+  tupss, order_of_derivatives, g)
+
+  if g ==1
+    index_tuples = tups
+  else
+    index_tuples = [tuple(tups[g*i+1:g*i+g]...) for i in (0:n-1)]
+  end
+
+  num_of_thetas = 2^(2*g)
+  output_size = num_of_thetas * n
+
+  CC = base_ring(tau)
+  prec = precision(CC)
+
+  th = acb_vec(output_size)
+  zzs = acb_vec(z)
+
+  sqr = 0
+  number_of_z = 1
+
+  theta_characteristic = 0
+  all = 1
+
+  ccall((:acb_theta_jet, libflint), Nothing, (Ptr{acb_struct},
+  Ptr{acb_struct}, Int, Ref{AcbMatrix}, Int, UInt, Cint, Cint, Int), th, zzs, number_of_z, tau,
+  order_of_derivatives, theta_characteristic, all, sqr, prec)
+
+  res = array(CC, th, output_size)
+  theta_indices = theta_characteristics_indices(g)
+  result_tuples = [Dict(zip(index_tuples, res[n*i+1:n*i+n])) for i in (0:num_of_thetas-1)]
 
 
-  #We seem to find more points than Agostini as we also consider lattices centered at points of the form [0,1,-1], etc.
-  #This could also affect error bounds
+  #Return a dictionary where the keys consist of tuples indexing the partial derivatives
+  #and the values are dictionaries consisting of the 2^g theta derivatives.
+  result = Dict([(theta_indices[i], result_tuples[i]) for i in (1:num_of_thetas)])
 
-  #We compute the Theta function
-  x = real(z)
-  y = imag(z)
-
-  invYy = inv(Y) * y
-  exponential_part = exp(piR*(transpose(y) * invYy))
-
-  eta = map(Rc, (map(t -> round(ZZRingElem, t), invYy) - map(ZZ, char[1])//2))
-
-  pointset = map(t -> map(Rc, t) - eta, ellipsoid_points)
-
-  oscillatory_part = (2*piR*i)^N*sum([
-  prod(transpose(d)*v for d in dz; init = one(Rc)) *
-  exp(piR*i*((transpose(v) * (X * v)) + 2*transpose(v) * (x + map(ZZ, char[2])//2))) * exp(-piR* (transpose(v + invYy) * (Y * (v + invYy)))) for v in pointset]; init = zero(Cc))
-
-  result = factor*exponential_part*oscillatory_part
-
-  error_term = exponential_part*error_epsilon
-
-  ccall((:acb_add_error_arb, libarb), Cvoid,
-      (Ref{AcbFieldElem}, Ref{ArbFieldElem}), result, error_term)
-
+  acb_vec_clear(th, output_size)
+  acb_vec_clear(zzs, g)
   return result
+end
+
+@doc raw"""
+    theta_dzs(z::Vector{AcbFieldElem}, tau::AcbMatrix, d::Int) ->
+     Dict{NTuple, Dict{Tuple, AcbFieldElem}}
+
+Computes all of the partial derivatives of theta(a,b)(z, tau) up to order d
+where theta(a,b) is the Riemann theta function (of level 2) of
+characteristic (a,b).
+
+The output will be given as a dictionary of dictionaries.
+
+The key set of the first dictionary will consist of the
+theta_characteristics.
+
+Clarification of keys:
+Let [a,b] be a tuple with a, b in {0,1}^g be a representative of the
+characteristic. The variable `theta_characteristic` can be given as either:
+- An integer whose bit representation (most significant bit first)
+  is equal to [a,b]
+- A single array which is the concatenation of a and b
+- A pair of arrays a and b
+For example, for `g = 2`, letting `theta_characteristic` be either
+11, [1,0,1,1] or [[1,0],[1,1]] would all give the same output.
+
+The key set of the second dictionary will consist of the
+integer arrays determining the partial derivative.
+
+For example, if `D = theta_dzs(z, tau, 3)` for `z` in C^2 and `tau` a 2 by 2 matrix
+then `D` will contain all the partial derivatives for all theta characteristics
+up to order 3.
+
+D[0,1,1,1][1,2] will correspond to d^3/(dz_1*dz_2^2)theta([0,1],[1,1])(z, tau).
+
+Note that the output of `theta_jets` and `theta_dzs` is very similar.
+The elements of `theta_jets` are normalized in the way you would normalize
+coefficients of a Taylor expansion, i.e. the coefficient of the monomial with
+multidegree (k0, k_{g-1}) will be
+1/k0! * ... * 1/k_{g-1}! * d^k/(dz_1^k0 ... dz_{g-1}^k_{g-1}).
+"""
+function theta_dzs(z::Vector{AcbFieldElem},  tau::AcbMatrix, order_of_derivatives::Int)
+  result = theta_jets(z, tau, order_of_derivatives)
+  for char in keys(result)
+    for dz in keys(result[char])
+      factor = prod(map(factorial, dz))
+      result[char][dz]*=factor
+    end
+  end
+  return result
+end
+
+function parse_theta_characteristic(theta_characteristic::Vector{Int})
+  for i in theta_characteristic
+    if (i!=0 && i!=1)
+      error("theta_characteristic has to be either an integer between 0 or 2^(g-1),
+       a vector in {0,1}^2g or a tuple (a,b) with a, b in {0,1}^g.")
+    end
+  end
+  return evalpoly(2, reverse(theta_characteristic))
+end
+
+function parse_theta_characteristic(theta_characteristic::Vector{Vector{Int}})
+  if length(theta_characteristic) != 2
+    error("theta_characteristic has to be either an integer between 0 or 2^(g-1),
+    a vector in {0,1}^2g or a tuple (a,b) with a, b in {0,1}^g.")
+  end
+  return parse_theta_characteristic(reduce(vcat,theta_characteristic))
+end
+
+function theta_characteristics_indices(g::Int)
+   indices = []
+   for i in (0:2^(2*g)-1)
+     push!(indices,tuple(reverse(digits(i, base=2, pad=2*g))...))
+   end
+   return indices
 end
 
 @doc raw"""
     siegel_reduction(tau::AcbMatrix) -> AcbMatrix
 
-Compute the Siegel reduction of the period matrix tau, i.e.
-writing siegel_reduction(tau) = X +iY. We will have |X_mn| <= 1/2
-for all n, m and the shortest vector of the lattice generated by
-Y will have squared length smaller than sqrt(3)/2.
+Compute the Siegel reduction of the period matrix `tau`, i.e.
+writing `siegel_reduction(tau) = X + i*Y`. We will have |X_mn| <= 1/2
+for all n, m and the lattice generated by Y will be LLL reduced.
 """
 function siegel_reduction(tau::AcbMatrix)
-  g = nrows(tau)
+  g = number_of_rows(tau)
+  T = zero_matrix(ZZ, 2*g, 2*g)
+  prec = precision(base_ring(tau))
+  ccall((:acb_siegel_reduce, libflint), Nothing, (Ref{ZZMatrix}, Ref{AcbMatrix}
+  ,Int), T, tau ,prec)
 
-  Rc = base_ring(real(tau))
-  Cc = base_ring(tau)
-
-  Aq = [zero_matrix(Rc, 1, 1) zero_matrix(Rc, 1, g-1);zero_matrix(Rc, g-1, 1) identity_matrix(Rc, g-1)]
-  Bq = [-identity_matrix(Rc, 1) zero_matrix(Rc, 1, g-1);zero_matrix(Rc, g-1, 1) zero_matrix(Rc, g-1, g-1)]
-  Cq = -Bq
-  Dq = Aq
-
-  quasi_inversion = [Aq Bq; Cq Dq]
-
-  Gamma = identity_matrix(Rc, 2*g)
-  e = zero(Rc)
-
-  while e <= 1
-    Y = imag(tau)
-    Y = (Y + transpose(Y)) // Rc(2) #ensure matrix remains symmetric
-
-    T = cholesky_decomposition(imag(tau))
-
-    T, U = lll_with_transform(T)
-
-
-    Tt = transpose(T)
-
-
-    short = 1
-    for i in (1 : g)
-      if norm(Tt[:, short:short]) > norm(Tt[:, i:i])
-        short = i
-      end
-    end
-
-    if short!= 1
-      S = swap_cols(identity_matrix(Rc, g), 1, short)
-      T = S * T
-      U = S * U
-    end
-
-    Tt = transpose(T)
-    Y = T*Tt
-
-    Gamma = [U zero_matrix(Rc, g, g); zero_matrix(Rc, g, g) inv(transpose(U))] * Gamma;
-    tau = U * real(tau) * transpose(U) + onei(Cc) * Y
-
-    B = change_base_ring(Rc, map(t -> round(ZZRingElem, t), real(tau)))
-    tau -=  change_base_ring(Cc, B)
-    Gamma = [identity_matrix(Rc, g) (-B); zero_matrix(Rc, g, g) identity_matrix(Rc, g)]*Gamma
-    e = abs(tau[1,1])
-    if e > 1
-      return tau, Gamma
-    else
-      Gamma = quasi_inversion * Gamma
-      tau = (Aq * tau + Bq) * inv(Cq * tau + Dq)
-    end
-  end
+  return T, siegel_transform(T, tau)
 end
 
+@doc raw"""
+    siegel_transform(T::ZZMatrix, tau::AcbMatrix) -> AcbMatrix
+
+Let `T = [[A,B],[C,D]]` be a 2g x 2g matrix subdivided into four g x g
+matrices `A`, `B`, `C` and `D`.
+
+Return `(A*tau + B) * inv(C*tau + D)`.
+"""
+function siegel_transform(T::ZZMatrix,tau::AcbMatrix)
+  g = number_of_rows(tau)
+  @req number_of_columns(tau) == g "Tau needs to be a square matrix."
+  @req number_of_rows(T) == number_of_columns(T) == 2*g "If tau is a g by g matrix then T needs to be a 2g by 2g matrix."
+  A = T[1:g, 1:g]
+  B = T[1:g, g+1:2*g]
+  C = T[g+1:2*g, 1:g]
+  D = T[g+1:2*g, g+1:2*g]
+  return (A*tau + B) * inv(C*tau+D)
+end
 
 function cholesky_decomposition(x::ArbMatrix)
   z = similar(x, nrows(x), ncols(x))
   p = precision(base_ring(x))
-  fl = ccall((:arb_mat_cho, Hecke.libarb), Cint, (Ref{ArbMatrix}, Ref{ArbMatrix}, Int), z, x, p)
+  fl = ccall((:arb_mat_cho, libflint), Cint, (Ref{ArbMatrix}, Ref{ArbMatrix}, Int), z, x, p)
   @assert fl != 0
   return z
 end
-
-function lll(M::ArbMatrix; ctx = LLLContext(0.99, 0.51))
-  return lll_with_transform(M::ArbMatrix; ctx = LLLContext(0.99, 0.51))[1]
-end
-
-function lll_with_transform(M::ArbMatrix; ctx = LLLContext(0.99, 0.51))
-  R = base_ring(M)
-
-  #Find number of bits of precision of coefficients of M and subtract 4 to divide by 16 and ensure the numbers are small enough to round
-  p = -(ceil(Int,log(maximum(radius, M))/log(2))+4)
-  n = nrows(M)
-  d = zero_matrix(ZZ, n, n)
-  round_scale!(d, M, p)
-  d, T = lll_with_transform(d, ctx)
-  T = change_base_ring(R, T)
-  return T*M, T
-end
-
-
-function shortest_vectors(M::ArbMatrix)
-  R = base_ring(M)
-  p = -(ceil(Int,log(maximum(radius, M))/log(2))+4)
-  n = nrows(M)
-  d = zero_matrix(ZZ, n, n)
-  round_scale!(d, M, p)
-  L = integer_lattice(d)
-  U = shortest_vectors(L)
-  return map(matrix, [map(R, u)*M for u in U])
-end
-

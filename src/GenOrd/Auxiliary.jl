@@ -7,7 +7,7 @@ struct FFElemCoeffs{T <: RingElement}
    f::T
 end
 
-function Nemo.coefficients(f::Generic.FunctionFieldElem)
+function Nemo.coefficients(f::Generic.AbsSimpleFunctionFieldElem)
    return FFElemCoeffs(f)
 end
 
@@ -21,7 +21,7 @@ function Base.iterate(PC::FFElemCoeffs, st::Int = -1)
 end
 Base.length(PC::FFElemCoeffs) = degree(parent(PC.f))
 
-function representation_matrix(a::Generic.FunctionFieldElem)
+function representation_matrix(a::Generic.AbsSimpleFunctionFieldElem)
   F = parent(a)
   g = gen(F)
   m = zero_matrix(base_field(F), degree(F), degree(F))
@@ -38,33 +38,31 @@ function representation_matrix(a::Generic.FunctionFieldElem)
 end
 
 """
-    hnf_modular(M::MatElem{T}, d::T, is_prime::Bool = false)
+    hnf_modular(M::MatElem{T}, d::T, is_prime::Bool = false, shape::Symbol = :upperright)
 
 Return the `hnf` of `vcat(M, identity_matrix(parent(d), ncols(M)))`
 if `is_prime` is set, then instead of an `hnf` internally a `rref` over the
 residue field modulo `d` is used.
+For shape either :upperright or :lowerleft can be specified
 """
-function hnf_modular(M::MatElem{T}, d::T, is_prime::Bool = false) where {T}
-  if is_prime
-    x = residue_field(parent(d), d)
-    if isa(x, Tuple)
-      R, mR = x
-    else
-      R = x
-      mR = MapFromFunc(parent(d), R, x->R(x), x->lift(x))
-    end
-    r, h = rref(map_entries(mR, M))
-    H = map_entries(x->preimage(mR, x), h[1:r, :])
+function hnf_modular(M::MatElem{T}, d::T, is_prime::Bool = false, shape::Symbol = :upperright) where {T}
+  @assert shape == :upperright || shape == :lowerleft
+  if shape == :lowerleft
+    h = hnf_modular(reverse_cols(M), d, is_prime, :upperright)
+    reverse_cols!(h)
+    reverse_rows!(h)
+    return h
+  end
+
+  # make sure to pin the type of H: the result of both branches has typeof(M)
+  #   but compiler cannot infer it
+  H::typeof(M) = if is_prime
+    _, mF = residue_field(parent(d), d)
+    r, h = rref(map_entries(mF, M))
+    map_entries(x->preimage(mF, x), h[1:r, :])
   else
-    x = residue_ring(parent(d), d)
-    if isa(x, Tuple)
-      R, mR = x
-    else
-      R = x
-      mR = MapFromFunc(parent(d), R, x->R(x), x->lift(x))
-    end
-    r, h = rref(map_entries(mR, M))
-    H = map_entries(x->preimage(mR, x), hnf(map_entries(mR, M)))
+    _, mR = residue_ring(parent(d), d)
+    map_entries(x->preimage(mR, x), hnf(map_entries(mR, M)))
   end
   H = vcat(H, d*identity_matrix(parent(d), ncols(M)))
   H = hnf(H)
@@ -80,9 +78,9 @@ function extension_field(f::PolyRingElem{<:Generic.RationalFunctionFieldElem}, s
   return function_field(f, s, cached = cached)
 end
 
-function Hecke.basis(F::Generic.FunctionField)
+function Hecke.basis(F::Generic.AbsSimpleFunctionField)
   a = gen(F)
-  bas = [a^0, a]
+  bas = [one(F)]
   while length(bas) < degree(F)
     push!(bas, bas[end]*a)
   end
@@ -92,10 +90,10 @@ end
 function Hecke.residue_field(R::PolyRing{T}, p::PolyRingElem{T}) where {T <: NumFieldElem}
   @assert parent(p) === R
   K, _ = number_field(p)
-  return K, MapFromFunc(R, K, x -> K(x), y -> R(y))
+  return K, map_from_func(R, K, x -> K(x), y -> R(y))
 end
 
-function (F::Generic.FunctionField{T})(p::PolyRingElem{<:AbstractAlgebra.Generic.RationalFunctionFieldElem{T}}) where {T <: FieldElem}
+function (F::Generic.AbsSimpleFunctionField{T, U})(p::PolyRingElem{<:Generic.RationalFunctionFieldElem{T, U}}) where {T <: FieldElem, U <: PolyRingElem{T}}
   @assert parent(p) == parent(F.pol)
   @assert degree(p) < degree(F) # the reduction is not implemented
   R = parent(gen(F).num)
@@ -104,22 +102,34 @@ function (F::Generic.FunctionField{T})(p::PolyRingElem{<:AbstractAlgebra.Generic
   return F(map_coefficients(S, d*p, parent = R), d)
 end
 
-function (F::Generic.FunctionField)(c::Vector{<:RingElem})
+function (F::Generic.AbsSimpleFunctionField)(c::Vector{<:RingElem})
   return F(parent(F.pol)(map(base_field(F), c)))
 end
 
-(F::Generic.FunctionField)(a::GenOrdElem) = a.data
+(F::Generic.AbsSimpleFunctionField)(a::GenOrdElem) = a.data
 
-function Hecke.charpoly(a::Generic.FunctionFieldElem)
+function Hecke.charpoly(a::Generic.AbsSimpleFunctionFieldElem)
   return charpoly(representation_matrix(a))
 end
 
-function Hecke.minpoly(a::Generic.FunctionFieldElem)
+function Hecke.charpoly(R::PolyRing, a::Generic.AbsSimpleFunctionFieldElem)
+  return charpoly(R, representation_matrix(a))
+end
+
+function Hecke.minpoly(a::Generic.AbsSimpleFunctionFieldElem)
   return minpoly(representation_matrix(a))
 end
 
-function Hecke.discriminant(F::Generic.FunctionField)
+function Hecke.minpoly(R::PolyRing, a::Generic.AbsSimpleFunctionFieldElem)
+  return minpoly(R, representation_matrix(a))
+end
+
+function Hecke.discriminant(F::Generic.AbsSimpleFunctionField)
   return discriminant(defining_polynomial(F))
+end
+
+function base_field_type(::Type{Generic.AbsSimpleFunctionField{T, U}}) where {T, U}
+  return Generic.RationalFunctionField{T, U}
 end
 
 #######################################################################
@@ -149,7 +159,10 @@ function Hecke.integral_split(a::QQFieldElem, R::LocalizedEuclideanRing{ZZRingEl
 end
 Hecke.denominator(a::QQFieldElem, R::LocalizedEuclideanRing{ZZRingElem}) = integral_split(a, R)[2]
 Hecke.numerator(a::QQFieldElem, R::LocalizedEuclideanRing{ZZRingElem}) = integral_split(a, R)[1]
-(::QQField)(a::LocalizedEuclideanRingElem{ZZRingElem}) = data(a)
+
+# LocalizedEuclideanRingElem in AbstractAlgebra.jl has data typed as FieldElem
+#   and data(a) returns abstract type.
+(::QQField)(a::LocalizedEuclideanRingElem{ZZRingElem}) = data(a)::QQFieldElem
 
 function Hecke.factor(a::LocalizedEuclideanRingElem{ZZRingElem})
   c = canonical_unit(a)
@@ -157,14 +170,14 @@ function Hecke.factor(a::LocalizedEuclideanRingElem{ZZRingElem})
   L = parent(a)
   @assert isone(denominator(data(b)))
   lf = factor(numerator(data(b)))
-  return Fac(c, Dict(L(p)=>v for (p,v) = lf.fac))
+  return Fac(c, Dict(L(p)=>v for (p,v) in lf))
 end
 
 function Hecke.residue_field(R::LocalizedEuclideanRing{ZZRingElem}, p::LocalizedEuclideanRingElem{ZZRingElem})
   pp = numerator(data(p))
   @assert is_prime(pp) && isone(denominator(p))
   F = GF(pp)
-  return F, MapFromFunc(R, F, x->F(data(x)), y->R(lift(ZZ, y)))
+  return F, map_from_func(R, F, x->F(data(x)), y->R(lift(ZZ, y)))
 end
 
 Hecke.is_domain_type(::Type{LocalizedEuclideanRingElem{ZZRingElem}}) = true
@@ -174,13 +187,16 @@ Hecke.is_domain_type(::Type{LocalizedEuclideanRingElem{ZZRingElem}}) = true
 # support for RationalFunctionFieldElem{T}
 #
 #######################################################################
-# RationalFunctionFieldElem{T}, KInftyRing{T}
 
-Base.denominator(x::AbstractAlgebra.Generic.RationalFunctionFieldElem{T}, R::KInftyRing{T}) where {T} = Hecke.integral_split(x, R)[2]
+function Base.denominator(x::AbstractAlgebra.Generic.RationalFunctionFieldElem{T,U}, R::KInftyRing{T,U}) where {T<:FieldElement, U<:PolyRingElem{T}}
+  return Hecke.integral_split(x, R)[2]
+end
 
-Base.numerator(x::AbstractAlgebra.Generic.RationalFunctionFieldElem{T}, R::KInftyRing{T}) where {T} = Hecke.integral_split(x, R)[1]
+function Base.numerator(x::AbstractAlgebra.Generic.RationalFunctionFieldElem{T,U}, R::KInftyRing{T,U}) where {T<:FieldElement, U<:PolyRingElem{T}}
+  return Hecke.integral_split(x, R)[1]
+end
 
-function Hecke.integral_split(x::AbstractAlgebra.Generic.RationalFunctionFieldElem{T}, R::KInftyRing{T}) where {T}
+function Hecke.integral_split(x::AbstractAlgebra.Generic.RationalFunctionFieldElem{T,U}, R::KInftyRing{T,U}) where {T<:FieldElement, U<:PolyRingElem{T}}
   if iszero(x)
     return zero(R), one(R)
   end
@@ -193,7 +209,7 @@ function Hecke.integral_split(x::AbstractAlgebra.Generic.RationalFunctionFieldEl
   return R(x*t^(b-a)), R(t^(b-a))
 end
 
-(R::Generic.RationalFunctionField{T})(x::KInftyElem{T}) where {T <: FieldElem} = x.d
+(R::Generic.RationalFunctionField{T,U})(x::KInftyElem{T,U}) where {T<:FieldElement, U<:PolyRingElem{T}} = x.d
 
 # RationalFunctionFieldElem{T}, PolyRing{T}
 function Hecke.numerator(a::Generic.RationalFunctionFieldElem{T}, S::PolyRing{T}) where {T}
@@ -212,12 +228,27 @@ function Hecke.factor(R::S, a::Generic.RationalFunctionFieldElem{T}) where {T, S
   @assert parent(numerator(a)) == R
   f1 = factor(numerator(a))
   f2 = factor(denominator(a))
-  for (p,e) = f2.fac
-    @assert !haskey(f1.fac, p)
-    f1.fac[p] = -e
+  arr = [p => e for (p, e) in f1]
+  for (p,e) = f2
+    @assert !in(p, first.(arr))
+    push!(arr, p => -e)
   end
-  f1.unit = divexact(f1.unit, f2.unit)
-  return f1
+  u = divexact(unit(f1), unit(f2))
+  return Fac(u, Nemo._pretty_sort!(arr))
+end
+
+#######################################################################
+#
+# support for AbsSimpleNumFieldElem{T}
+#
+#######################################################################
+
+function Hecke.numerator(a::AbsSimpleNumFieldElem, O::GenOrd)
+  return integral_split(a, O)[1]
+end
+
+function Hecke.denominator(a::AbsSimpleNumFieldElem, O::GenOrd)
+  return integral_split(a, O)[2]
 end
 
 ########################################################################
@@ -227,7 +258,7 @@ end
 ########################################################################
 
 function Hecke.integral_split(M::Vector{<:AbstractAlgebra.FieldElem}, S::Generic.Ring)
-  m = [zero(S) for i in 1:length(M)]
+  m = zeros_array(S, length(M))
   den = one(S)
   for i=1:length(M)
       n, d = integral_split(M[i], S)
@@ -243,6 +274,16 @@ function Hecke.integral_split(M::Vector{<:AbstractAlgebra.FieldElem}, S::Generic
   end
   return m, den
 end
+
+function Hecke.integral_split(M::QQMatrix, S::ZZRing)
+  z = zero_matrix(ZZ, nrows(M), ncols(M))
+  d = ZZ()
+  Hecke._fmpq_mat_to_fmpz_mat_den!(z, d, M)
+  return z, d
+end
+
+Hecke.integral_split(x::Int, S::ZZRing) = ZZ(x), one(ZZ)
+
 function Hecke.integral_split(M::MatElem{<:AbstractAlgebra.FieldElem}, S::Generic.Ring)
   m = zero_matrix(S, nrows(M), ncols(M))
   den = one(S)

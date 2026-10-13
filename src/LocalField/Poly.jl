@@ -253,15 +253,19 @@ function Base.gcd(f::Generic.Poly{T}, g::Generic.Poly{T}) where T <: Union{Padic
   end
   f = setprecision(f, precision(f))
   g = setprecision(g, precision(g))
+  # Truncating to a common coefficient precision can erase a nonzero input.
+  @req !iszero(f) && !iszero(g) "Insufficient precision for polynomial gcd"
   while true
     cf = _content(f)
     if !isone(cf)
       f = divexact(f, cf)
     end
+    @req !iszero(f) && precision(f) > 0 "Insufficient precision for polynomial gcd"
     cg = _content(g)
     if !isone(cg)
       g = divexact(g, cg)
     end
+    @req !iszero(g) && precision(g) > 0 "Insufficient precision for polynomial gcd"
     if !iszero(valuation(leading_coefficient(g)))
       u, g1 = fun_factor(g)
       if iszero(valuation(leading_coefficient(f)))
@@ -411,7 +415,7 @@ function gcdx(f::Generic.Poly{T}, g::Generic.Poly{T}) where T <: Union{PadicFiel
   if iszero(valuation(leading_coefficient(g)))
     q, f1 = divrem(f, g)
     d, u, v = gcdx(g, f1)::Tuple{Generic.Poly{T}, Generic.Poly{T}, Generic.Poly{T}}
-    @hassert :padic_poly 1  d == f*v+(u-v*q)*g
+    @hassert :padic_poly 1  iszero(setprecision(d - (f*v+(u-v*q)*g), precision(f)))
     return (d, v, u-v*q)::Tuple{Generic.Poly{T}, Generic.Poly{T}, Generic.Poly{T}}
   end
   ug, gg = fun_factor(g)
@@ -419,10 +423,10 @@ function gcdx(f::Generic.Poly{T}, g::Generic.Poly{T}) where T <: Union{PadicFiel
     s = invmod(ug, f)
     to_be_div = setprecision(one(Kx)-s*ug, precision(f))
     t = divexact(to_be_div, f)
-    @hassert :padic_poly 1  t*f == 1-s*ug
+    @hassert :padic_poly 1  iszero(setprecision(t*f - (1-s*ug), precision(f)))
     d, u, v = gcdx(f, gg)::Tuple{Generic.Poly{T}, Generic.Poly{T}, Generic.Poly{T}}
-    @hassert :padic_poly 1  d == u*f + v*gg
-    @hassert :padic_poly 1  d == (u+v*t*gg)*f + v*s*g
+    @hassert :padic_poly 1  iszero(setprecision(d - (u*f + v*gg), precision(f)))
+    @hassert :padic_poly 1  iszero(setprecision(d - ((u+v*t*gg)*f + v*s*g), precision(f)))
     return (d, u+v*t*gg, v*s)::Tuple{Generic.Poly{T}, Generic.Poly{T}, Generic.Poly{T}}
   end
   uf, ff = fun_factor(f)
@@ -496,9 +500,7 @@ function divexact(f1::AbstractAlgebra.PolyRingElem{T}, g1::AbstractAlgebra.PolyR
    while !iszero(q*g1 - f1)
      pr = precision(q)
      q = setprecision(q, pr-1)
-     if iszero(q)
-       error("division was not exact:\n$f1\nby\n$g1")
-     end
+     @req !iszero(q) "Insufficient precision for exact polynomial division:\n$f1\nby\n$g1"
      @assert precision(q) < pr
    end
    return q
@@ -710,12 +712,17 @@ function _rres(f::Generic.Poly{T}, g::Generic.Poly{T}) where T <: Union{PadicFie
 end
 
 function norm(f::PolyRingElem{T}) where T <: Union{QadicFieldElem, LocalFieldElem}
-  Kx = parent(f)
+  Rx, = polynomial_ring(base_field(base_ring(f)), "x", cached = false)
+  return norm(Rx, f)
+end
+
+function norm(Rx::PolyRing, f::PolyRingElem{T}) where T <: Union{QadicFieldElem, LocalFieldElem}
   K = base_ring(f)
+  @req base_ring(Rx) === base_field(K) "Polynomial ring must be over the base field"
   f, i = deflate(f)
   P = polynomial_to_power_sums(f, degree(f)*degree(K))
   PQ = elem_type(base_field(K))[tr(x) for x in P]
-  N = power_sums_to_polynomial(PQ)
+  N = power_sums_to_polynomial(PQ, Rx)
   return inflate(N, i)
 end
 
@@ -802,8 +809,10 @@ Computes a factorization of $f$ such that every factor has a unique irreducible 
 The output is a dictionary whose keys are lifts of the irreducible factors over the residue field and values the corresponding factors of $f$.
 """
 function Hensel_factorization(f::Generic.Poly{T}) where T <: Union{PadicFieldElem, QadicFieldElem, LocalFieldElem}
+  @req !iszero(f) "Insufficient precision for Hensel factorization"
   cf = _content(f)
   f = divexact(f, cf)
+  @req precision(f) > 0 "Insufficient precision for Hensel factorization"
   Kt = parent(f)
   D = Dict{Generic.Poly{T}, Generic.Poly{T}}()
   _f = f
@@ -812,19 +821,23 @@ function Hensel_factorization(f::Generic.Poly{T}) where T <: Union{PadicFieldEle
   else
     vf = one(Kt)
   end
+  # A polynomial that is a unit modulo the uniformizer has no factors to lift.
+  if degree(f) == 0
+    return D
+  end
   @assert iszero(valuation(leading_coefficient(f)))
   K = base_ring(Kt)
   k, mk = residue_field(K)
   kt = polynomial_ring(k, "t", cached = false)[1]
   fp = kt(elem_type(k)[mk(coeff(f, i)) for i = 0:degree(f)])
-  lfp = factor(fp).fac
+  lfp = factor(fp)
   if length(lfp) == 1
     #The Hensel factorization is trivial...
-    phi = setprecision(map_coefficients(pseudo_inv(mk), first(keys(lfp)), parent = Kt), precision(f))
+    phi = setprecision(map_coefficients(pseudo_inv(mk), first(lfp)[1], parent = Kt), precision(f))
     D[phi] = f
     return D
   end
-  vlfp = Vector{dense_poly_type(elem_type(k))}(undef, length(lfp))
+  vlfp = Vector{poly_type(elem_type(k))}(undef, length(lfp))
   ind = 1
   ks = Vector{Generic.Poly{T}}(undef, length(vlfp))
   for (k1, v) in lfp
@@ -905,8 +918,8 @@ mutable struct HenselCtxdr{S}
     Q = base_ring(f)
     K, mK = residue_field(Q)
     fp = change_base_ring(f, mK)
-    fac = factor(fp).fac
-    lfp = Vector{keytype(fac)}(undef, length(fac))
+    fac = factor(fp)
+    lfp = Vector{typeof(f)}(undef, length(fac))
     ind = 1
     for (k, v) in fac
       lfp[ind] = k^v
@@ -924,8 +937,9 @@ function lift(C::HenselCtxdr, mx::Int)
   N = minimum([precision(x) for x in C.lf])
   N = min(N, minimum([precision(x) for x in C.la]))
   #have: N need mx
-  one = setprecision(parent(p), mx) do
-    Base.one(parent(p))
+  K = parent(p)
+  one = setprecision(K, mx) do
+    Base.one(K)
   end
   ch = Int[mx]
   while ch[end] > N
@@ -999,6 +1013,7 @@ function slope_factorization(f::Generic.Poly{T}) where T <: Union{PadicFieldElem
   fact = Dict{Generic.Poly{T}, Int}()
   cf = _content(f)
   f = divexact(f, cf)
+  normalized_f = f
   if !iszero(valuation(leading_coefficient(f)))
     u, f = fun_factor(f)
     u1 = reverse(u)
@@ -1023,6 +1038,12 @@ function slope_factorization(f::Generic.Poly{T}) where T <: Union{PadicFieldElem
       last_s = QQFieldElem(0)
       for l in L1
         if l == L1[end]
+          # Precision loss can change the remaining slope and hide roots even
+          # when the approximate factors still multiply to the input.
+          if degree(fphi1) > degree(phi)
+            remaining_NP = newton_polygon(fphi1, phi)
+            @req is_one_sided(remaining_NP) && slope(only(lines(remaining_NP))) == slope(l) "Insufficient precision for slope factorization"
+          end
           push!(factfphi, fphi1)
           break
         end
@@ -1037,12 +1058,14 @@ function slope_factorization(f::Generic.Poly{T}) where T <: Union{PadicFieldElem
             continue
           end
           com = fff(mu)
+          @req !iszero(com) "Insufficient precision for slope factorization"
           com = divexact(com, _content(com))
           gc = gcd(com, fphi1)
-          @assert degree(gc) > 0
-          if degree(gc) < 1
-            continue
-          end
+          # Other slopes remain, so extracting this component must leave a
+          # nonconstant factor. Low precision can make the gcd too large.
+          @req 0 < degree(gc) < degree(fphi1) "Insufficient precision for slope factorization"
+          component_NP = newton_polygon(gc, phi)
+          @req is_one_sided(component_NP) && slope(only(lines(component_NP))) == s "Insufficient precision for slope factorization"
           push!(factfphi, gc)
           fphi1 = divexact(fphi1, gc)
         end
@@ -1053,6 +1076,11 @@ function slope_factorization(f::Generic.Poly{T}) where T <: Union{PadicFieldElem
       end
     end
   end
+  # Distinct approximate factors can coincide as dictionary keys, or their
+  # coefficients can lose too much precision to reconstruct the input.
+  @req sum((degree(g)*m for (g, m) in fact); init = 0) == degree(normalized_f) "Insufficient precision for slope factorization"
+  factor_product = prod((g^m for (g, m) in fact); init = one(Kt))
+  @req !iszero(factor_product) && normalized_f*leading_coefficient(factor_product) == factor_product*leading_coefficient(normalized_f) "Insufficient precision for slope factorization"
   return fact
 end
 
@@ -1100,7 +1128,7 @@ end
 function _compute_EF_phi(phi::Generic.Poly{T}, f::Generic.Poly{T}) where T <: Union{PadicFieldElem, QadicFieldElem, LocalFieldElem}
   K = base_ring(phi)
   e = absolute_ramification_index(K)
-  s = characteristic_polynomial(f, mu)
+  s = characteristic_polynomial(f, phi)
   E = Int(denominator(QQFieldElem(Int(valuation(constant_coefficient(s))*absolute_ramification_index), degree(s))))
   k, mk = residue_field(K)
   sp = map_coefficients(mk, s, cached = false)
@@ -1163,4 +1191,46 @@ function _factor(f::Generic.Poly{T}) where T <: Union{PadicFieldElem, QadicField
 
 
 
+end
+
+################################################################################
+#
+#  Factor via global field
+#
+################################################################################
+
+
+function _basis_matrix(a::Vector{AbsSimpleNumFieldOrderElem})
+  return matrix(ZZ, length(a), degree(nf(parent(a[1]))), vcat([coordinates(x) for x = a]...))
+end
+
+function _factor_via_number_field(f::PolyRingElem{PadicFieldElem})
+  v = minimum([valuation(x) for x = coefficients(f) if !iszero(x)], init = 1)
+  P = prime(base_ring(f))
+  f *= base_ring(f)(P)^-v
+
+  g = map_coefficients(x -> lift(ZZ, x), f)
+  lg = factor(g)
+
+  ff = []
+  for (p, kk) = lg
+    k, a = number_field(p, cached = false)
+    zk = pmaximal_overorder(any_order(k), P)
+    b = map(zk, basis(k))
+    push!(b, zk(a)*b[end])
+    lp = prime_decomposition(zk, P)
+    for (pp, e) = lp
+      m = _basis_matrix(b[1:e*degree(pp)])
+      m = vcat(m, basis_matrix(pp^(e*precision(base_ring(f)))))
+      fl, s = can_solve_with_solution(m, matrix(ZZ, 1, ncols(m), coordinates(-b[e*degree(pp)+1])), side = :left)
+      @assert fl
+      push!(ff, (parent(f)(push!(vec(collect(s[1, 1:degree(pp)*e])), ZZRingElem(1))), kk))
+    end
+  end
+  return ff
+end
+
+function _is_irreducible(f::PolyRingElem{PadicFieldElem})
+  lf = factor(f)
+  return length(lf) == 1 && lf[1][2] == 1
 end

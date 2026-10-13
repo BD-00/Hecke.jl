@@ -119,8 +119,6 @@ end
 @deprecate iseq is_eq
 @deprecate isequation_order is_equation_order
 @deprecate isequivalent is_equivalent
-@deprecate isfinite_gen is_finite_gen
-@deprecate isfinite_snf is_finite_snf
 @deprecate isfixed_point_free is_fixed_point_free
 @deprecate isfree is_free
 @deprecate isfree_a4_fabi is_free_a4_fabi
@@ -163,7 +161,6 @@ end
 @deprecate islocally_isometric is_locally_isometric
 @deprecate islocally_isometric_kirschmer is_locally_isometric_kirschmer
 @deprecate islocally_isomorphic is_locally_isomorphic
-@deprecate islocally_isomorphic_with_isomophism is_locally_isomorphic_with_isomophism
 @deprecate islocally_represented_by is_locally_represented_by
 @deprecate ismaximal is_maximal
 @deprecate ismaximal_integral is_maximal_integral
@@ -247,8 +244,6 @@ end
 @deprecate Zgenera integer_genera
 @deprecate Zlattice integer_lattice
 
-@deprecate real_field real_number_field
-
 @deprecate points_with_x points_with_x_coordinate
 
 
@@ -291,3 +286,7 @@ end
 
 @deprecate hom(G::FinGenAbGroup, B::Vector{FinGenAbGroupElem}; check::Bool=true) hom(G, parent(B[1]), B; check)
 @deprecate hom(A::Vector{FinGenAbGroupElem}, B::Vector{FinGenAbGroupElem}; check::Bool=true) hom(parent(A[1]), parent(B[1]), A, B; check)
+
+# Deprecated in 0.39.21
+@deprecate is_locally_isomorphic_with_isomophism is_locally_isomorphic_with_isomorphism
+@deprecate islocally_isomorphic_with_isomophism is_locally_isomorphic_with_isomorphism

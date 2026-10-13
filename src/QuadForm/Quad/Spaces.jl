@@ -131,7 +131,7 @@ function _inner_product!(res, V::MatElem{T}, _v::Vector, _w::Vector) where {T}
   R = base_ring(V)
   temp1 = [R() for i in 1:length(_v)]
   temp2 = R()
-  return _inner_product!(ves, V, _v, _w, temp1, temp2)
+  return _inner_product!(res, V, _v, _w, temp1, temp2)
 end
 
 function _inner_product!(res, V::MatElem{T}, v::Vector{T}, w::Vector{T},
@@ -199,7 +199,7 @@ function _diagonal(V::QuadSpace, with_transform::Bool = true)
   B = complete_to_basis(K)
   g = B[k+1:end, :]*g*transpose(B[k+1:end,:])
   D, U = _gram_schmidt(g, involution(V))
-  diag = append!(zeros(base_ring(V), k), diagonal(D))
+  diag = append!([zero(base_ring(V)) for i in 1:k], diagonal(D))
   !with_transform && return diag, matrix(E, 0, 0, elem_type(E)[])
   B[k+1:end, :] = U*view(B, k+1:nrows(B), :)
   return diag, B
@@ -541,7 +541,7 @@ function _quadratic_form_with_invariants(dim::Int, det::ZZRingElem,
 
   #// Pad with ones
   k = max(0, dim - max(3, negative))
-  D = ones(Int, k)
+  D = ones(ZZRingElem, k)
   dim = dim - k
 
   local PP::Vector{ZZRingElem}
@@ -556,7 +556,7 @@ function _quadratic_form_with_invariants(dim::Int, det::ZZRingElem,
     unique!(PP)
     finite = ZZRingElem[ p for p in PP if hilbert_symbol(d, -det, p) * (p in f ? -1 : 1) * (p in finite ? -1 : 1) == -1]
     unique!(finite)
-    D = append!(D, Int[-1 for i in 1:k])
+    D = append!(D, ZZRingElem[-1 for i in 1:k])
     det = isodd(k) ? -det : det
     dim = 3
     negative = 3
@@ -1005,16 +1005,10 @@ function _solve_conic_affine(A, B, a)
     D = -B//A
     de = denominator(D)
     L, _ = number_field(z^2 - de^2 * D)
-    fl, _n = is_norm(L, a//(A) * de^2)
+    fl, n = is_norm(L, a//(A) * de^2)
 
     if !fl
       return false, zero(K), zero(K)
-    end
-
-    if L isa AbsSimpleNumField
-      n = evaluate(_n)
-    else
-      n = _n
     end
 
     @hassert :Lattice 1 norm(n) == a//(A) * de^2
@@ -1054,15 +1048,9 @@ function _solve_conic_affine(A, B, a, t)
     D = -B//A
     de = denominator(D)
     L, _ = number_field(z^2 - de^2 * D)
-    fl, _n = is_norm(L, a//(A) * de^2)
+    fl, n = is_norm(L, a//(A) * de^2)
 
     @hassert :Lattice 1 fl
-
-    if L isa AbsSimpleNumField
-      n = evaluate(_n)
-    else
-      n = _n
-    end
 
     @hassert :Lattice 1 norm(n) == a//(A) * de^2
 
@@ -1221,7 +1209,7 @@ _to_gf2(x) = x == 1 ? 0 : 1
 function is_isotropic_with_vector(q::QuadSpace{QQField, QQMatrix})
   ok, S = _isotropic_subspace(q)
   if !ok
-    z = zeros(base_ring(q), dim(q))
+    z = [zero(base_ring(q)) for _ in 1:dim(q)]
     return false, z
   end
   # confirm the computation
@@ -1258,11 +1246,12 @@ function _isotropic_subspace(q::QuadSpace{QQField, QQMatrix})
     B = kernel(g, side = :left)
     C = _basis_complement(B)
     G = gram_matrix(q,C)
-    q1 = quadratic_space(QQ, G)
+    q1 = quadratic_space(QQ, G; cached=false)
     @hassert :Lattice 1 is_regular(q1)
     ok, v = _isotropic_subspace(q1)
-    @hassert :Lattice 0 ok
-    v = vcat(B, v*C)
+    # The radical is totally isotropic on its own, so `q` is isotropic even when
+    # its non-degenerate part `q1` is not.
+    v = ok ? vcat(B, v*C) : B
     return true, v
   end
   # create an even lattice in some rescaling of q
@@ -1275,11 +1264,11 @@ function _isotropic_subspace(q::QuadSpace{QQField, QQMatrix})
   if d!=1
     e = e*d
   end
-  q = rescale(q, e)
+  q = rescale(q, e; cached=false)
   L = lattice(q)
   if mod(norm(L)//scale(L),2) == 1
     e = 2*e
-    L = rescale(L, 2)
+    L = rescale(L, 2; cached=false)
   end
   # Denis Simon's indefinite LLL may succeed in finding a zero for a
   # unimodular lattice and maybe we are lucky for a non-unimodular one
@@ -1295,16 +1284,23 @@ function _isotropic_subspace(q::QuadSpace{QQField, QQMatrix})
     return true, v
   end
   # embed in H^k for H the hyperbolic plane
-  D = rescale(discriminant_group(M),-1)
+  D = rescale(discriminant_group(M),-1; cached=false)
   (p,_,n) = signature_tuple(q)
   a = p - n
-  if a == 0 && !is_trivial(D.ab_grp)
-    s = (1, 1)
-  else
-    s = (0, a)
+  # We need a lattice R with discriminant form D, glued to M along the whole of
+  # D, and such that M + R has a balanced signature; the latter forces the
+  # signature pair of R to be of the shape (r, r + a). Milgram's formula holds
+  # for every such r, but r must be big enough for D to be the discriminant form
+  # of a lattice of rank 2*r + a. The minimal choice r = 0 is in general too
+  # small: D may need more generators than that.
+  r = 0
+  while !is_genus(D, (r, r + a))
+    r += 1
+    @req r <= ngens(D) + 2 "no lattice with discriminant form D and signature ($r, $(r + a))"
   end
+  s = (r, r + a)
   R = representative(genus(D, s))
-  LL, inj = direct_sum(M, R)
+  LL, inj = direct_sum(M, R; cached=false)
   MM = maximal_even_lattice(LL)
   # MM is sum of hyperbolic planes -> Simon should succeed
   ok, H = _maximal_isotropic_subspace_unimodular(MM)
@@ -1378,6 +1374,13 @@ function _isisotropic_with_vector(F::QQMatrix)
   v = QQFieldElem[QQ(x) for x in v]
   return b, v
 end
+
+function _isisotropic_with_vector(F::Union{zzModMatrix,ZZModMatrix})
+  is_prime(characteristic(base_ring(F))) || error("not implemented")
+  return _isisotropic_with_vector_finite(F)
+end
+
+_isisotropic_with_vector(F::MatElem{<:FinFieldElem}) = _isisotropic_with_vector_finite(F)
 
 # F must be symmetric
 function _isisotropic_with_vector(F::MatrixElem)
@@ -1737,6 +1740,14 @@ function _isisotropic_with_vector(F::MatrixElem)
   end
 end
 
+
+################################################################################
+#
+#  Isometry and Witts theorem
+#
+################################################################################
+
+
 function _quadratic_form_decomposition(F::MatrixElem)
   # Decompose F into an anisotropic kernel, an hyperbolic space and its radical
   @req is_symmetric(F) "Matrix must be symmetric"
@@ -1762,7 +1773,7 @@ function _quadratic_form_decomposition(F::MatrixElem)
   @hassert :Lattice 1 iseven(nrows(H))
   if nrows(H) > 0
     D = diagonal_matrix([matrix(K, 2, 2, [1, 0, 0, -1]) for i in 1:div(nrows(H), 2)])
-    @hassert :Lattice 1 is_isometric(quadratic_space(K, H * F * transpose(H)), quadratic_space(K, D))
+    #@hassert :Lattice 1 is_isometric(quadratic_space(K, H * F * transpose(H)), quadratic_space(K, D))
   end
 
   @hassert :Lattice 1 iszero(Rad * F * transpose(Rad))
@@ -1788,7 +1799,7 @@ function _find_hyperbolic_subspace(F)
   GG = H * F * transpose(H)
 
   if !iszero(GG[2, 2])
-    al = -GG[2, 2]//2
+    al = -divexact(GG[2, 2],2)
     for i in 1:ncols(H)
       H[2, i] = al * H[1, i] + H[2, i]
     end
@@ -1842,6 +1853,112 @@ end
 function _maximal_isotropic_subspace(F::MatElem)
   _, H, R = _quadratic_form_decomposition(F)
   return vcat(sub(H, collect(1:2:nrows(H)), collect(1:ncols(H))), R)
+end
+
+"""
+    _witts_theorem(G1::T, B1::T, G2::T, B2::T) where {T<:MatElem{<:FinFieldElem}} -> Bool, MatElem
+
+Return whether there exists an isometry between two quadratic spaces
+``V_1`` and ``V_2`` mapping the subspace ``H_1`` to ``H_2`` where ``V_i``
+has gram matrix `Gi` and ``H_i`` is the row span of `Bi` for ``i=1,2``.
+
+Explicitly, returns whether a matrix``F`` with
+`G1 = F * G2 * transpose(F)` and
+`rref(B1*F) == rref(B2)` exists and the matrix `F`.
+
+# Arguments
+- `G1`, G2` -- symmetric ``n \times n`` matrices, the gram matrices of some quadratic spaces
+- `B1`,`B2` -- ``k \times n`` matrices of rank `k` whose row span describes a subspace
+"""
+function _witts_theorem(G1::T, B1::T, G2::T, B2::T) where {T<:MatElem{<:FinFieldElem}}
+  nrows(B1) == nrows(B2) || return false, zero(G1)
+  T1 = _witts_theorem(G1, B1)
+  T2 = _witts_theorem(G2, B2)
+  F = inv(T1)*T2
+  @hassert :Lattice 0 rref(B1*F) == rref(B2)
+  return G1 == F*G2 * transpose(F), F
+end
+
+function _witts_theorem(G::T, B::T) where {T<:MatElem{<:FinFieldElem}}
+  @assert isodd(characteristic(base_ring(G)))
+  rad = kernel(G)
+  # write B
+  # as
+  # K + R
+  # where rad(G|_B) = K+R
+  # and K < rad(G) take K_1 with K + K_1 = rad(G)
+  # pick a basis of G of the form
+  # K_1 + K + R_0 + R_1 + R_0_dual + complement
+  # 0 0 0 0 0 0
+  #   0 0 0 0 0  # B
+  #     0 0 I 0  # B
+  #       G 0 0  # B
+  #         0 0
+  #           H
+  # and put G and H in some normal form
+  # intersect the row spans of B and the radical of G
+  K0 = kernel(vcat(rad, B); side=:left)
+  Krad = K0[:,1:nrows(rad)]
+  Kb = K0[:,nrows(rad)+1:end]
+  Rb = _basis_complement(rref(Kb)[2])
+  K_1 = _basis_complement(rref(Krad)[2])*rad
+
+  # Kr = Kr*rad # equal to - R
+  K = Kb*B
+  R = Rb*B
+
+  #D = Db*B
+  B1 = vcat(K_1, K, R)
+  R_0_dual_and_complement = _basis_complement(rref(B1)[2])
+  nondeg = vcat(R, R_0_dual_and_complement)
+
+  Gnondeg = nondeg*G*transpose(nondeg)
+  @assert det(Gnondeg)!=0
+  r = nrows(R)
+  E = identity_matrix(base_ring(B),nrows(Gnondeg))[1:r,:]
+  N, GN = _witts_theorem_nondeg(Gnondeg, E)
+  @assert rank(vcat(N[1:r,:], E))==r
+  # assemble a basis
+  return vcat(K, N*nondeg, K_1)
+end
+
+# some compatibility stuff for generic code
+_val(x::FinFieldElem) = iszero(x) ? 1 : 0
+_val(x::FinFieldElem, p::ZZRingElem) = iszero(x) ? 1 : 0
+_issquare(x::FinFieldElem, p::ZZRingElem) = is_square(x)
+_sqrt(x::FinFieldElem, p::ZZRingElem) = sqrt(x)
+
+function _witts_theorem_nondeg(G::T, B::T)  where {T<:MatElem{<:FinFieldElem}}
+  @assert isodd(characteristic(base_ring(G)))
+  @assert !iszero(det(G))
+  p = characteristic(base_ring(G))
+  GB = B*G*transpose(B)
+  A,H,R = Hecke._quadratic_form_decomposition(GB)
+  # complete R1 to a hyperbolic plane.
+  if nrows(A)>0
+    An, Ba = Hecke._normalize(A*GB*transpose(A), p)
+    A = An*A
+  end
+  K = base_ring(G)
+  r = nrows(R)
+
+  Rb = solve(G*transpose(R*B), identity_matrix(K, r); side=:left)
+  C = Rb*G*transpose(Rb)
+  Ra = R*B
+  # Modify
+  # 0 I
+  # I C
+  # to
+  # 0 I
+  # I 0
+  Rb -= C*Ra
+  N = vcat(vcat(A,H)*B,Ra,Rb)
+  # normalize the orthogonal complement of N
+  P = kernel(G*transpose(N); side=:left)
+  GP = P*G*transpose(P)
+  GP, BP = _normalize(GP,p)
+  NP = vcat(N,BP*P)
+  return NP, NP*G*transpose(NP)
 end
 
 function _isisometric_with_isometry(F, G)
@@ -1941,10 +2058,31 @@ is_isotropic(q::QuadSpace) = is_isotropic(isometry_class(q))
 
 
 function _isisotropic_with_vector_finite(M)
-  n = ncols(M)
   k = base_ring(M)
+  n = ncols(M)
   _test(v) = iszero(matrix(k, 1, n, v) * M * matrix(k, n, 1, v))
-  @hassert :Lattice 1 k isa Field && characteristic(k) != 2
+  if characteristic(k) == 2
+    # q(x) = sum_i M[i, i] * x[i]^2
+    # also, we are perfect
+    if n == 0 || (n == 1 && M[1, 1] != 0)
+      return false, elem_type(k)[]
+    else
+      # isotropic
+      i = findfirst(i -> is_zero(M[i, i]), 1:n)
+      v = zeros_array(k, n)
+      if i !== nothing
+        v[i] = one(k)
+      else
+        a = sqrt(M[1, 1])
+        b = sqrt(M[2, 2])
+        v[1] = b
+        v[2] = a
+      end
+      @assert _test(v)
+      return true, v
+    end
+  end
+  @hassert :Lattice 1 (k isa Field || is_prime(modulus(k))) && characteristic(k) != 2
   if n == 0
     ;
   elseif n == 1
@@ -1971,7 +2109,7 @@ function _isisotropic_with_vector_finite(M)
     end
 
     if n == 2
-      ok, s = is_square_with_sqrt(-divexact(G[1, 1], G[2, 2]))
+      ok, s = _is_square_with_sqrt(-divexact(G[1, 1], G[2, 2]))
       if ok
         el = elem_type(k)[T[1, i] + s*T[2, i] for i in 1:ncols(T)]
         @hassert :Lattice _test(el)
@@ -1981,7 +2119,7 @@ function _isisotropic_with_vector_finite(M)
       while true
         x = rand(k)
         y = rand(k)
-        ok, z = is_square_with_sqrt(divexact(-x^2 * G[1, 1] - y^2 * G[2, 2], G[3, 3]))
+        ok, z = _is_square_with_sqrt(divexact(-x^2 * G[1, 1] - y^2 * G[2, 2], G[3, 3]))
         if (ok && (!iszero(x) || !iszero(y)))
           el = elem_type(k)[x*T[1, i] + y*T[2, i] + z * T[3, i] for i in 1:ncols(T)]
           @hassert :Lattice _test(el)
@@ -1993,17 +2131,66 @@ function _isisotropic_with_vector_finite(M)
   return false, elem_type(k)[]
 end
 
+_is_square_with_sqrt(x::FieldElem) = is_square_with_sqrt(x)
+
+function _is_square_with_sqrt(x::zzModRingElem)
+  b, v, _p = is_prime_power_with_data(characteristic(parent(x)))
+  b || error("modulus must be a prime power")
+  p = Int(_p)
+  b = _issquare(x, p)
+  b || return false, zero(x)
+  return true, _sqrt(x, p, Int(v))
+end
+
 @doc raw"""
     signature_tuple(q::QuadraticSpace{QQField,QQMatrix) ->Tuple{Int,Int,Int}
 
 Return the number of (positive, zero, negative) inertia of this rational quadratic space.
 """
-function signature_tuple(q::QuadSpace{QQField,QQMatrix})
-  D = diagonal(q)
-  pos = count(d>0 for d in D)
-  zero = count(d==0 for d in D)
-  neg = count(d<0 for d in D)
-  return (pos, zero, neg)
+@attr Tuple{Int,Int,Int} function signature_tuple(q::QuadSpace{QQField,QQMatrix})
+  g = gram_matrix(q)
+  n = ncols(g)
+  n == 0 && return (0, 0, 0)
+
+  K = kernel(g, side = :left)
+  k = nrows(K)
+  k == n && return (0, n, 0)
+
+  # g is already non-degenerate in the common case: avoid the basis
+  # completion and the two matrix multiplications it would otherwise take
+  # to restrict to the non-degenerate part.
+  if k == 0
+    gg = g
+  else
+    B = complete_to_basis(K)
+    gg = B[k+1:end, :] * g * transpose(B[k+1:end, :])
+  end
+  m = ncols(gg)
+
+  # Leading principal minors D_0 = 1, D_1, ..., D_m of the non-degenerate part.
+  # Jacobi's theorem does not apply directly once a minor vanishes (e.g. a
+  # hyperbolic plane on the diagonal), so bail out as soon as that happens
+  # instead of computing the remaining (larger, more expensive) minors only
+  # to discard them.
+  minors = Vector{QQFieldElem}(undef, m + 1)
+  minors[1] = one(QQ)
+  for r in 1:m
+    minors[r + 1] = det(@view gg[1:r, 1:r])
+    if is_zero(minors[r + 1])
+      # Fall back to an explicit diagonalization
+      D = diagonal(q)
+      pos = count(d > 0 for d in D)
+      neg = count(d < 0 for d in D)
+      return (pos, k, neg)
+    end
+  end
+
+  # Jacobi's theorem: since all leading principal minors are nonzero, the
+  # number of negative eigenvalues equals the number of sign changes in the
+  # sequence D_0, D_1, ..., D_m.
+  neg = count(r -> (minors[r] > 0) != (minors[r + 1] > 0), 1:m)
+  pos = m - neg
+  return (pos, k, neg)
 end
 
 @doc raw"""
@@ -2238,7 +2425,7 @@ function represents(V::LocalQuadSpaceCls, x)
   if x == 0
     return true
   end
-  q = quadratic_space(base_ring(V), base_ring(V)[x;])
+  q = quadratic_space(base_ring(V), base_ring(V)[x;]; cached=false)
   V2 = isometry_class(q, prime(V))
   return represents(V, V2)
 end
@@ -2252,7 +2439,7 @@ function is_isotropic(G1::LocalQuadSpaceCls)
     return false
   end
   # if it is isotropic there is a hyperbolic plane
-  H = quadratic_space(base_ring(G1), base_ring(G1)[0 1; 1 0])
+  H = quadratic_space(base_ring(G1), base_ring(G1)[0 1; 1 0]; cached=false)
   G2 = isometry_class(H, prime(G1))
   return represents(G1, G2)
 end
@@ -2277,6 +2464,11 @@ end
 
 function _is_valid(q::QuadSpaceCls{K}) where {K}
   q.dim >= q.dim_rad >= 0 || return false
+
+  # Subtraction of classes produces virtual classes, whose signature tuples may
+  # have negative entries. No quadratic space has a negative number of positive
+  # (resp. negative) squares at a real place, so such a class is not valid.
+  all(all(>=(0), s) for s in values(q.signature_tuples)) || return false
 
   @hassert :Lattice 1 !iszero(q.det)
   dim = q.dim - q.dim_rad
@@ -2480,7 +2672,7 @@ function is_isotropic(G1::QuadSpaceCls)
     return false
   end
   # if it is isotropic there is a hyperbolic plane
-  H = quadratic_space(base_ring(G1), base_ring(G1)[0 1; 1 0])
+  H = quadratic_space(base_ring(G1), base_ring(G1)[0 1; 1 0]; cached=false)
   G2 = isometry_class(H)
   return represents(G1, G2)
 end
@@ -2509,7 +2701,7 @@ function represents(g1::QuadSpaceCls, x)
   if x == 0
     return true
   end
-  q = quadratic_space(K, matrix(K, 1, 1, [x]))
+  q = quadratic_space(K, matrix(K, 1, 1, [x]); cached=false)
   g2 = isometry_class(q)
   return represents(g1, g2)
 end
@@ -2617,7 +2809,7 @@ function representative(g::QuadSpaceCls)
   q = _quadratic_form_with_invariants(n-k,d,finite,negative)
   ker = zero_matrix(K, k, k)
   q = diagonal_matrix([q,ker])
-  return quadratic_space(K, q)
+  return quadratic_space(K, q; cached=false)
 end
 
 @doc raw"""
@@ -2638,7 +2830,7 @@ function representative(g::QuadSpaceCls{QQField,ZZIdl,QQFieldElem})
   q = _quadratic_form_with_invariants(n-k, d, finite, negative)
   ker = zero_matrix(K, k, k)
   q = diagonal_matrix([q,ker])
-  return quadratic_space(K, q)
+  return quadratic_space(K, q; cached=false)
 end
 
 

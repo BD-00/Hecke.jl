@@ -74,7 +74,8 @@ function Base.rand(P::LineEnumCtx)
     v = rand(K, n)
   end
   j = findfirst(!iszero, v)
-  map!(x -> x*inv(v[j]), v, v)
+  vj_inv = inv(v[j])
+  map!(x -> x*vj_inv, v, v)
   return v
 end
 
@@ -332,7 +333,24 @@ function line_orbits(G::Vector{FqPolyRepMatrix})
 end
 
 function line_orbits(G::Vector{FqMatrix})
-  return _line_orbits(G)
+  isempty(G) && throw(ArgumentError("Generators must be non-empty"))
+  F = base_ring(G[1])
+  if order(F) != 2 
+    return _line_orbits(G)
+  else 
+    n = ncols(G[1])
+    if n < 32
+      T = UInt32 
+    elseif n<64
+      T = UInt64
+    else
+      # UInt128 could work in principle, but memory requirements are too high for practical use and it is untested in the range where it would be needed
+      error("Cannot compute line orbits over F2 for n >= 64")
+    end
+    sizes_and_orbits = line_orbits_mod_2(T, G)
+    # convert to the output format 
+    return Tuple{Vector{FqFieldElem},Int}[(F.(i[2]),Int(i[1])) for i in sizes_and_orbits]
+  end 
 end
 
 function _line_orbits(G::Vector)
@@ -810,7 +828,7 @@ function _muleq!(x::FqMatrix, y::FqFieldElem)
   GC.@preserve x begin
     for i in 1:nrows(x)
       for j in 1:ncols(x)
-        el = Nemo.fq_default_mat_entry_ptr(x, i, j)
+        el = mat_entry_ptr(x, i, j)
         ccall((:fq_default_mul, libflint), Cvoid,
               (Ptr{FqFieldElem}, Ptr{FqFieldElem}, Ref{FqFieldElem}, Ref{FqField}), el, el, y, R)
       end
@@ -825,7 +843,7 @@ function _normalize!(x::FqMatrix)
   local ell
   GC.@preserve x begin
     for j in 1:ncols(x)
-      el = Nemo.fq_default_mat_entry_ptr(x, 1, j)
+      el = mat_entry_ptr(x, 1, j)
       b = ccall((:fq_default_is_zero, libflint), Cint,
                 (Ptr{FqFieldElem}, Ref{FqField}), el, R)
       if !Bool(b)
@@ -840,7 +858,7 @@ function _normalize!(x::FqMatrix)
     @assert piv != 0
 
     for j in (piv+1):ncols(x)
-      el = Nemo.fq_default_mat_entry_ptr(x, 1, j)
+      el = mat_entry_ptr(x, 1, j)
       ccall((:fq_default_mul, libflint), Cvoid,
             (Ptr{FqFieldElem}, Ptr{FqFieldElem}, Ref{FqFieldElem}, Ref{FqField}), el, el, ell, R)
     end
@@ -898,7 +916,7 @@ function _isless(x::Vector{FqFieldElem}, y::FqMatrix, tx::ZZRingElem = ZZRingEle
   GC.@preserve y begin
     for i in 1:d
       xi = x[i]
-      el = Nemo.fq_default_mat_entry_ptr(y, 1, i)
+      el = mat_entry_ptr(y, 1, i)
       #el = ccall((:fq_default_mat_entry, libflint), Ptr{FqFieldElem},
       #           (Ref{FqMatrix}, Int, Int), y, 0, i - 1)
       b = ccall((:fq_default_equal, libflint), Cint,

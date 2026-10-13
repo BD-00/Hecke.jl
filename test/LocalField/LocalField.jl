@@ -8,6 +8,8 @@
     @test characteristic(K) == 0
     @test prime(K) == 2
 
+    ConformanceTests.test_Field_interface(K)
+
     Kt, t = polynomial_ring(K, "t")
     g = t^2+2
     L, b = local_field(g, "b", Hecke.EisensteinLocalField, check = false)
@@ -40,8 +42,12 @@
 
   @testset "Norm" begin
     K = qadic_field(3, 4, precision = 10)[1]
+    ConformanceTests.test_Field_interface(K)
+
     Kx, x = polynomial_ring(K, "x")
     L = eisenstein_extension(x^20+3)[1]
+    ConformanceTests.test_Field_interface(L)
+
     b = @inferred basis(L)
     for i = 1:10
       r = 1+2*uniformizer(L)^i * sum([rand(1:10)*b[i] for i in 1:5])
@@ -50,6 +56,40 @@
       @test n == det(M)
       @test trace(r) == trace(M)
     end
+  end
+
+  @testset "Minimal polynomial" begin
+    K, a = qadic_field(3, 2, precision = 20)
+    Qp = base_field(K)
+    Qpx, x = polynomial_ring(Qp, "x")
+    U, u = unramified_extension(x^2 + 1)
+    L, b = eisenstein_extension(x^2 - 3)
+    Kt, t = polynomial_ring(K, "t")
+    M, c = eisenstein_extension(t^2 - 3)
+    Lt, t = polynomial_ring(L, "t")
+    N, d = eisenstein_extension(t^2 - b)
+
+    for (F, z) in ((K, a), (U, u), (L, b), (M, c), (N, d))
+      R, y = polynomial_ring(base_field(F), "y", cached = false)
+      f = minpoly(R, z)
+      @test parent(f) === R
+      @test f == R(collect(coefficients(defining_polynomial(F))))
+      @test iszero(f(z))
+
+      g = minpoly(z)
+      @test base_ring(g) === base_field(F)
+      @test collect(coefficients(g)) == collect(coefficients(f))
+      @test minpoly(R, zero(F)) == y
+      @test minpoly(R, one(F)) == y - 1
+      @test minpoly(R, F(2)) == y - 2
+
+      Fx, _ = polynomial_ring(F, "x", cached = false)
+      @test_throws ArgumentError minpoly(Fx, z)
+    end
+
+    f = absolute_minpoly(d)
+    @test base_ring(f) === Qp
+    @test f == gen(parent(f))^4 - 3
   end
 
   @testset "Completions" begin

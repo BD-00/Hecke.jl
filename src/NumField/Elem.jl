@@ -32,15 +32,16 @@ end
 #
 ################################################################################
 
-is_integral(a::QQFieldElem) = isone(denominator(a))
+is_algebraic_integer(a::QQFieldElem) = is_integer(a)
 
-@doc doc"""
-    is_integral(a::NumFieldElem) -> Bool
+is_integral(a::QQFieldElem) = is_algebraic_integer(a)
 
-Returns whether $a$ is integral, that is, whether the minimal polynomial of $a$
-has integral coefficients.
+@doc raw"""
+    is_algebraic_integer(x::NumFieldElem)
+
+Return whether $x$ is an algebraic integer.
 """
-function is_integral(a::NumFieldElem)
+function is_algebraic_integer(a::NumFieldElem)
   K = parent(a)
   if is_maximal_order_known(K)
     OK = maximal_order(K)
@@ -55,6 +56,102 @@ function is_integral(a::NumFieldElem)
   return true
 end
 
+@doc raw"""
+    is_integral(a::NumFieldElem) -> Bool
+
+Returns whether $a$ is integral, that is, whether the minimal polynomial of $a$
+has integral coefficients.
+"""
+is_integral(a::NumFieldElem) = is_algebraic_integer(a)
+
+################################################################################
+#
+#  Integer and rational
+#
+################################################################################
+
+@doc raw"""
+    isinteger(a::AbsNonSimpleNumFieldElem)
+
+Return `true` if the given number field element is an integer, i.e., in ZZ, otherwise
+return `false`.
+"""
+function isinteger(a::AbsNonSimpleNumFieldElem)
+  is_constant(data(a)) || return false
+  return isinteger(constant_coefficient(data(a)))
+end
+
+@doc raw"""
+    is_rational(a::AbsNonSimpleNumFieldElem)
+
+Return `true` if the given number field element is a rational number, i.e., in QQ,
+otherwise `false`.
+"""
+is_rational(a::AbsNonSimpleNumFieldElem) = is_constant(data(a))
+
+################################################################################
+#
+#  Random elements
+#
+################################################################################
+
+RandomExtensions.maketype(K::Union{AbsNonSimpleNumField, RelSimpleNumField, RelNonSimpleNumField},
+                         ::AbstractUnitRange{<:IntegerUnion}) = elem_type(K)
+
+RandomExtensions.maketype(K::Union{AbsNonSimpleNumField, RelSimpleNumField, RelNonSimpleNumField},
+                         ::AbstractUnitRange{<:IntegerUnion},
+                         ::AbstractUnitRange{<:IntegerUnion}) = elem_type(K)
+
+function rand(rng::AbstractRNG,
+              sp::SamplerTrivial{<:Make2{<:NumFieldElem,
+                                         <:Union{RelSimpleNumField, RelNonSimpleNumField},
+                                         <:AbstractUnitRange{<:IntegerUnion}}})
+  K, r = sp[][1:end]
+  k = base_field(K)
+  return K([rand(rng, k, r) for _ in 1:degree(K)])
+end
+
+function rand(rng::AbstractRNG,
+              sp::SamplerTrivial{<:Make3{<:NumFieldElem,
+                                         <:Union{AbsNonSimpleNumField, RelSimpleNumField, RelNonSimpleNumField},
+                                         <:AbstractUnitRange{<:IntegerUnion},
+                                         <:AbstractUnitRange{<:IntegerUnion}}})
+  K, r, d = sp[][1:end]
+  @req !(0 in d) "denominator range must not contain zero"
+  a = rand(rng, K, r)
+  return divexact(a, K(rand(rng, d)))
+end
+
+@doc raw"""
+    rand([rng::AbstractRNG], K::NumField, r::AbstractUnitRange) -> NumFieldElem
+    rand([rng::AbstractRNG], K::NumField, r::AbstractUnitRange, d::AbstractUnitRange) -> NumFieldElem
+
+Return a random element of `K` with independent integer coefficients from `r`
+in its absolute basis. For a relative field, sample coefficients recursively
+over its base field.
+"""
+function rand(rng::AbstractRNG,
+              K::Union{AbsNonSimpleNumField, RelSimpleNumField, RelNonSimpleNumField},
+              r::AbstractUnitRange{<:IntegerUnion})
+  return rand(rng, make(K, r))
+end
+
+function rand(rng::AbstractRNG,
+              K::Union{AbsNonSimpleNumField, RelSimpleNumField, RelNonSimpleNumField},
+              r::AbstractUnitRange{<:IntegerUnion}, d::AbstractUnitRange{<:IntegerUnion})
+  return rand(rng, make(K, r, d))
+end
+
+function rand(K::Union{AbsNonSimpleNumField, RelSimpleNumField, RelNonSimpleNumField},
+              r::AbstractUnitRange{<:IntegerUnion})
+  return rand(Random.default_rng(), K, r)
+end
+
+function rand(K::Union{AbsNonSimpleNumField, RelSimpleNumField, RelNonSimpleNumField},
+              r::AbstractUnitRange{<:IntegerUnion}, d::AbstractUnitRange{<:IntegerUnion})
+  return rand(Random.default_rng(), K, r, d)
+end
+
 ################################################################################
 #
 #  Random elements from arrays of number field elements
@@ -63,7 +160,7 @@ end
 
 ## rand(::Vector{NumFieldElem}, ::AbstractUnitRange)
 
-@doc doc"""
+@doc raw"""
     rand([rng::AbstractRNG], b::Vector{NumFieldElem}, r::AbstractUnitRange) -> NumFieldElem
     rand([rng::AbstractRNG], make(F::NumField, b::Vector{NumFieldElem}, r::AbstractUnitRange)) -> NumFieldElem
 
@@ -85,7 +182,7 @@ end
 
 ## rand(::Vector{<: NumFieldElem}, ::AbstractUnitRange, ::Int)
 
-@doc doc"""
+@doc raw"""
     rand([rng::AbstractRNG], b::Vector{NumFieldElem}, r::AbstractUnitRange, terms::Int) -> NumFieldElem
     rand([rng::AbstractRNG],
          make(F::NumField, b::Vector{NumFieldElem}, r::AbstractUnitRange, terms::Int)) -> NumFieldElem
@@ -111,7 +208,7 @@ end
 
 ## rand!(::NumFieldElem, ::Vector{NumFieldElem}, ::AbstractUnitRange, terms::Int)
 
-@doc doc"""
+@doc raw"""
     rand!([rng::AbstractRNG], c::NumFieldElem, b::Vector{NumFieldElem},
           r::AbstractUnitRange, terms::Int) -> NumFieldElem
     rand!([rng::AbstractRNG], c::NumFieldElem,
@@ -152,7 +249,7 @@ end
 
 ## rand!(::NumFieldElem, ::Vector{NumFieldElem}, ::AbstractUnitRange)
 
-@doc doc"""
+@doc raw"""
     rand!(c::NumFieldElem, b::Vector{NumFieldElem}, r::AbstractUnitRange) -> NumFieldElem
     rand!(c::NumFieldElem, make(F::NumField, b::Vector{NumFieldElem}, r::AbstractUnitRange)) -> NumFieldElem
 
@@ -195,7 +292,7 @@ end
 #
 ################################################################################
 
-@doc doc"""
+@doc raw"""
     basis_matrix(v::Vector{NumFieldElem}) -> Mat
 
 Given a vector $v$ of $n$ elements of a number field $K$ of degree $d$, this
@@ -211,7 +308,7 @@ basis_matrix(v::Vector{<: NumFieldElem})
 #
 ################################################################################
 
-@doc doc"""
+@doc raw"""
     charpoly(a::NumFieldElem) -> PolyRingElem
 
 Given a number field element $a$ of a number field $K$, this function returns
@@ -219,7 +316,7 @@ the characteristic polynomial of $a$ over the base field of $K$.
 """
 charpoly(::NumFieldElem)
 
-@doc doc"""
+@doc raw"""
     absolute_charpoly(a::NumFieldElem) -> PolyRingElem
 
 Given a number field element $a$ of a number field $K$, this function returns
@@ -227,7 +324,7 @@ the characteristic polynomial of $a$ over the rationals $\mathbf{Q}$.
 """
 absolute_charpoly(::NumFieldElem)
 
-@doc doc"""
+@doc raw"""
     minpoly(a::NumFieldElem) -> PolyRingElem
 
 Given a number field element $a$ of a number field $K$, this function returns
@@ -235,7 +332,7 @@ the minimal polynomial of $a$ over the base field of $K$.
 """
 minpoly(::NumFieldElem)
 
-@doc doc"""
+@doc raw"""
     absolute_minpoly(a::NumFieldElem) -> PolyRingElem
 
 Given a number field element $a$ of a number field $K$, this function returns
@@ -250,7 +347,7 @@ absolute_minpoly(::NumFieldElem)
 #
 ################################################################################
 
-@doc doc"""
+@doc raw"""
     coeff(a::SimpleNumFieldElem, i::Int) -> FieldElem
 
 Given a number field element `a` of a simple number field extension `L/K`, this
@@ -261,8 +358,8 @@ coeff(::SimpleNumFieldElem, ::Int)
 
 # copy does not do anything (so far), this is only for compatibility with coefficients(::AbstractAssociativeAlgebraElem)
 
-@doc doc"""
-    coefficients(a::SimpleNumFieldElem, i::Int) -> Vector{FieldElem}
+@doc raw"""
+    coefficients(a::SimpleNumFieldElem) -> Vector{FieldElem}
 
 Given a number field element `a` of a simple number field extension `L/K`, this
 function returns the coefficients of `a`, when expanded in the canonical
@@ -272,7 +369,7 @@ function coefficients(a::SimpleNumFieldElem; copy::Bool = false)
   return [ coeff(a, i) for i = 0:degree(parent(a)) - 1 ]
 end
 
-@doc doc"""
+@doc raw"""
     (L::SimpleNumField)(c::Vector) -> SimpleNumFieldElem
 
 Given a simple number field extension `L/K` and a vector of elements that are
@@ -312,7 +409,7 @@ end
 #
 ################################################################################
 
-@doc doc"""
+@doc raw"""
     tr(a::NumFieldElem) -> NumFieldElem
 
 Returns the trace of an element $a$ of a number field extension $L/K$. This
@@ -320,7 +417,7 @@ will be an element of $K$.
 """
 tr(::NumFieldElem)
 
-@doc doc"""
+@doc raw"""
     norm(a::NumFieldElem) -> NumFieldElem
 
 Returns the norm of an element $a$ of a number field extension $L/K$. This
@@ -347,7 +444,7 @@ function _elem_norm_to(a, k::T) where {T}
   end
 end
 
-@doc doc"""
+@doc raw"""
     tr(a::NumFieldElem, k::NumField) -> NumFieldElem
 
 Returns the trace of an element $a$ of a number field $L$ with respect to
@@ -359,7 +456,7 @@ end
 
 tr(a::NumFieldElem, ::QQField) = _elem_tr_to(a, QQ)
 
-@doc doc"""
+@doc raw"""
     norm(a::NumFieldElem, k::NumField) -> NumFieldElem
 
 Returns the norm of an element $a$ of a number field $L$ with respect to
@@ -371,7 +468,7 @@ end
 
 norm(a::NumFieldElem, ::QQField) = _elem_norm_to(a, QQ)
 
-@doc doc"""
+@doc raw"""
     absolute_tr(a::NumFieldElem) -> QQFieldElem
 
 Given a number field element $a$, returns the absolute trace of $a$.
@@ -386,7 +483,7 @@ absolute_tr(a::AbsNonSimpleNumFieldElem) = tr(a)
 
 absolute_tr(x::QQFieldElem) = x
 
-@doc doc"""
+@doc raw"""
     absolute_norm(a::NumFieldElem) -> QQFieldElem
 
 Given a number field element $a$, returns the absolute norm of $a$.
@@ -405,7 +502,7 @@ absolute_norm(a::QQFieldElem) = a
 #
 ################################################################################
 
-@doc doc"""
+@doc raw"""
     norm(f::PolyRingElem{<:NumFieldElem}) -> PolyRingElem
 
 Returns the norm of $f$, that is, the product of all conjugates of $f$ taken
@@ -413,16 +510,34 @@ coefficientwise.
 """
 function norm(f::PolyRingElem{<: NumFieldElem})
   K = base_ring(f)
-  P = polynomial_to_power_sums(f, degree(f)*degree(K))
-  PQ = elem_type(base_field(K))[tr(x) for x in P]
-  return power_sums_to_polynomial(PQ)
+  n, ff = remove(f, gen(parent(f)))
+  if degree(ff) > 0
+    P = polynomial_to_power_sums(ff, degree(ff)*degree(K))
+    PQ = elem_type(base_field(K))[tr(x) for x in P]
+    N = power_sums_to_polynomial(PQ)
+  else
+    k = base_field(K)
+    kt, = polynomial_ring(k, :t; cached = false)
+    N = kt(norm(constant_coefficient(ff)))
+  end
+  (n > 0) && (N = shift_left(N, n*degree(K)))
+  return N
 end
 
 function norm(f::PolyRingElem{<:NumFieldElem}, k::NumField)
   K = base_ring(f)
-  P = polynomial_to_power_sums(f, degree(f)*degree(K))
-  PQ = elem_type(base_field(K))[tr(x, k) for x in P]
-  return power_sums_to_polynomial(PQ)
+  n, ff = remove(f, gen(parent(f)))
+  if degree(ff) > 0
+    P = polynomial_to_power_sums(ff, degree(ff)*degree(K))
+    PQ = elem_type(base_field(K))[tr(x, k) for x in P]
+    N = power_sums_to_polynomial(PQ)
+  else
+    k = base_field(K)
+    kt, = polynomial_ring(k, :t; cached = false)
+    N = kt(norm(constant_coefficient(ff), k))
+  end
+  (n > 0) && (N = shift_left(N, n*degree(K)))
+  return N
 end
 
 norm(a::QQPolyRingElem) = a
@@ -438,6 +553,7 @@ function absolute_norm(f::PolyRingElem{<: NumFieldElem})
 end
 
 function is_irreducible(f::PolyRingElem{<: NumFieldElem})
+  is_zero(f) && return false
   # TODO (easy): We can do better then this. First do a squarefree factorization
   lf = factor(f)
   return sum(values(lf.fac)) == 1
@@ -466,7 +582,7 @@ end
 #
 ################################################################################
 
-@doc doc"""
+@doc raw"""
     representation_matrix(a::NumFieldElem) -> MatElem
 
 Returns the representation matrix of $a$, that is, the matrix representing
@@ -480,7 +596,7 @@ representation_matrix(a::NumFieldElem)
 #
 ################################################################################
 
-@doc doc"""
+@doc raw"""
     gen(L::SimpleNumField) -> NumFieldElem
 
 Given a simple number field $L = K[x]/(f)$ over $K$, this functions returns the
@@ -488,7 +604,7 @@ class of $x$, which is the canonical primitive element of $L$ over $K$.
 """
 gen(::SimpleNumField)
 
-@doc doc"""
+@doc raw"""
     gens(L::NonSimpleNumField) -> Vector{NumFieldElem}
 
 Given a non-simple number field $L = K[x_1,\dotsc,x_n]/(f_1,\dotsc,f_n)$ over
@@ -502,7 +618,7 @@ gens(::NonSimpleNumField)
 #
 ################################################################################
 
-@doc doc"""
+@doc raw"""
     coordinates(x::NumFieldElem{T}) -> Vector{T}
 
 Given an element $x$ in a number field $K$, this function returns the coordinates of $x$
@@ -563,7 +679,7 @@ end
 #
 ################################################################################
 
-@doc doc"""
+@doc raw"""
     absolute_coordinates(x::NumFieldElem{T}) -> Vector{T}
 
 Given an element $x$ in a number field $K$, this function returns the coordinates of $x$
@@ -597,7 +713,7 @@ end
 ################################################################################
 
 function denominator!(z::ZZRingElem, a::AbsSimpleNumFieldElem)
-   ccall((:nf_elem_get_den, libantic), Nothing,
+   ccall((:nf_elem_get_den, libflint), Nothing,
          (Ref{ZZRingElem}, Ref{AbsSimpleNumFieldElem}, Ref{AbsSimpleNumField}),
          z, a, a.parent)
    return z
@@ -615,7 +731,7 @@ end
 Computes the $\mathfrak p$-adic valuation of $a$, that is, the largest $i$
 such that $a$ is contained in $\mathfrak p^i$.
 """
-function valuation(::NumFieldElem, p) end
+valuation(::NumFieldElem, ::Any)
 
 ################################################################################
 #
@@ -652,7 +768,7 @@ end
 
 absolute_minpoly(a::AbsSimpleNumFieldElem) = minpoly(a)
 
-absolute_minpoly(a::AbsNonSimpleNumField) = minpoly(a)
+absolute_minpoly(a::AbsNonSimpleNumFieldElem) = minpoly(a)
 
 absolute_minpoly(a::T) where T <: Union{RelNonSimpleNumFieldElem, RelSimpleNumFieldElem} = minpoly(a, QQ)
 

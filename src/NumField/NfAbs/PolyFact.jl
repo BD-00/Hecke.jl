@@ -33,7 +33,7 @@ mutable struct HenselCtxQadic <: Hensel
     Q = base_ring(f)
     K, mK = residue_field(Q)
     fp = map_coefficients(mK, f, cached = false)
-    lfp = collect(keys(factor(fp).fac))
+    lfp = first.(collect(factor(fp)))
     return HenselCtxQadic(f, lfp)
   end
 end
@@ -646,7 +646,7 @@ function van_hoeij(f::PolyRingElem{AbsSimpleNumFieldElem}, P::AbsNumFieldOrderId
     have = vcat(0:up_to-1, from:N-2)  #N-1 is always 1
 
     if degree(P) == 1
-      mD = MapFromFunc(K, base_ring(vH.H.f), x->coeff(mC(x),0), y->K(lift(ZZ, y)))
+      mD = map_from_func(K, base_ring(vH.H.f), x->coeff(mC(x),0), y->K(lift(ZZ, y)))
       @vtime :PolyFactor 1 C = cld_data(vH.H, up_to, from, mD, vH.pM[1], den*leading_coefficient(f))
     else
       @vtime :PolyFactor 1 C = cld_data(vH.H, up_to, from, mC, vH.pM[1], den*leading_coefficient(f))
@@ -703,13 +703,12 @@ function van_hoeij(f::PolyRingElem{AbsSimpleNumFieldElem}, P::AbsNumFieldOrderId
 
     while length(have) > length(used)
       local m
-      m_empty = true
+      m = nothing
       for i=1:length(have)
         if have[i] in used
           continue
         end
-        if m_empty || b[i] < m[1]
-          m_empty = false
+        if m === nothing || b[i] < m[1]
           m = (b[i], i)
         end
       end

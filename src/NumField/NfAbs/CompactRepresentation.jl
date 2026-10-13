@@ -126,20 +126,21 @@ function compact_presentation(a::FacElem{AbsSimpleNumFieldElem, AbsSimpleNumFiel
 
   while k>=1
     @vprintln :CompactPresentation 1 "k now: $k"
-    D = Dict((p, div(ZZRingElem(v), n^k)) for (p, v) = de if v >= n^k)
+    nk = n^k
+    D = Dict((p, div(ZZRingElem(v), nk)) for (p, v) = de if v >= nk)
     if length(D) == 0
       A = FacElem(Dict(ideal(ZK, 1) => 1))
     else
       A = FacElem(D)
     end
-    vv = ArbFieldElem[x//n^k for x = v]
+    vv = ArbFieldElem[x//nk for x = v]
     vvv = ZZRingElem[]
     el_embs = a*be
     for i=1:r1
       while !radiuslttwopower(vv[i], -5)
         arb_prec *= 2
         v = conjugates_arb_log_normalise(el_embs, arb_prec)
-        vv = ArbFieldElem[x//n^k for x = v]
+        vv = ArbFieldElem[x//nk for x = v]
       end
       push!(vvv, round(ZZRingElem, vv[i]//log(2)))
     end
@@ -147,7 +148,7 @@ function compact_presentation(a::FacElem{AbsSimpleNumFieldElem, AbsSimpleNumFiel
       while !radiuslttwopower(vv[i], -5)
         arb_prec *= 2
         v = conjugates_arb_log_normalise(el_embs, arb_prec)
-        vv = ArbFieldElem[x//n^k for x = v]
+        vv = ArbFieldElem[x//nk for x = v]
       end
       local r = round(ZZRingElem, vv[i]//log(2)//2)
       push!(vvv, r)
@@ -307,6 +308,11 @@ function evaluate_mod(a::FacElem{AbsSimpleNumFieldElem, AbsSimpleNumField}, B::A
   ZK = order(B)
   dB = denominator(B)#*denominator(basis_matrix(ZK, copy = false))
 
+  den = ZZ(1)
+  if !(is_defining_polynomial_nice(K) && contains_equation_order(ZK))
+    den = denominator(gen(K), ZK)^degree(K)
+  end
+
   @hassert :CompactPresentation 1 factored_norm(B) == abs(factored_norm(a))
   @hassert :CompactPresentation 2 B == ideal(order(B), a)
 
@@ -346,15 +352,15 @@ function evaluate_mod(a::FacElem{AbsSimpleNumFieldElem, AbsSimpleNumField}, B::A
     m = modular_lift(mp, me)
     if isone(pp)
       re = m
-      rf = mod_sym(ZK(re), p)
+      rf = mod_sym(ZK(re*den), p)
       pp = p
     else
       p2 = pp*p
       last = rf
       re = induce_inner_crt(re, m, pp*invmod(pp, p), p2, div(p2, 2))
-      rf = mod_sym(ZK(re), p2)
+      rf = mod_sym(ZK(re*den), p2)
       if rf == last
-        return nf(ZK)(rf)//dB
+        return nf(ZK)(rf)//dB//den
       end
       pp = p2
     end

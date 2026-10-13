@@ -1,7 +1,4 @@
 @testset "Height functions for elliptic curves" begin
-  E1 = elliptic_curve([1, -1, 1, -2063758701246626370773726978, 32838647793306133075103747085833809114881])
-  P = E1([-30987785091199, 258909576181697016447])
-
   Rx, x = polynomial_ring(QQ, "x")
   K, a = number_field(x^3 - x^2 + 1)
   E1_nf = elliptic_curve(K, [0, a-1, a+1, 0, -a])
@@ -9,6 +6,9 @@
 
 
   @testset "Naive height" begin
+    E1 = elliptic_curve([1, -1, 1, -2063758701246626370773726978, 32838647793306133075103747085833809114881])
+    P = E1([-30987785091199, 258909576181697016447])
+
     nh = @inferred naive_height(P, 10)
     @test overlaps(nh, parent(nh)("31.0646142134475839"))
     nh2 = @inferred naive_height(P, 1000)
@@ -36,80 +36,103 @@
   end
 
   @testset "Non-archimedean local heights" begin
-    lh = @inferred local_height(P, 17)
-    @test overlaps(lh, parent(lh)("-1.8888088960374773868330230785820843570588020083904965248648251585"))
-    lh2 = @inferred local_height(P, 17, 1000)
-    @test Hecke.radiuslttwopower(lh2, -1000)
-    @test contains(lh, lh2)
+    # compute the answer with given precision and compare to expected value
+    # default precision matches local_height's default (100 bits)
+    # then recompute with higher precision (1000 bits), confirm the radius
+    #   and that it agrees with the lower precision result
+    function _check_local_height_func(P, p, expectedF, prec::Int = 100)
+      lh = @inferred local_height(P, p, prec)
+      @test overlaps(lh, expectedF(parent(lh)))
 
-    lh = @inferred local_height(P, 3)
-    @test overlaps(lh, parent(lh)("-1.09861228866810969139524523692252570464749055782274945173469433363749429321860"))
-    lh2 = @inferred local_height(P, 3, 1000)
-    @test Hecke.radiuslttwopower(lh2, -1000)
-    @test contains(lh, lh2)
+      lh_hi = @inferred local_height(P, p, 1000)
+      @test Hecke.radiuslttwopower(lh_hi, -1000)
+      @test contains(lh, lh_hi)
+    end
 
-    lh = local_height(infinity(E1), 0)
-    @test lh == 0
-    lh2 = local_height(infinity(E1), 0, 1000)
-    @test Hecke.radiuslttwopower(lh2, -1000)
+    function _check_local_height(P, p, expected, prec::Int = 100)
+      _check_local_height_func(P, p, R -> R(expected), prec)
+    end
 
-    lh = local_height(infinity(E1), 2)
-    @test lh == 0
-    lh2 = local_height(infinity(E1), 2, 1000)
-    @test Hecke.radiuslttwopower(lh2, -1000)
+    # 2:  I18 split multiplicative
+    # 3:  I2* additive
+    # 5:  I2  non-split multiplicative
+    # 17: I3  split multiplicative
+    E = elliptic_curve([1, -1, 1, -2063758701246626370773726978, 32838647793306133075103747085833809114881])
 
-    E3 = elliptic_curve([1, -2])
-    P3 = E3([1, 0])
-    lh = local_height(P3, 2)
-    @test overlaps(lh, ArbField(300, cached = false)("-0.6931471805599453094172321214581765680755001343602552541206800094933936219696947156058633269964186876"))
-    lh2 = local_height(P3, 2, 1000)
-    @test Hecke.radiuslttwopower(lh2, -1000)
-    @test contains(lh, lh2)
+    P = E([-30987785091199, 258909576181697016447])
+    _check_local_height(P, 2,  "-2.9651296057286549347292707417933108745451950192077585870718")
+    _check_local_height(P, 3,  "-1.09861228866810969139524523692252570464749055782274945173469433363749429321860")
+    _check_local_height(P, 5,  0)
+    _check_local_height(P, 17, "-1.8888088960374773868330230785820843570588020083904965248648251585")
 
-    E4 = elliptic_curve([1, 0, 1, -171, -874]);
-    P4 = E4([15, -8]);
-    lh = local_height(P4, 2)
-    @test overlaps(lh, -9//2 * log(parent(lh)(2)))
-    lh2 = local_height(P4, 2, 1000)
-    @test Hecke.radiuslttwopower(lh2, -1000)
-    @test contains(lh, lh2)
+    P = infinity(E)
+    _check_local_height(P, 3, 0)
+    _check_local_height(P, 0, 0)
 
-    E5 = elliptic_curve([0, 1, 0, -1, 0])
-    P5 = E5([1, -1])
-    lh = local_height(P5, 2)
-    @test overlaps(lh, -2//3 * log(parent(lh)(2)))
-    lh2 = local_height(P5, 2, 1000)
-    @test Hecke.radiuslttwopower(lh2, -1000)
-    @test contains(lh, lh2)
+    # 2: I0* additive
+    E = elliptic_curve([1, -2])
+    P = E([1, 0])
+    _check_local_height_func(P, 2, R -> ArbField(300, cached = false)("-0.6931471805599453094172321214581765680755001343602552541206800094933936219696947156058633269964186876"))
 
-    E6 = elliptic_curve([1, 1, 1, -8, 192]);
-    P6 = E6([68647415735927212584//3943314364572900625,519963951463804725273032226752//7830547010835704571633765625])
-    lh = local_height(P6, 44851, 3)
-    @test overlaps(lh, 2 * log(parent(lh)(44851)))
-    lh2 = local_height(P6, 44851, 1000)
-    @test contains(lh, lh2)
+    # 2:  I18 non-split multiplicative
+    E = elliptic_curve([1, 0, 1, -171, -874])
+    P = E([15, -8])
+    _check_local_height_func(P, 2, R -> -9//2 * log(R(2)))
+
+    # 2: IV additive
+    E = elliptic_curve([0, 1, 0, -1, 0])
+    P = E([1, -1])
+    _check_local_height_func(P, 2, R -> -2//3 * log(R(2)))
+
+    # 44851: I0 good
+    E = elliptic_curve([1, 1, 1, -8, 192])
+    P = E([68647415735927212584//3943314364572900625, 519963951463804725273032226752//7830547010835704571633765625])
+    _check_local_height_func(P, 44851, R -> 2 * log(R(44851)))
+    _check_local_height_func(P, 44851, R -> 2 * log(R(44851)), 3)
+
+    # 2: I5  non-split multiplicative
+    # 5: III* additive
+    E = elliptic_curve([1, 1, 0, -20700, 1134000])
+    P = E([315//4, -315//8])
+    _check_local_height_func(P, 2, R -> 2 * log(R(2)))
+    _check_local_height_func(P, 5, R -> -3 // 2 * log(R(5)))
 
     L, a = number_field(x^2 - x - 1)
     OL = ring_of_integers(L)
-    E7 = elliptic_curve(L, [1, 1, 1, -10, -10])
-    P7 = E7([-3*a + 2, 3])
-    I = prime_ideals_over(OL, 3)[1]
-    lh = local_height(P7, I)
-    @test overlaps(lh, -3//2 * log(parent(lh)(3)))
-    lh2 = local_height(P7, I, 1000)
-    @test Hecke.radiuslttwopower(lh2, -1000)
-    @test contains(lh, lh2)
+    I = numerator(ideal(OL, 1 - 2*a))
 
-    I = prime_ideals_over(OL, 5)[1]
-    lh = local_height(P7, I)
-    @test overlaps(lh, -7//8 * log(parent(lh)(5)))
-    lh2 = local_height(P7, I, 1000)
-    @test Hecke.radiuslttwopower(lh2, -1000)
-    @test contains(lh, lh2)
+    # 3:       I4 split multiplicative
+    # 1 - 2*a: I8 split multiplicative
+    E = elliptic_curve(L, [1, 1, 1, -10, -10])
+    P = E([-3*a + 2, 3])
+    _check_local_height_func(P, 3*OL, R -> -3//4 * log(R(9)))
+    _check_local_height_func(P, I, R -> -7//8 * log(R(5)))
 
+    P = infinity(E)
+    _check_local_height(P, 3*OL, 0)
+    _check_local_height(P, real_places(L)[1], 0)
+
+    # 1 - 2*a: IV additive
+    E = elliptic_curve(L, [1, 1, 1, -3, 1])
+    P = E([-4*a + 7, 16*a - 26])
+    _check_local_height_func(P, I, R -> -2//3 * log(R(5)))
+
+    L, a = number_field(x^2 - x + 1)
+    OL = ring_of_integers(L)
+    I = numerator(ideal(OL, 1 - 2*a))
+
+    # 2:       IV* additive
+    # 1 - 2*a: I0* additive
+    E = elliptic_curve(L, [0, 0, 0, -15, 22])
+    P = E([-1, -6])
+    _check_local_height_func(P, 2*OL, R -> -4//3 * log(R(4)))
+    _check_local_height_func(P, I, R -> -log(R(3)))
   end
 
   @testset "Archimedean local heights" begin
+     E1 = elliptic_curve([1, -1, 1, -2063758701246626370773726978, 32838647793306133075103747085833809114881])
+     P = E1([-30987785091199, 258909576181697016447])
+
      lh = @inferred local_height(P, 0)
      @test overlaps(lh, parent(lh)("31.81286785798043275682637979803303125935036048926542077924848835239766790624470"))
      lh2 = @inferred local_height(P, 0, 1000)
@@ -155,22 +178,82 @@
        @test contains(lh, lh2)
      end
 
+    # archimedean local height does not change under u = 1
+
+    let E = elliptic_curve(QQ, [0, 0, 1, -1, 0])
+      P = E([0, 0])
+      _, phi, _ = transform_rstu(E, QQ.([1//2, 1//2, 1//2, 1]))
+      @test overlaps(local_height(phi(P), 0, 50), local_height(P, 0, 50))
+    end
+
+    for L in (quadratic_field(17)[1], quadratic_field(-17)[1])
+      w = (1 + gen(L))//2
+      E = elliptic_curve(L, [0, 0, 1, -1, 0])
+      P = E([0, 0])
+      G, phi, _ = transform_rstu(E, [w, w, w, 1])
+      for v in vcat(real_places(L), complex_places(L))
+        @test overlaps(local_height(phi(P), v, 50), local_height(P, v, 50))
+      end
+    end
+
   end
 
-
-
   @testset "Canonical height" begin
+     E1 = elliptic_curve([1, -1, 1, -2063758701246626370773726978, 32838647793306133075103747085833809114881])
+     P = E1([-30987785091199, 258909576181697016447])
      ch = @inferred canonical_height(P)
      @test overlaps(ch, parent(ch)("25.860317067546190743868840740735110323098872903844416215577171041783572"))
      ch2 = @inferred canonical_height(P, 1000)
      @test Hecke.radiuslttwopower(ch2, -1000)
      @test contains(ch, ch2)
 
+    # 37.a1
+    let h00 = "0.051111408239968840235886099757"
+      transform = [[0, 0, 0, 1],           # the minimal model itself
+                   [0, 0, 0, 1//2],        # non-minimal at 2 (good reduction)
+                   [0, 0, 0, 1//37],       # non-minimal at 37 (bad reduction)
+                   [0, 0, 0, 2],           # non-integral at 2
+                   [1//3, 1, 1//2, 3//7]]  # non-minimal and non-integral
+      for F in [QQ, K, quadratic_field(17)[1]], rstu in transform
+        E = elliptic_curve(F, [0, 0, 1, -1, 0])
+        G, phi, _ = transform_rstu(E, map(F, rstu))
+        P = phi(E([0, 0]))
 
+        h = @inferred canonical_height(P, 50)
+        @test overlaps(h, parent(h)(h00))
 
+        # in Q(sqrt(17)), 2 splits and [OK : Z[sqrt(17)]] = 2, thus minimal
+        #   model at primes above 2 carry denominators
+        h = @inferred canonical_height(2*P, 50)
+        @test overlaps(h, 4*parent(h)(h00))
+
+        h = @inferred canonical_height(5*P, 50)
+        @test overlaps(h, 25*parent(h)(h00))
+
+        @test contains(canonical_height(infinity(G), 50), 0)
+      end
+    end
+
+    # Order-two point with a denominator at the bad prime (2).
+    let E = elliptic_curve(K, [1, 1, 0, -20700, 1134000]),
+        P = E([315//4, -315//8])
+      @test is_infinite(2*P)
+      h = @inferred canonical_height(P, 100)
+      @test contains(h, 0)
+      @test Hecke.radiuslttwopower(h, -100)
+    end
+
+    # x(P) = (3*a^2 - 2*a + 16)/25: denominator ideal of norm 25 (5 splits), integer denominator 25 of norm 25^3
+    let E = elliptic_curve(K, [0, a^2 - 1, 1, -a^2, 0]),
+        P = 2*E([-a + 1, -a^2 + a - 1])
+      h = @inferred canonical_height(P, 100)
+      @test overlaps(h, parent(h)("1.0879631588314750249053432385433044425046669"))
+    end
   end
 
   @testset "Neron-Tate height" begin
+    E1 = elliptic_curve([1, -1, 1, -2063758701246626370773726978, 32838647793306133075103747085833809114881])
+    P = E1([-30987785091199, 258909576181697016447])
     # this is just an alias
     ch = @inferred canonical_height(P)
     nth = @inferred neron_tate_height(P)

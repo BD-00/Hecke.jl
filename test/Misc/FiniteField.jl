@@ -1,3 +1,18 @@
+@testset "Multiplicative generator" begin
+  fields = FinField[
+    GF(31),
+    GF(ZZRingElem(31)),
+    GF(ZZRingElem(31), 2, :a),
+  ]
+
+  for F in fields
+    g = multiplicative_generator(F)
+    n = order(F) - 1
+    @test all(l -> !isone(g^div(n, l)), prime_divisors(n))
+    @test multiplicative_generator(F) === g
+  end
+end
+
 @testset "fpField" begin
 
   for p in [31, 11, 101]
@@ -219,7 +234,7 @@ end
   @test absolute_degree(K) == 2
   K, r = splitting_field(t^6-2, do_roots = true)
   @test length(r) == 2
-  
+
   K = splitting_field(t^6-t-1)
   @test degree(K) == 6
 
@@ -228,6 +243,64 @@ end
 
   @test absolute_degree(E) == 30
   @test length(r) == 5
-end  
+end
 
+let
+  F = GF(3,4)
+  a = gen(F)
+  for i in 1:10
+    i = rand(0:3^4 - 1)
+    b = a^i
+    m = disc_log(a, b)
+    # a is not promised to be primitive
+    @test a^m == b
+  end
+end
 
+let # #2237
+  F = GF(37)
+  R,t = F[:t]
+  f = t^14 + 26*t^13 + 18*t^12 + 9*t^11 + 30*t^10 + 4*t^9 + 16*t^8 + 29*t^7 + 34*t^6 + 23*t^5 + 8*t^4 + 28*t^3 + 10*t^2 + 11*t + 32
+  L, mL = Hecke.field_extension(f)
+  U, mU = unit_group(L)
+  @test order(U) == ZZ(37)^14 - 1
+end
+
+@testset "Reduction of number field elements" begin
+  Qx, x = QQ["x"]
+  k, a = number_field(x^7 - 3*x + 5, "a")
+
+  # denominators are units mod every p below; length 7 exceeds 2*degree(K),
+  # which forces the reduction to divide by the modulus
+  b = (2//3)*a^6 - 5*a^4 + (1//7)*a + 11//5
+
+  # image of b under a -> gen(K)
+  img(K, b) = sum(K(coeff(b, i)) * gen(K)^i for i in 0:degree(parent(b))-1)
+
+  let p = 11
+    K, _ = Native.finite_field(p, 2, "g")
+    for Rx in [polynomial_ring(Native.GF(p), "t")[1],
+               polynomial_ring(residue_ring(ZZ, p)[1], "t")[1]]
+      c = K()
+      Hecke._nf_to_fq!(c, b, K, Rx())
+      @test c == img(K, b)
+    end
+  end
+
+  for p in [11, next_prime(ZZ(2)^70)]
+    Fx, _ = polynomial_ring(Native.GF(ZZ(p)), "t")
+
+    K, _ = Native.finite_field(ZZ(p), 2, "g")
+    c = K()
+    Hecke._nf_to_fq!(c, b, K, Fx())
+    @test c == img(K, b)
+
+    # d = 1, 2, 5 cover all fq_default backends
+    for d in [1, 2, 5]
+      K = GF(p, d)
+      c = K()
+      Hecke._nf_to_fq!(c, b, K, Fx())
+      @test c == img(K, b)
+    end
+  end
+end
