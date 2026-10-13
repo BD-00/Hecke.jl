@@ -5,12 +5,14 @@
   @test 0 in diagonal(q)
   w = matrix(k, 2, 2, [1, 2, 3, 4])
   @test inner_product(q, w, w) == w * QQ[1 1; 1 1] * transpose(w)
+  @test !is_indefinite(q)
 
   q = quadratic_space(k, 2)
   @test sprint(show, q) isa String
   @test sprint(show, Hecke.isometry_class(q)) isa String
   @test sprint(show, Hecke.isometry_class(q, 2)) isa String
   @test is_definite(q)
+  @test !is_indefinite(q)
   v = matrix(k,1,2,[2,1])
   @test inner_product(q,v,v) == matrix(k,1,1,[5])
   @test Hecke._inner_product(lattice(q),v,v) == matrix(k,1,1,[5])
@@ -545,4 +547,20 @@ let
   @test cls1 !== Hecke.isometry_class(q, p)
   @test hash(cls1) == hash(Hecke.isometry_class(q, p))
 end
- 
+
+@testset "witts theorem" begin
+  k = GF(3)
+  G = k[0 1 0 0 0 0;
+        1 0 0 0 0 0;
+        0 0 1 0 0 0;
+        0 0 0 1 0 0;
+        0 0 0 0 0 0;
+        0 0 0 0 0 0]
+  B1 = k[0 1 0 0 0 0; 0 0 1 0 0 0; 0 0 0 0 1 0;]
+  B2 = k[1 0 0 0 0 0; 0 0 0 1 0 0; 0 0 0 0 1 1;]
+
+  b, F = Hecke._witts_theorem(G, B1, G, B2)
+  @test b
+  @test F*G*transpose(F) == G
+  @test rref(B1*F) == rref(B2)
+end

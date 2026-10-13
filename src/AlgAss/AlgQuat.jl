@@ -39,7 +39,7 @@ end
 function QuaternionAlgebra(K::Field, a::T, b::T) where { T <: FieldElem }
   if characteristic(K)!=2
     @assert a != zero(K) && b != zero(K)
-    M = zeros(K, 4, 4, 4)
+    M = zeros_array(K, 4, 4, 4)
 
     M[1, 1, 1] = one(K) # 1*1=1
     M[1, 2, 2] = one(K) # 1*i=i
@@ -70,7 +70,7 @@ function QuaternionAlgebra(K::Field, a::T, b::T) where { T <: FieldElem }
     return z
   else #if characteristic(K)=2
     @assert b != zero(K)
-    M = zeros(K, 4, 4, 4)
+    M = zeros_array(K, 4, 4, 4)
 
     M[1, 1, 1] = one(K) # 1*1=1*1
     M[1, 2, 2] = one(K) # 1*i=1*i
@@ -113,6 +113,8 @@ base_ring(A::QuaternionAlgebra{T}) where {T} = A.base_ring::parent_type(T)
 base_ring_type(::Type{QuaternionAlgebra{T}}) where {T} = parent_type(T)
 
 multiplication_table(A::QuaternionAlgebra; copy = false) = A.mult_table
+
+structure_constant_table(A::QuaternionAlgebra; copy = false) = A.mult_table
 
 standard_form(A::QuaternionAlgebra) = A.std
 
@@ -223,7 +225,7 @@ function standard_involution(A::QuaternionAlgebra{T}) where {T}
 end
 
 @doc raw"""
-    conjugate(a::AssociativeAlgebraElem{_, QuaternionAlgebra})
+    conj(a::AssociativeAlgebraElem{_, QuaternionAlgebra})
                                  -> AssociativeAlgebraElem{_, QuaternionAlgebra}
 
 Return the image of $a$ under the canonical involution of the quaternion
@@ -235,11 +237,11 @@ algebra.
 julia> Q = quaternion_algebra(QQ, -1, -1); a = Q([1, 1, 1, 1])
 1 + i + j + k
 
-julia> conjugate(a)
+julia> conj(a)
 1 - i - j - k
 ```
 """
-function conjugate(a::AssociativeAlgebraElem{T, QuaternionAlgebra{T}}) where {T}
+function conj(a::AssociativeAlgebraElem{T, QuaternionAlgebra{T}}) where {T}
   return standard_involution(parent(a))(a)
 end
 
@@ -451,10 +453,10 @@ function Base.enumerate(O::Union{AlgAssRelOrd, AlgAssAbsOrd}, b::Int, equal::Boo
     @assert absolute_tr(normred(y)) <= b
     if equal
       if absolute_tr(normred(y)) == b
-        push!(res, O(y))
+        push!(res, O(y, false))
       end
     else
-      push!(res, O(y))
+      push!(res, O(y, false))
     end
   end
 
@@ -477,9 +479,12 @@ function unit_group_modulo_scalars(O::AlgAssRelOrd)
     _n = abs(ZZ(absolute_tr(_x)))
     # Reduce modulo squares, so that the trace is hopefully small
     x = evaluate(reduce_mod_powers(elem_in_nf(_x), 2))
+    diff = _x * inv(x)
     n = abs(ZZ(absolute_tr(x)))
-    if _n < n
+    if _n < n || !(diff in OF && norm(diff) == 1)
       # the old x has smaller trace
+      # or
+      # old x/new x is not square of an integral element
       x = _x
       n = _n
     end
@@ -517,7 +522,11 @@ end
 
 function _unit_group_generators_quaternion(O::Union{AlgAssRelOrd, AlgAssAbsOrd}; GRH::Bool = true)
   gens1 = unit_group_modulo_scalars(O)
-  u, mu = unit_group(base_ring(O); GRH = GRH)
+  if O isa AlgAssAbsOrd
+    u, mu = unit_group(base_ring(O))
+  else
+    u, mu = unit_group(base_ring(O); GRH = GRH)
+  end
   A = algebra(O)
   gens2 = [ O(A(elem_in_nf(mu(u[i])))) for i in 1:ngens(u) ]
   return append!(gens1, gens2)
@@ -679,7 +688,7 @@ end
 function StructureConstantAlgebra(A::QuaternionAlgebra)
   K = base_ring(A)
   B = StructureConstantAlgebra(K, A.mult_table)
-  return B, hom(A, B, identity_matrix(K, 4), identity_matrix(K, 4))
+  return B, hom(B, A, identity_matrix(K, 4), identity_matrix(K, 4))
 end
 
 ################################################################################
@@ -744,4 +753,62 @@ function is_split_with_zero_divisor(A::QuaternionAlgebra{<:Union{QQFieldElem, Ab
   @assert !is_zero(alpha)
   @assert norm(alpha) == 0
   return true, alpha
+end
+
+################################################################################
+#
+#  Opposite algebra
+#
+################################################################################
+
+@attr Tuple{typeof(A), morphism_type(A, A)} function opposite_algebra(A::QuaternionAlgebra)
+  m = basis_matrix(conjugate.(basis(A)))
+  return A, hom(A, A, m, m; check = false)
+end
+
+# ################################################################################
+# #
+# #  Center
+# #
+# ################################################################################
+#
+function center(A::QuaternionAlgebra{T}) where {T}
+  if isdefined(A, :center)
+    return A.center::Tuple{StructureConstantAlgebra{T}, morphism_type(StructureConstantAlgebra{T}, typeof(A))}
+  end
+  B, mB = StructureConstantAlgebra(A)
+  C, mC = center(B)
+  mD = compose_and_squash(mB, mC)
+  A.center = C, mD
+#  R = base_ring(A)
+#  C = structure_constant_algebra(R, [one(R);;;])
+#  mC = hom(C, A, [one(A)])
+  if isdefined(A, :decomposition)
+    idems = elem_type(C)[has_preimage_with_preimage(mC, StoA(one(SS)))[2] for (SS, StoA) in A.decomposition]
+    set_attribute!(C, :central_idempotents, idems)
+  end
+
+  return A.center
+end
+
+################################################################################
+#
+#  Decomposition
+#
+################################################################################
+
+function decompose(A::QuaternionAlgebra{T}) where {T}
+  _dec_via_center(A)
+  @assert isdefined(A, :decomposition)
+  return A.decomposition::Vector{Tuple{StructureConstantAlgebra{T}, morphism_type(StructureConstantAlgebra{T}, typeof(A))}}
+end
+
+#################################################################################
+#
+#  As algebra over center
+#
+################################################################################
+
+function _as_algebra_over_center(A::QuaternionAlgebra)
+  return A, id_hom(A)
 end

@@ -486,55 +486,29 @@ function ==(a::SRow{ZZRingElem, ZZRingElem_Array}, b::SRow{ZZRingElem, ZZRingEle
   return true
 end
 
-function sparse_row(R::ZZRing, A::Vector{Tuple{Int, Int}}; sort::Bool = true)
-  if sort && length(A) > 1
-    A = Base.sort(A, lt=(a,b)->isless(a[1], b[1]))
-  end
-  a = ZZRingElem_Array()
-  sizehint!(a, length(A))
-  l = Int[]
-  # assume A is sorted
-  local c
-  for (i, (p, v)) in enumerate(A)
-    if i == 1
-      c = p
-    else
-      if c == p
-        error("positions in sparse row must be unique")
+for T in (Int, ZZRingElem)
+  @eval begin
+    function sparse_row(R::ZZRing, A::Vector{Tuple{Int, $T}}; sort::Bool = true)
+      if sort && length(A) > 1
+        A = Base.sort(A, lt=(a,b)->isless(a[1], b[1]))
       end
-      c = p
-    end
-    if !is_zero(v)
-      push!(a, v)
-      push!(l, p)
-    end
-  end
-  return SRow(R, l, a)
-end
-
-function sparse_row(R::ZZRing, A::Vector{Tuple{Int, ZZRingElem}}; sort::Bool = true)
-  if sort && length(A) > 1
-    A = Base.sort(A, lt=(a,b)->isless(a[1], b[1]))
-  end
-  a = ZZRingElem_Array()
-  sizehint!(a, length(A))
-  local c
-  l = Int[]
-  for (i, (p, v)) in enumerate(A)
-    if i == 1
-      c = p
-    else
-      if c == p
-        error("positions in sparse row must be unique")
+      a = ZZRingElem_Array()
+      sizehint!(a, length(A))
+      l = Int[]
+      c = nothing
+      for (p, v) in A
+        if c !== nothing && c == p
+          error("positions in sparse row must be unique")
+        end
+        c = p
+        if !is_zero(v)
+          push!(a, v)
+          push!(l, p)
+        end
       end
-      c = p
-    end
-    if !is_zero(v)
-      push!(a, v)
-      push!(l, p)
+      return SRow(R, l, a)
     end
   end
-  return SRow(R, l, a)
 end
 
 function sparse_row(R::ZZRing, pos::Vector{Int64}, val::AbstractVector{T}; sort::Bool = true) where T
@@ -548,25 +522,22 @@ function sparse_row(R::ZZRing, pos::Vector{Int64}, val::AbstractVector{T}; sort:
   a = ZZRingElem_Array()
   sizehint!(a, length(val))
   l = Int[]
+  p = nothing
   for i=1:length(pos)
-    if i == 1
-      p = pp = @inbounds pos[i]
-    else
-      pp = @inbounds pos[i]
-      if pp == p
-        error("positions in sparse row must be unique")
-      end
-      p = pp
+    pp = @inbounds pos[i]
+    if p !== nothing && pp == p
+      error("positions in sparse row must be unique")
     end
+    p = pp
 
-    @inbounds if !is_zero(val[i])
+    @inbounds if !is_zero(val[i]) #TODO use Ptr and not create val
       @inbounds push!(a, val[i])
-      @inbounds push!(l, p)
+      @inbounds push!(l, pp)
     else
       error("zero passed in")
     end
   end
-  return SRow(R, l, a)
+  return SRow(R, l, a; check = false)
 end
 
 function scale_row!(a::SRow{ZZRingElem}, b::Union{ZZRingElem, Int})

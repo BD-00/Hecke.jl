@@ -47,6 +47,8 @@ is_commutative(O::AlgAssAbsOrd) = is_commutative(algebra(O))
 
 is_maximal_known(O::AlgAssAbsOrd) = O.is_maximal != 0
 
+is_known(::typeof(is_maximal), O::AlgAssAbsOrd) = is_maximal_known(O)
+
 @inline is_maximal_known_and_maximal(O::AlgAssAbsOrd) = isone(O.is_maximal)
 
 @doc raw"""
@@ -181,6 +183,8 @@ function order(A::S, B::Vector{T}; check::Bool = true, isbasis::Bool = false, ca
   end
 end
 
+order(A::AbstractAssociativeAlgebra{QQFieldElem}, B::Vector; kw...) = order(A,A.(B)::Vector{elem_type(A)}; kw...)
+
 # legacy
 function order(A::S, M::FakeFmpqMat; kw...) where {S <: AbstractAssociativeAlgebra{QQFieldElem}}
   return order(A, QQMatrix(M); kw...)
@@ -194,7 +198,7 @@ end
 Returns the order of $A$ with basis matrix $M$. If `check` is set, it is checked
 whether $M$ defines an order.
 """
-function order(A::S, M::QQMatrix; check::Bool = true, cached::Bool = true) where {S <: AbstractAssociativeAlgebra{QQFieldElem}} 
+function order(A::S, M::QQMatrix; check::Bool = true, cached::Bool = true) where {S <: AbstractAssociativeAlgebra{QQFieldElem}}
   return order(A, ZZ, M; check, cached)
 end
 
@@ -431,7 +435,7 @@ end
 
 Returns `true` if the algebra element $x$ is in $O$ and `false` otherwise.
 """
-function in(x, O::AlgAssAbsOrd)
+function in(x::AbstractAssociativeAlgebraElem, O::AlgAssAbsOrd)
   @assert parent(x) === algebra(O)
   return _check_elem_in_order(x, O, Val(true))
 end

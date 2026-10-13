@@ -16,9 +16,9 @@ function is_ramified(O::AbsNumFieldOrder, p::Union{Int, ZZRingElem})
 end
 
 @doc raw"""
-    is_tamely_ramified(O::AbsSimpleNumFieldOrder, p::Union{Int, ZZRingElem}) -> Bool
+    is_tamely_ramified(K::AbsSimpleNumField, p::Union{Int, ZZRingElem}) -> Bool
 
-Returns whether the integer $p$ is tamely ramified in $\mathcal O$.
+Returns whether the integer $p$ is tamely ramified in $K$.
 It is assumed that $p$ is prime.
 """
 function is_tamely_ramified(K::AbsSimpleNumField, p::Union{Int, ZZRingElem})
@@ -95,7 +95,7 @@ canonical lift of $f$ to a polynomial over the integers.
 """
 function lift(K::AbsSimpleNumField, f::T) where {T <: Zmodn_poly}
   if degree(f)>=degree(K)
-    f = mod(f, parent(f)(K.pol))
+    f = mod(f, change_base_ring(base_ring(parent(f)), K.pol; parent = parent(f)))
   end
   r = K()
   for i=0:f.length-1
@@ -118,64 +118,56 @@ function lift(K::AbsSimpleNumField, f::FpPolyRingElem)
   return r
 end
 
-##TODO: make ZZRingElem-safe!!!!
+# Dedekind-Kummer theorem: prime ideal from a factor
+# f is a degree of a factor modulo p, e is the exponent in factorization
+# b equals factor evaluated at generator of the field (that is, second generator of ideal)
+function _prime_from_poly(O::AbsSimpleNumFieldOrder, p::ZZRingElem, f::Int, e::Int, b::AbsSimpleNumFieldElem)
+  @assert nf(O) == parent(b)
+
+  I = AbsNumFieldOrderIdeal(O)
+  I.is_prime = 1
+  I.splitting_type = e, f
+  I.norm = p^f
+  I.minimum = p
+
+  # we want to have P(p)-normal two element presentation
+  # that is we want the second generator to be p-uniformizer
+  # since we are in the case of p not dividing the index, we have a good candidate b = g(t)
+  #
+  # v_P(<p,b>) = min[v_P(p), v_P(b)] = 1
+  # If P over p is ramified: v_P(p) > 1, guaranteeing v_P(b) = 1
+  # Otherwise (v_P(p) = 1), if v_P(b) > 1, clearly we must have v_P(b \pm p) = 1
+  # Further: for Q over p, if v_Q(b) > 0, we will have v_Q(<p,b>) > 0,
+  #   giving <p,b> \subset Q, which is impossible
+  # in unramified case we need to check if v_P(b) == 1
+  # one possibility is to check if p*|P| = p^{f+1} divides N(b)
+  #   if it doesnt - we must have v_P(b) == 1
+  if e == 1 && is_norm_divisible_pp(b, p*I.norm)
+    b = b + p
+  end
+  I.gen_one = p
+  I.gen_two = O(b, false)
+  I.gens_normal = p
+  I.gens_weakly_normal = true
+
+  # check for inert prime
+  if f == degree(O)
+    I.princ_gen = O(p)
+    I.is_principal = 1
+  end
+
+  return I
+end
+
 #return <p, lift(O, fi> in 2-element normal presentation given the data
 function ideal_from_poly(O::AbsSimpleNumFieldOrder, p::Int, fi::Zmodn_poly, ei::Int)
   b = lift(nf(O), fi)
-  idl = ideal(O, ZZRingElem(p), O(b, false))
-  idl.is_prime = 1
-  idl.splitting_type = ei, degree(fi)
-  idl.norm = ZZ(p)^degree(fi)
-  idl.minimum = ZZ(p)
-
-  # We have to do something to get 2-normal presentation:
-  # if ramified or valuation val(b,P) == 1, (p,b)
-  # is a P(p)-normal presentation
-  # otherwise we need to take p+b
-  # I SHOULD CHECK THAT THIS WORKS
-
-  if !((mod(norm(b),(idl.norm)^2) != 0) || (ei > 1))
-    idl.gen_two = idl.gen_two + O(p)
-  end
-
-  idl.gens_normal = p
-  idl.gens_weakly_normal = true
-
-  if idl.splitting_type[2] == degree(O)
-    # Prime number is inert, in particular principal
-    idl.is_principal = 1
-    idl.princ_gen = O(p)
-  end
-  return idl
+  return _prime_from_poly(O, ZZ(p), degree(fi), ei, b)
 end
 
 function ideal_from_poly(O::AbsSimpleNumFieldOrder, p::ZZRingElem, fi::FpPolyRingElem, ei::Int)
   b = lift(nf(O), fi)
-  idl = ideal(O, p, O(b, false))
-  idl.is_prime = 1
-  idl.splitting_type = ei, degree(fi)
-  idl.norm = p^degree(fi)
-  idl.minimum = p
-
-  # We have to do something to get 2-normal presentation:
-  # if ramified or valuation val(b,P) == 1, (p,b)
-  # is a P(p)-normal presentation
-  # otherwise we need to take p+b
-  # I SHOULD CHECK THAT THIS WORKS
-
-  if !((mod(norm(b),(idl.norm)^2) != 0) || (ei > 1))
-    idl.gen_two = idl.gen_two + O(p)
-  end
-
-  idl.gens_normal = p
-  idl.gens_weakly_normal = true
-
-  if idl.splitting_type[2] == degree(O)
-    # Prime number is inert, in particular principal
-    idl.is_principal = 1
-    idl.princ_gen = O(p)
-  end
-  return idl
+  return _prime_from_poly(O, p, degree(fi), ei, b)
 end
 
 @doc raw"""
@@ -271,8 +263,8 @@ function _fac_and_lift(f::ZZPolyRingElem, p, degree_limit, lower_limit)
     return _fac_and_lift_deg1(f, p)
   end
   Zx = parent(f)
-  Zmodpx, x = polynomial_ring(Native.GF(p, cached = false), "y", cached = false)
-  fmodp = Zmodpx(f)
+  fmodp = change_base_ring(Native.GF(p, cached = false), f; cached = false)
+  x = gen(parent(fmodp))
   if isone(degree_limit)
     fmodp = ppio(fmodp, powermod(x, p, fmodp)-x)[1]
   end
@@ -289,8 +281,8 @@ end
 function _fac_and_lift_deg1(f::ZZPolyRingElem, p)
   lifted_fac = Vector{Tuple{ZZPolyRingElem, Int}}()
   Zx = parent(f)
-  Zmodpx, x = polynomial_ring(Native.GF(p, cached = false), "y", cached = false)
-  fmodp = Zmodpx(f)
+  fmodp = change_base_ring(Native.GF(p, cached = false), f; cached = false)
+  x = gen(parent(fmodp))
   fsq = factor_squarefree(fmodp)
   pw = powermod(x, div(p-1, 2), fmodp)
   for (g, v) in fsq
@@ -320,10 +312,11 @@ end
 function prime_dec_nonindex(O::AbsSimpleNumFieldOrder, p::IntegerUnion, degree_limit::Int = 0, lower_limit::Int = 0)
 
   K = nf(O)
-  f = K.pol
+  f = defining_polynomial(K)
   R = parent(f)
-  Zx, x = polynomial_ring(ZZ, "x", cached = false)
-  Zf = Zx(f)
+  Zx = Globals.Zx
+  @assert is_one(denominator(f))
+  Zf = numerator(f, Zx)
 
   if degree_limit == 0
     degree_limit = degree(K)
@@ -334,37 +327,9 @@ function prime_dec_nonindex(O::AbsSimpleNumFieldOrder, p::IntegerUnion, degree_l
   result = Array{Tuple{ideal_type(O),Int}}(undef, length(fac))
 
   for k in 1:length(fac)
-    fi = fac[k][1]
-    ei = fac[k][2]
-    #ideal = ideal_from_poly(O, p, fi, ei)
-    t = parent(f)(fi)
-    b = K(t)
-    I = AbsNumFieldOrderIdeal(O)
-    I.gen_one = p
-    I.gen_two = O(b, false)
-    I.is_prime = 1
-    I.splitting_type = ei, degree(fi)
-    I.norm = ZZ(p)^degree(fi)
-    I.minimum = ZZ(p)
-
-    # We have to do something to get 2-normal presentation:
-    # if ramified or valuation val(b,P) == 1, (p,b)
-    # is a P(p)-normal presentation
-    # otherwise we need to take p+b
-    # I SHOULD CHECK THAT THIS WORKS
-
-    if ei == 1 && is_norm_divisible_pp(b, p*I.norm)
-      I.gen_two = I.gen_two + O(p)
-    end
-
-    I.gens_normal = ZZRingElem(p)
-    I.gens_weakly_normal = true
-
-    if length(fac) == 1 && I.splitting_type[2] == degree(f)
-      # Prime number is inert, in particular principal
-      I.is_principal = 1
-      I.princ_gen = O(p)
-    end
+    fi, ei = fac[k]
+    b = K(QQPolyRingElem(parent(f), fi))
+    I = _prime_from_poly(O, ZZ(p), degree(fi), ei, b)
     result[k] = (I, ei)
   end
   return result
@@ -392,19 +357,32 @@ function anti_uniformizer(P::AbsNumFieldOrderIdeal)
   if isdefined(P, :anti_uniformizer)
     return P.anti_uniformizer
   end
-  if has_2_elem_normal(P) && is_maximal_known_and_maximal(order(P))
+  if has_2_elem_normal(P) && is_maximal_known_and_maximal(order(P)) && is_defining_polynomial_nice(nf(order(P)))
     Pinv = inv(P)
     P.anti_uniformizer = mod(divexact(Pinv.num.gen_two.elem_in_nf, Pinv.den), minimum(P))
     return P.anti_uniformizer
   end
   p = minimum(P)
-  M = representation_matrix(uniformizer(P))
-  #Mp = matrix_space(residue_field(ZZ, p)[1], nrows(M), ncols(M), false)(M)
-  Mp = change_base_ring(GF(p, cached = false), M)
-  K = kernel(Mp, side = :left)
-  @assert nrows(K) > 0
-  P.anti_uniformizer = elem_in_nf(order(P)(map(x -> lift(ZZ, x), K[1, :])))//p
-  return P.anti_uniformizer
+  ai = inv(elem_in_nf(uniformizer(P)))
+  d = denominator(ai, order(P))
+  ai *= ppio(d, p)[2]
+  #p^2 since ai has valuation 0...0,  -1, 0...0, so
+  #ai*p         has           e...e, e-1, e...e (all e are differnt)
+  #(ai*p) %p    can, since v(p) = e, increase the valuations
+  #(ai*p % p^2  cannot...
+  ai = elem_in_nf(order(P)([x % p^2 for x = coordinates(order(P)(p*ai))]))//p
+  P.anti_uniformizer = ai
+  return ai
+  # Remove the following?
+  # #Belabas does not promise the valuation being 0..0 -1 0..0
+  # #the 0 can be >=0
+  # M = representation_matrix(uniformizer(P))
+  # #Mp = matrix_space(residue_field(ZZ, p)[1], nrows(M), ncols(M), false)(M)
+  # Mp = change_base_ring(GF(p, check = false, cached = false), M)
+  # K = kernel(Mp, side = :left)
+  # @assert nrows(K) > 0
+  # P.anti_uniformizer = elem_in_nf(order(P)(map(x -> lift(ZZ, x), K[1, :])))//p
+  # return P.anti_uniformizer
 end
 
 function _factor_distinct_deg(x::fpPolyRingElem)
@@ -468,11 +446,12 @@ function prime_decomposition_type(O::AbsSimpleNumFieldOrder, p::T) where T <: In
   end
   if (mod(discriminant(O), p)) != 0 && (mod(ZZRingElem(index(O)), p) != 0)
     K = nf(O)
-    f = K.pol
+    f = defining_polynomial(K)
     R = parent(f)
-    Zx, x = polynomial_ring(ZZ,"x", cached = false)
-    Zf = Zx(f)
-    fmodp = polynomial_ring(Native.GF(p, cached = false), "y", cached = false)[1](Zf)
+    Zx = Globals.Zx
+    @assert is_one(denominator(f))
+    Zf = numerator(f, Zx)
+    fmodp = change_base_ring(Native.GF(p, cached = false), Zf; cached = false)
     return _prime_decomposition_type(fmodp)
   else
     @assert O.is_maximal == 1 || p in O.primesofmaximality
@@ -535,7 +514,7 @@ with $\deg(\mathfrak p) > k$ will be discarded.
 """
 function prime_ideals_over(O::AbsSimpleNumFieldOrder,
                            lp::AbstractArray{T};
-                           degree_limit::Int = 0) where T <: IntegerUnion
+                           degree_limit::Int = degree(O)) where T <: IntegerUnion
   p = 1
   r = AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}[]
   for p in lp
@@ -616,6 +595,12 @@ Checks if $B$ divides $A$.
 function divides(A::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}, B::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem})
   @assert order(A) === order(B)
   minimum(A, copy = false) % minimum(B, copy = false) == 0 || return false
+
+  O = order(A)
+  if !(is_defining_polynomial_nice(nf(O)) && contains_equation_order(O))
+    return (valuation(A, B) > 0)::Bool
+  end
+
   if B.is_prime == 1 && has_2_elem(A) && !is_index_divisor(order(A), minimum(B, copy = false))
     #I can just test the polynomials!
     K = nf(order(A))
@@ -623,8 +608,8 @@ function divides(A::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldEl
     if !fits(Int, minimum(B))
       R = residue_ring(ZZ, minimum(B), cached = false)[1]
       Rx = polynomial_ring(R, "t", cached = false)[1]
-      f1 = Rx(Qx(A.gen_two.elem_in_nf))
-      f2 = Rx(Qx(B.gen_two.elem_in_nf))
+      f1 = change_base_ring(R, Qx(A.gen_two.elem_in_nf); parent = Rx)
+      f2 = change_base_ring(R, Qx(B.gen_two.elem_in_nf); parent = Rx)
       if iszero(f2)
         res = iszero(f1)
       else
@@ -633,8 +618,8 @@ function divides(A::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldEl
     else
       R1 = residue_ring(ZZ, Int(minimum(B)), cached = false)[1]
       R1x = polynomial_ring(R1, "t", cached = false)[1]
-      f11 = R1x(Qx(A.gen_two.elem_in_nf))
-      f21 = R1x(Qx(B.gen_two.elem_in_nf))
+      f11 = change_base_ring(R1, Qx(A.gen_two.elem_in_nf); parent = R1x)
+      f21 = change_base_ring(R1, Qx(B.gen_two.elem_in_nf); parent = R1x)
       if iszero(f21)
         res = iszero(f11)
       else
@@ -653,6 +638,8 @@ function divides(A::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldEl
   end
   return (valuation(A, B) > 0)::Bool
 end
+
+issubset(A::AbsNumFieldOrderIdeal, B::AbsNumFieldOrderIdeal) = divides(A, B)
 
 function coprime_base(A::Vector{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}}, p::ZZRingElem)
   #consider A^2 B and A B: if we do gcd with the minimum, we get twice AB
@@ -882,8 +869,9 @@ function _prefactorization(I::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimple
   end
   K = nf(I)
   el = I.gen_two.elem_in_nf
-  Zx = polynomial_ring(ZZ, "x")[1]
-  f = Zx(K.pol)
+  Zx = Globals.Zx
+  @assert is_one(denominator(defining_polynomial(K)))
+  f = numerator(defining_polynomial(K), Zx)
   f1 = Zx(denominator(el)*el)
   return prefactorization(f, n, f1)
 end
@@ -1212,9 +1200,9 @@ Base.IteratorSize(::Type{PrimeIdealsSet}) = Base.SizeUnknown()
 #TODO: move to Arithmetic?
 function radical(A::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem})
   a = minimum(A)
-  lp = factor(a).fac
+  lp = factor(a)
   R = 1*order(A)
-  for p = keys(lp)
+  for (p, _) in lp
     R = intersect(R, A + pradical(order(A), p))
   end
   return R
@@ -1231,9 +1219,9 @@ is_maximal(A::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}) =
 
 function primary_decomposition(A::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem})
   a = minimum(A)
-  lp = factor(a).fac
+  lp = factor(a)
   P = Tuple{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}, AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}}[]
-  for p = keys(lp)
+  for (p, _) in lp
     pp = prime_ideals_over(order(A), p)
     for x = pp
       if !is_coprime(x, A)
@@ -1299,7 +1287,7 @@ end
 function _fac_and_lift(f::QQMPolyRingElem, p, degree_limit, lower_limit)
   Zx, x = polynomial_ring(ZZ, cached = false)
   Zmodpx = polynomial_ring(Native.GF(p, cached = false), "y", cached = false)[1]
-  fmodp = Zmodpx(to_univariate(Globals.Qx, f))
+  fmodp = change_base_ring(base_ring(Zmodpx), to_univariate(Globals.Qx, f); parent = Zmodpx)
   fac = factor(fmodp)
   lifted_fac = Vector{Tuple{ZZPolyRingElem, Int}}()
   for (k, v) in fac
@@ -1363,7 +1351,7 @@ function prime_dec_nonindex(O::AbsNumFieldOrder{AbsNonSimpleNumField,AbsNonSimpl
     for x = Base.Iterators.product(fac...)
       k = lcm([degree(t[1]) for t = x])
       Fq = Native.finite_field(p, k, "y", cached = false)[1]
-      Fq2 = residue_ring(Rx, lift(Zx, minpoly(gen(Fq))))[1]
+      Fq2, = residue_ring(Rx, change_base_ring(R, lift(Zx, minpoly(gen(Fq))); parent = Rx))
       rt = Vector{Vector{elem_type(Fq)}}()
       RT = []
       d = 1
@@ -1386,7 +1374,7 @@ function prime_dec_nonindex(O::AbsNumFieldOrder{AbsNonSimpleNumField,AbsNonSimpl
           end
           push!(rt, a)
         end
-        push!(RT, [_lift_p2(Fq2, Zx(to_univariate(Globals.Qx, all_f[ti])), i) for i = rt[end]])
+        push!(RT, [_lift_p2(Fq2, change_base_ring(ZZ, to_univariate(Globals.Qx, all_f[ti]); parent = Zx), i) for i = rt[end]])
       end
       append!(re, [minpoly(Fpx, sum([rrt[i] * all_c[i] for i=1:length(all_c)])) for rrt in cartesian_product_iterator(rt, inplace = true)])
       append!(RE, [sum([rrt[i] * all_c[i] for i=1:length(all_c)]) for rrt in cartesian_product_iterator(RT), inplace = true])
@@ -1621,12 +1609,12 @@ function decomposition_group(P::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimp
     q = 2
     R = residue_ring(ZZ, q, cached = false)[1]
     Rx = polynomial_ring(R, "x", cached = false)[1]
-    fmod = Rx(K.pol)
+    fmod = change_base_ring(R, K.pol; parent = Rx)
     while iszero(discriminant(fmod))
       q = next_prime(q)
       R = residue_ring(ZZ, q, cached = false)[1]
       Rx = polynomial_ring(R, "x", cached = false)[1]
-      fmod = Rx(K.pol)
+      fmod = change_base_ring(R, K.pol; parent = Rx)
     end
     D = Dict{zzModPolyRingElem, Int}()
     for i = 1:length(G)
@@ -1667,7 +1655,7 @@ function decomposition_group_easy(G, P)
   K = nf(O)
   R = residue_ring(ZZ, Int(minimum(P, copy = false)), cached = false)[1]
   Rt, t = polynomial_ring(R, "t", cached = false)
-  fmod = Rt(K.pol)
+  fmod = change_base_ring(R, defining_polynomial(K); parent = Rt)
   pols = zzModPolyRingElem[Rt(image_primitive_element(x)) for x in G]
   indices = Int[]
   second_gen = Rt(P.gen_two.elem_in_nf)
@@ -1731,12 +1719,12 @@ function inertia_subgroup(P::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleN
   q = 2
   R = residue_ring(ZZ, q, cached = false)[1]
   Rx = polynomial_ring(R, "x", cached = false)[1]
-  fmod = Rx(K.pol)
+  fmod = change_base_ring(R, K.pol; parent = Rx)
   while iszero(discriminant(fmod))
     q = next_prime(q)
     R = residue_ring(ZZ, q, cached = false)[1]
     Rx = polynomial_ring(R, "x", cached = false)[1]
-    fmod = Rx(K.pol)
+    fmod = change_base_ring(R, K.pol; parent = Rx)
   end
   D = Dict{zzModPolyRingElem, Int}()
   for i = 1:length(G)
@@ -1773,7 +1761,7 @@ function inertia_subgroup_easy(F, mF, G::Vector{<:NumFieldHom{AbsSimpleNumField,
   p = minimum(P, copy = false)
   R = residue_ring(ZZ, Int(p), cached = false)[1]
   Rt = polynomial_ring(R, "t", cached = false)[1]
-  fmod = Rt(K.pol)
+  fmod = change_base_ring(R, K.pol; parent = Rt)
   gF = gen(F)
   igF = K(mF\gF)
   igFq = Rt(igF)

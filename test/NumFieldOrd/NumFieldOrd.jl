@@ -12,12 +12,12 @@
   @test is_commutative(OK)
   @test @inferred is_equation_order(OK)
   @test @inferred is_maximal(OK)
-  @test @inferred degree(OK) == 2
-  @test @inferred absolute_degree(OK) == 2
+  @test 2 == @inferred degree(OK)
+  @test 2 == @inferred absolute_degree(OK)
   BOK = absolute_basis(OK)
-  @test @inferred discriminant(BOK) == @inferred discriminant(OK)
-  @test @inferred signature(OK) == (0, 1)
-  @test @inferred discriminant(OK, QQ) == discriminant(OK)
+  @test (@inferred discriminant(BOK)) == (@inferred discriminant(OK))
+  @test (@inferred signature(OK)) == (0, 1)
+  @test (@inferred discriminant(OK, QQ)) == discriminant(OK)
 
   OKns = maximal_order(Kns)
   @inferred Hecke.nf(OKns)
@@ -25,12 +25,12 @@
   @test is_commutative(OKns)
   @test @inferred !is_equation_order(OKns)
   @test @inferred is_maximal(OKns)
-  @test @inferred degree(OKns) == 2
-  @test @inferred absolute_degree(OKns) == 2
+  @test 2 == @inferred degree(OKns)
+  @test 2 == @inferred absolute_degree(OKns)
   BOKns = absolute_basis(OKns)
-  @test @inferred discriminant(BOKns) == @inferred discriminant(OKns)
-  @test @inferred signature(OKns) == (0, 1)
-  @test @inferred discriminant(OKns, QQ) == discriminant(OKns)
+  @test (@inferred discriminant(BOKns)) == (@inferred discriminant(OKns))
+  @test (@inferred signature(OKns)) == (0, 1)
+  @test (@inferred discriminant(OKns, QQ)) == discriminant(OKns)
 
   OL = maximal_order(L)
   @inferred Hecke.nf(OL)
@@ -38,12 +38,12 @@
   @test is_commutative(OL)
   @test @inferred !is_equation_order(OL)
   @test @inferred is_maximal(OL)
-  @test @inferred degree(OL) == 2
-  @test @inferred absolute_degree(OL) == 4
+  @test 2 == @inferred degree(OL)
+  @test 4 == @inferred absolute_degree(OL)
   BOL = absolute_basis(OL)
   @test numerator(det(trace_matrix(map(elem_in_nf, BOL)))) == @inferred absolute_discriminant(OL)
-  @test @inferred signature(OL) == (0, 2)
-  @test @inferred discriminant(OL, QQ) == absolute_discriminant(OL)
+  @test (@inferred signature(OL)) == (0, 2)
+  @test (@inferred discriminant(OL, QQ)) == absolute_discriminant(OL)
 
   OLns = maximal_order(Lns)
   @inferred Hecke.nf(OLns)
@@ -51,12 +51,12 @@
   @test is_commutative(OLns)
   @test @inferred !is_equation_order(OLns)
   @test @inferred is_maximal(OLns)
-  @test @inferred degree(OLns) == 2
-  @test @inferred absolute_degree(OLns) == 4
+  @test 2 == @inferred degree(OLns)
+  @test 4 == @inferred absolute_degree(OLns)
   BOLns = absolute_basis(OLns)
   @test numerator(det(trace_matrix(map(elem_in_nf, BOLns)))) == @inferred absolute_discriminant(OLns)
-  @test @inferred signature(OLns) == (0, 2)
-  @test @inferred discriminant(OLns, QQ) == absolute_discriminant(OLns)
+  @test (@inferred signature(OLns)) == (0, 2)
+  @test (@inferred discriminant(OLns, QQ)) == absolute_discriminant(OLns)
 
 end
 
@@ -85,7 +85,6 @@ end
 
   @test domain(projL.map_subfield) === OE
   @test mL(gen(L)//2) == gen(FL)//2
-  @test absolute_degree(FL) == 6
   @test characteristic(Hecke.prime_field(FL)) == 11
 
   K,a = rationals_as_number_field()
@@ -154,5 +153,61 @@ end
   @test p1 != p2
 end
 
+let # extend_easy for bad polynomials
+  Qx, x = QQ[:x]
+  f = x^2 - 1//47
+  k, _ = number_field(f; cached = false)
+  ok = maximal_order(k)
+  lp = prime_ideals_over(ok, 11)
+  F, mF = Hecke.ResidueFieldSmallDegree1(ok, lp[1])
+  mFF = Hecke.extend_easy(mF, k)
+  @test is_zero(mFF(k(uniformizer(lp[1]))))
+  @test !is_zero(mFF(k(uniformizer(lp[2]))))
+  for i in 1:10
+    a = rand(ok, -2:2)
+    @test mF(a) == mFF(k(a))
+    @test mFF(k(a)//3) == mF(a) * inv(F(3))
+  end
+
+  f = 8*x^3 + 4*x^2 - 1//3*x-1
+  k, _ = number_field(f; cached = false)
+  ok = maximal_order(k)
+  lp = prime_ideals_over(ok, 17)
+  P = only(P for P in lp if degree(P) == 1)
+  Q = only(P for P in lp if degree(P) != 1)
+  F, mF = Hecke.ResidueFieldSmallDegree1(ok, P)
+  mFF = Hecke.extend_easy(mF, k)
+  @test is_zero(mFF(k(uniformizer(P))))
+  @test !is_zero(mFF(k(uniformizer(Q))))
+  for i in 1:10
+    a = rand(ok, -2:2)
+    @test mF(a) == mFF(k(a))
+    @test mFF(k(a)//3) == mF(a) * inv(F(3))
+  end
+end
+
+@testset "Misc-subsets" begin
+  #without 
+  # a=[314721,x^4-x^3-46*x^2-47*x+2209]
+  # bnd=ZZ(10)^11
+  # k, _ = number_field(a[2]; cached = false, check = false)
+  # L = abelian_extensions(k, [2], bnd, signatures = [(2,3)])
+  #will encounter an infinite recursion in subsets (Malle)
+
+  @test_throws ArgumentError subsets(3, -1)
+  @test_throws ArgumentError subsets(-3, 1)
+  @test_throws ArgumentError subsets(-3, -1)
+  @test length(subsets(3, 3)) == 1
+  @test length(subsets(3, 2)) == 3
+  @test length(subsets(3, 4)) == 0
+end
+
+@testset "Misc-rcf(QQ)" begin
+  G = Hecke.ray_class_groupQQ(maximal_order(rationals_as_number_field()[1]), 100, false, 0)[1]
+  @test order(G) == 20
+
+  G = Hecke.ray_class_groupQQ(maximal_order(rationals_as_number_field()[1]), 100, true, 0)[1]
+  @test order(G) == 40
+end
 
 

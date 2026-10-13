@@ -84,7 +84,7 @@ function StructureConstantAlgebra(O::Union{AbsNumFieldOrder, AlgAssAbsOrd}, I::U
   end
 
   if isone(BO[1])
-    one = zeros(Fp, r)
+    one = zeros_array(Fp, r)
     one[1] = Fp(1)
     A = StructureConstantAlgebra(Fp, mult_table, one)
   else
@@ -263,6 +263,8 @@ function StructureConstantAlgebra(I::AlgAssAbsOrdIdl, J::AlgAssAbsOrdIdl, p::Int
   return A, OtoA
 end
 
+# This method is different, because the basis matrices of number field orders
+# are with respect to the basis of the order
 function StructureConstantAlgebra(I::AbsNumFieldOrderIdeal, J::AbsNumFieldOrderIdeal, p::IntegerUnion)
   @assert order(I) === order(J)
 
@@ -270,7 +272,7 @@ function StructureConstantAlgebra(I::AbsNumFieldOrderIdeal, J::AbsNumFieldOrderI
   Oalgebra = _algebra(O)
 
   n = degree(O)
-  BmatJinI = _hnf_integral(basis_matrix(J, copy = false)*basis_mat_inv(I, copy = false), :lowerleft)
+  BmatJinI = _hnf_integral(basis_matrix(J, copy = false)*basis_mat_inv(FakeFmpqMat, I, copy = false), :lowerleft)
   @assert isone(BmatJinI.den) "J is not a subset of I"
   BmatJinI = BmatJinI.num
   basis_elts = Vector{Int}()
@@ -314,7 +316,7 @@ function StructureConstantAlgebra(I::AbsNumFieldOrderIdeal, J::AbsNumFieldOrderI
 
   mult_table = Array{elem_type(Fp), 3}(undef, r, r, r)
   for i = 1:r
-    M = FakeFmpqMat(representation_matrix(_elem_in_algebra(BI[basis_elts[i]], copy = false)))
+    M = FakeFmpqMat(representation_matrix(BI[basis_elts[i]]))
     M = mul!(M, BmatI, M)
     M = mul!(M, M, BmatIinv)
     @assert M.den == 1
@@ -334,16 +336,15 @@ function StructureConstantAlgebra(I::AbsNumFieldOrderIdeal, J::AbsNumFieldOrderI
     A.is_commutative = 1
   end
 
-  t = FakeFmpqMat(zero_matrix(ZZ, 1, n))
+  t = zero_matrix(ZZ, 1, n)
+
 
   local _image
 
   let BmatJinI = BmatJinI, I = I, r = r, A = A, t = t, Fp = Fp
     function _image(a::Union{AbsNumFieldOrderElem, AlgAssAbsOrdElem})
-      elem_to_mat_row!(t.num, 1, t.den, _elem_in_algebra(a, copy = false))
-      t = mul!(t, t, basis_mat_inv(I, copy = false))
-      @assert isone(t.den) "Not an element of the domain"
-      c = reduce_vector_mod_hnf(t.num, BmatJinI)
+      t[1, :] = coordinates(a; copy = false)
+      c = reduce_vector_mod_hnf(t, BmatJinI)
       return A([ Fp(c[i]) for i in basis_elts ])
     end
   end
@@ -354,8 +355,8 @@ function StructureConstantAlgebra(I::AbsNumFieldOrderIdeal, J::AbsNumFieldOrderI
 
   let BI = BI, basis_elts = basis_elts, r = r, Oalgebra = Oalgebra, temppp = temppp
     function _preimage(a::AssociativeAlgebraElem)
-      acoords = map(x -> QQ(lift(ZZ, x)), coefficients(a, copy = false))
-      z = zero(Oalgebra)
+      acoords = map(x -> lift(ZZ, x), coefficients(a, copy = false))
+      z = zero(O)
       for i in 1:r
         if is_zero(acoords[i])
           continue
@@ -363,118 +364,7 @@ function StructureConstantAlgebra(I::AbsNumFieldOrderIdeal, J::AbsNumFieldOrderI
         temppp = mul!(temppp, acoords[i], BI[basis_elts[i]])
         z = add!(z, z, temppp)
       end
-      _zz = O(z)
-      return _zz
-    end
-  end
-
-  OtoA = AbsOrdToAlgAssMor{typeof(O), elem_type(Fp)}(O, A, _image, _preimage)
-
-  return A, OtoA
-end
-
-function StructureConstantAlgebra(I::Union{ AbsNumFieldOrderIdeal, AlgAssAbsOrdIdl }, J::Union{AbsNumFieldOrderIdeal, AlgAssAbsOrdIdl}, p::IntegerUnion)
-  @assert order(I) === order(J)
-
-  O = order(I)
-  Oalgebra = _algebra(O)
-
-  n = degree(O)
-  BmatJinI = _hnf_integral(basis_matrix(J, copy = false)*basis_mat_inv(I, copy = false), :lowerleft)
-  @assert isone(BmatJinI.den) "J is not a subset of I"
-  BmatJinI = BmatJinI.num
-  basis_elts = Vector{Int}()
-  for i = 1:n
-    if valuation(BmatJinI[i, i], p) == 0
-      continue
-    end
-
-    push!(basis_elts, i)
-  end
-
-  r = length(basis_elts)
-  Fp = GF(p, cached = false)
-
-  if r == 0
-    A = zero_algebra(Fp)
-
-    local _image_zero
-
-    let A = A
-      function _image_zero(a::Union{ AbsNumFieldOrderElem, AlgAssAbsOrdElem })
-        return A()
-      end
-    end
-
-    local _preimage_zero
-
-    let O = O
-      function _preimage_zero(a::AssociativeAlgebraElem)
-        return O()
-      end
-    end
-
-    OtoA = AbsOrdToAlgAssMor{typeof(O), elem_type(Fp)}(O, A, _image_zero, _preimage_zero)
-    return A, OtoA
-  end
-
-  BI = basis(I, copy = false)
-  BmatI = basis_matrix(I, copy = false)
-  BmatIinv = inv(BmatI)
-
-  mult_table = Array{elem_type(Fp), 3}(undef, r, r, r)
-  for i = 1:r
-    M = FakeFmpqMat(representation_matrix(_elem_in_algebra(BI[basis_elts[i]], copy = false)))
-    M = mul!(M, BmatI, M)
-    M = mul!(M, M, BmatIinv)
-    @assert M.den == 1
-    M = M.num # M is now the representation matrix in the basis of I
-    if r != degree(O)
-      M = reduce_rows_mod_hnf!(M, BmatJinI, basis_elts)
-    end
-    for j = 1:r
-      for k = 1:r
-        mult_table[i, j, k] = Fp(M[basis_elts[j], basis_elts[k]])
-      end
-    end
-  end
-
-  A = StructureConstantAlgebra(Fp, mult_table)
-  if is_commutative(O)
-    A.is_commutative = 1
-  end
-
-  t = FakeFmpqMat(zero_matrix(ZZ, 1, n))
-
-  local _image
-
-  let BmatJinI = BmatJinI, I = I, r = r, A = A, t = t, Fp = Fp
-    function _image(a::Union{AbsNumFieldOrderElem, AlgAssAbsOrdElem})
-      elem_to_mat_row!(t.num, 1, t.den, _elem_in_algebra(a, copy = false))
-      t = mul!(t, t, basis_mat_inv(I, copy = false))
-      @assert isone(t.den) "Not an element of the domain"
-      c = reduce_vector_mod_hnf(t.num, BmatJinI)
-      return A([ Fp(c[i]) for i in basis_elts ])
-    end
-  end
-
-  local _preimage
-
-  temppp = zero(Oalgebra)
-
-  let BI = BI, basis_elts = basis_elts, r = r, Oalgebra = Oalgebra, temppp = temppp
-    function _preimage(a::AssociativeAlgebraElem)
-      acoords = map(x -> QQ(lift(ZZ, x)), coefficients(a, copy = false))
-      z = zero(Oalgebra)
-      for i in 1:r
-        if is_zero(acoords[i])
-          continue
-        end
-        temppp = mul!(temppp, acoords[i], BI[basis_elts[i]])
-        z = add!(z, z, temppp)
-      end
-      _zz = O(z)
-      return _zz
+      return z
     end
   end
 
@@ -564,15 +454,14 @@ function StructureConstantAlgebra(O::Union{ RelNumFieldOrder{T, S}, AlgAssRelOrd
 
   reverse!(reducers)
 
-  tmp_matrix = zero_matrix(_base_ring(K), 1, degree(O))
-
+  # Write the coefficients of c in the new basis of O
   function _coeff(c)
     cfcs = coefficients(c, copy = false)
-    for i = 1:degree(O)
-      tmp_matrix[1, i] = cfcs[i]
-    end
-    return tmp_matrix*new_bmatinvO
+    return cfcs * new_bmatinvO
   end
+
+  # We need them a lot, so lets get the rows out once
+  rows_new_bmatI = [new_bmatI[i, :] for i in 1:nrows(new_bmatI)]
 
   mult_table = Array{elem_type(Fp), 3}(undef, r, r, r)
   for i in 1:r
@@ -582,9 +471,8 @@ function StructureConstantAlgebra(O::Union{ RelNumFieldOrder{T, S}, AlgAssRelOrd
 
       for k in reducers
         d = -coeffs_c[k]//new_bmatI[k, k]
-        c = c + d*new_basisI[k][1]
+        coeffs_c = coeffs_c + d .* rows_new_bmatI[k]
       end
-      coeffs_c = _coeff(c)
       for k in 1:degree(O)
         if !(k in basis_elts)
           @assert iszero(coeffs_c[k])
@@ -597,7 +485,7 @@ function StructureConstantAlgebra(O::Union{ RelNumFieldOrder{T, S}, AlgAssRelOrd
   end
 
   if isone(new_basisO[basis_elts[1]][1])
-    one = zeros(Fp, length(basis_elts))
+    one = zeros_array(Fp, length(basis_elts))
     one[1] = Fp(1)
     A = StructureConstantAlgebra(Fp, mult_table, one)
   else
@@ -615,9 +503,8 @@ function StructureConstantAlgebra(O::Union{ RelNumFieldOrder{T, S}, AlgAssRelOrd
       coeffs_c = _coeff(c)
       for k in reducers
         d = -coeffs_c[k]//new_bmatI[k, k]
-        c = c + d*new_basisI[k][1]
+        coeffs_c = coeffs_c + d .* rows_new_bmatI[k]
       end
-      coeffs_c = _coeff(c)
       for k in 1:degree(O)
         if !(k in basis_elts)
           @assert iszero(coeffs_c[k])
@@ -719,17 +606,16 @@ function StructureConstantAlgebra(I::Union{ RelNumFieldOrderIdeal{T, S}, AlgAssR
 
   reverse!(reducers)
 
-  tmp_matrix = zero_matrix(_base_ring(K), 1, degree(O))
-
+  # Write the coefficients of c in the new basis of I
   function _coeff(c)
-    for i = 1:degree(O)
-      tmp_matrix[1, i] = coefficients(c, copy = false)[i]
-    end
-    return tmp_matrix*bmatinvI
+    cfcs = coefficients(c, copy = false)
+    return cfcs * bmatinvI
   end
 
-  mult_table = Array{elem_type(Fp), 3}(undef, r, r, r)
+  # We need them a lot, so lets get the rows out once
+  rows_new_bmatJinI = [new_bmatJinI[i, :] for i in 1:nrows(new_bmatJinI)]
 
+  mult_table = Array{elem_type(Fp), 3}(undef, r, r, r)
   for i in 1:r
     for j in 1:r
       c = new_basisI[basis_elts[i]][1]*new_basisI[basis_elts[j]][1]
@@ -737,9 +623,8 @@ function StructureConstantAlgebra(I::Union{ RelNumFieldOrderIdeal{T, S}, AlgAssR
 
       for k in reducers
         d = -coeffs[k]//new_bmatJinI[k, k]
-        c = c + d * new_basisJ[k][1]
+        coeffs += d .* rows_new_bmatJinI[k]
       end
-      coeffs = _coeff(c)
       for k in 1:degree(O)
         if !(k in basis_elts)
           @assert iszero(coeffs[k])
@@ -752,7 +637,7 @@ function StructureConstantAlgebra(I::Union{ RelNumFieldOrderIdeal{T, S}, AlgAssR
   end
 
   if isone(new_basisI[basis_elts[1]][1])
-    one = zeros(Fp, length(basis_elts))
+    one = zeros_array(Fp, length(basis_elts))
     one[1] = Fp(1)
     A = StructureConstantAlgebra(Fp, mult_table, one)
   else
@@ -770,9 +655,8 @@ function StructureConstantAlgebra(I::Union{ RelNumFieldOrderIdeal{T, S}, AlgAssR
       coeffs = _coeff(c)
       for k in reducers
         d = -coeffs[k]//new_bmatJinI[k, k]
-        c = c + d*new_basisJ[k][1]
+        coeffs += d .* rows_new_bmatJinI[k]
       end
-      coeffs = _coeff(c)
       for k in 1:degree(O)
         if !(k in basis_elts)
           @assert iszero(coeffs[k])
@@ -816,7 +700,7 @@ function StructureConstantAlgebra(A::Generic.MatRing{T}) where { T <: FieldElem 
   # We use the matrices M_{ij} with a 1 at row i and column j and zeros everywhere else as the basis for A.
   # We sort "column major", so A[i + (j - 1)*n] corresponds to the matrix M_{ij}.
   # M_{ik}*M_{lj} = 0, if k != l, and M_{ik}*M_{kj} = M_{ij}
-  mult_table = zeros(K, n2, n2, n2)
+  mult_table = zeros_array(K, n2, n2, n2)
   oneK = one(K)
   for j = 0:n:(n2 - n)
     for k = 1:n
@@ -826,7 +710,7 @@ function StructureConstantAlgebra(A::Generic.MatRing{T}) where { T <: FieldElem 
       end
     end
   end
-  oneA = zeros(K, n2)
+  oneA = zeros_array(K, n2)
   for i = 1:n
     oneA[i + (i - 1)*n] = oneK
   end

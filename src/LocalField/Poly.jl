@@ -411,7 +411,7 @@ function gcdx(f::Generic.Poly{T}, g::Generic.Poly{T}) where T <: Union{PadicFiel
   if iszero(valuation(leading_coefficient(g)))
     q, f1 = divrem(f, g)
     d, u, v = gcdx(g, f1)::Tuple{Generic.Poly{T}, Generic.Poly{T}, Generic.Poly{T}}
-    @hassert :padic_poly 1  d == f*v+(u-v*q)*g
+    @hassert :padic_poly 1  iszero(setprecision(d - (f*v+(u-v*q)*g), precision(f)))
     return (d, v, u-v*q)::Tuple{Generic.Poly{T}, Generic.Poly{T}, Generic.Poly{T}}
   end
   ug, gg = fun_factor(g)
@@ -419,10 +419,10 @@ function gcdx(f::Generic.Poly{T}, g::Generic.Poly{T}) where T <: Union{PadicFiel
     s = invmod(ug, f)
     to_be_div = setprecision(one(Kx)-s*ug, precision(f))
     t = divexact(to_be_div, f)
-    @hassert :padic_poly 1  t*f == 1-s*ug
+    @hassert :padic_poly 1  iszero(setprecision(t*f - (1-s*ug), precision(f)))
     d, u, v = gcdx(f, gg)::Tuple{Generic.Poly{T}, Generic.Poly{T}, Generic.Poly{T}}
-    @hassert :padic_poly 1  d == u*f + v*gg
-    @hassert :padic_poly 1  d == (u+v*t*gg)*f + v*s*g
+    @hassert :padic_poly 1  iszero(setprecision(d - (u*f + v*gg), precision(f)))
+    @hassert :padic_poly 1  iszero(setprecision(d - ((u+v*t*gg)*f + v*s*g), precision(f)))
     return (d, u+v*t*gg, v*s)::Tuple{Generic.Poly{T}, Generic.Poly{T}, Generic.Poly{T}}
   end
   uf, ff = fun_factor(f)
@@ -817,14 +817,14 @@ function Hensel_factorization(f::Generic.Poly{T}) where T <: Union{PadicFieldEle
   k, mk = residue_field(K)
   kt = polynomial_ring(k, "t", cached = false)[1]
   fp = kt(elem_type(k)[mk(coeff(f, i)) for i = 0:degree(f)])
-  lfp = factor(fp).fac
+  lfp = factor(fp)
   if length(lfp) == 1
     #The Hensel factorization is trivial...
-    phi = setprecision(map_coefficients(pseudo_inv(mk), first(keys(lfp)), parent = Kt), precision(f))
+    phi = setprecision(map_coefficients(pseudo_inv(mk), first(lfp)[1], parent = Kt), precision(f))
     D[phi] = f
     return D
   end
-  vlfp = Vector{dense_poly_type(elem_type(k))}(undef, length(lfp))
+  vlfp = Vector{poly_type(elem_type(k))}(undef, length(lfp))
   ind = 1
   ks = Vector{Generic.Poly{T}}(undef, length(vlfp))
   for (k1, v) in lfp
@@ -905,8 +905,8 @@ mutable struct HenselCtxdr{S}
     Q = base_ring(f)
     K, mK = residue_field(Q)
     fp = change_base_ring(f, mK)
-    fac = factor(fp).fac
-    lfp = Vector{keytype(fac)}(undef, length(fac))
+    fac = factor(fp)
+    lfp = Vector{typeof(f)}(undef, length(fac))
     ind = 1
     for (k, v) in fac
       lfp[ind] = k^v
@@ -1163,4 +1163,46 @@ function _factor(f::Generic.Poly{T}) where T <: Union{PadicFieldElem, QadicField
 
 
 
+end
+
+################################################################################
+#
+#  Factor via global field
+#
+################################################################################
+
+
+function _basis_matrix(a::Vector{AbsSimpleNumFieldOrderElem})
+  return matrix(ZZ, length(a), degree(nf(parent(a[1]))), vcat([coordinates(x) for x = a]...))
+end
+
+function _factor_via_number_field(f::PolyRingElem{PadicFieldElem})
+  v = minimum([valuation(x) for x = coefficients(f) if !iszero(x)], init = 1)
+  P = prime(base_ring(f))
+  f *= base_ring(f)(P)^-v
+
+  g = map_coefficients(x -> lift(ZZ, x), f)
+  lg = factor(g)
+
+  ff = []
+  for (p, kk) = lg
+    k, a = number_field(p, cached = false)
+    zk = pmaximal_overorder(any_order(k), P)
+    b = map(zk, basis(k))
+    push!(b, zk(a)*b[end])
+    lp = prime_decomposition(zk, P)
+    for (pp, e) = lp
+      m = _basis_matrix(b[1:e*degree(pp)])
+      m = vcat(m, basis_matrix(pp^(e*precision(base_ring(f)))))
+      fl, s = can_solve_with_solution(m, matrix(ZZ, 1, ncols(m), coordinates(-b[e*degree(pp)+1])), side = :left)
+      @assert fl
+      push!(ff, (parent(f)(push!(vec(collect(s[1, 1:degree(pp)*e])), ZZRingElem(1))), kk))
+    end
+  end
+  return ff
+end
+
+function _is_irreducible(f::PolyRingElem{PadicFieldElem})
+  lf = factor(f)
+  return length(lf) == 1 && lf[1][2] == 1
 end

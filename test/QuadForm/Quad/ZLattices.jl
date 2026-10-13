@@ -232,10 +232,22 @@ end
   @test length(ADE) == 2
   @test all(R -> R[2] == 1, ADE)
 
+  let
+    L = integer_lattice(gram = ZZ[1 0 0; 0 2 0; 0 0 3]);
+    @test hnf(basis_matrix(root_sublattice(L))) == ZZ[1 0 0; 0 1 0]
+    @test basis_matrix(root_sublattice(L; length = [2])) == ZZ[0 1 0]
+    @test basis_matrix(root_sublattice(L; length = [1])) == ZZ[1 0 0]
+  end
+
   # isometry testing
   C1 = root_lattice(:A, 2)
   C1m = rescale(C1,-1)
   @test is_isometric(C1m, C1m)
+  L1 = integer_lattice(gram=QQ[126 16; 16 4])
+  L2 = integer_lattice(gram=QQ[14 2; 2 18])
+  @test genus(L1)==genus(L2)
+  @test !is_isometric(L1,L2)
+
   # automorphisms
   C2 = (1//3)*C1
 
@@ -320,17 +332,13 @@ end
     X = _random_invertible_matrix(n, -3:3)
     @assert abs(det(X)) == 1
     L2 = integer_lattice(gram = X * G * transpose(X))
-    b, T = is_isometric_with_isometry(L, L2, ambient_representation = false)
+    b, T = is_isometric_with_isometry(L, L2)
     @test b
     @test T * gram_matrix(L2) * transpose(T) == gram_matrix(L)
     L2 = integer_lattice(X, gram = G)
-    b, T = is_isometric_with_isometry(L, L2, ambient_representation = false)
+    b, T = is_isometric_with_isometry(L, L2)
     @test b
     @test T * gram_matrix(L2) * transpose(T) == gram_matrix(L)
-    b, T = is_isometric_with_isometry(L, L2, ambient_representation = true)
-    @test b
-    @test T * gram_matrix(ambient_space(L2)) * transpose(T) ==
-    gram_matrix(ambient_space(L))
   end
 
   D = lattice_database()
@@ -342,7 +350,7 @@ end
     X = change_base_ring(QQ, _random_invertible_matrix(n, -3:3))
     @assert abs(det(X)) == 1
     L2 = integer_lattice(gram = X * gram_matrix(L) * transpose(X))
-    b, T = is_isometric_with_isometry(L, L2, ambient_representation = false)
+    b, T = is_isometric_with_isometry(L, L2)
     @test b
     @test T * gram_matrix(L2) * transpose(T) == gram_matrix(L)
   end
@@ -354,7 +362,7 @@ end
     X = change_base_ring(QQ, _random_invertible_matrix(n, -3:3))
     @assert abs(det(X)) == 1
     L2 = integer_lattice(gram = X * gram_matrix(L) * transpose(X))
-    b, T = is_isometric_with_isometry(L, L2, ambient_representation = false, bacher_depth = 1)
+    b, T = is_isometric_with_isometry(L, L2, bacher_depth = 1)
     @test b
     @test T * gram_matrix(L2) * transpose(T) == gram_matrix(L)
   end
@@ -373,6 +381,7 @@ end
   L = integer_lattice(gram=G)
   @test norm(L) == 0
   @test scale(L) == 0
+  @test level(L) == 1
 
 
   #orthogonal submodule of a lattice
@@ -382,6 +391,7 @@ end
   submod = orthogonal_submodule(L, S)
   @test  basis_matrix(submod) == matrix(QQ, 1, 3, [1 1 -2])
 
+  @test !is_indefinite(L)
   @test is_definite(L)
   @test is_positive_definite(L)
   @test !is_negative_definite(L)
@@ -596,7 +606,8 @@ end
   L = representative(integer_genera((2,1), -1)[1])
   LL = lll(L)
   @test L == LL
-  @test rescale(L, -1) == lll(rescale(L, -1))
+  Lm = rescale(L, -1)
+  @test Lm == lll(Lm)
 
   L = representative(integer_genera((3,11), 1)[2])
   LL = lll(L)
@@ -732,6 +743,10 @@ end
   L2 = integer_lattice(gram = G);
   @test is_isometric(L1,L2)
 
+  # Fix 2271
+  M = integer_lattice(;gram=QQ[-1 0 0; 0 2 0; 0 0 64])
+  L = integer_lattice(;gram=QQ[-2 0 0; 0 4 2; 0 2 17])
+  @test !is_isometric(L, M)
 end
 
 @testset "direct sums" begin
@@ -871,4 +886,27 @@ end
     @test all(==(2), view(v, 1:1, 4:n))
     @test isone(v[1, n+1])
   end
+end
+
+@testset "Enumeration of even root lattices" begin
+  rl = Vector{ZZLat}[root_lattices(i) for i in 1:9]
+  @test length.(rl) == [1, 2, 3, 6, 9, 16, 24, 40, 58]
+
+  rs6 = Set.(root_symbols(6))
+  rl6 = Set.(first.(root_lattice_recognition.(root_lattices(6))))
+  @test issetequal(rs6, rl6)
+end
+
+@testset "Neighbors" begin
+  L = integer_lattice(gram = matrix(QQ, 3, 3, [2, 1, -1, 1, 2, -1, -1, -1, 8]))
+  N = neighbours(L, 3)
+  @test length(N) == 2
+  @test !is_isometric(N[1], N[2])
+  @test index(L, intersect(L, N[1])) == 3
+  @test index(L, intersect(L, N[2])) == 3
+end
+
+@testset "Shortest vectors sublattice" begin
+  L = integer_lattice(gram = matrix(QQ, 3, 3, [2,0,0,0,2,1,0,1,6]))
+  @test shortest_vectors_sublattice(L) == lattice(ambient_space(L), ZZ[1 0 0; 0 1 0])
 end

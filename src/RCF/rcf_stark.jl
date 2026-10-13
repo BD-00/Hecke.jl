@@ -331,7 +331,7 @@ function _find_suitable_quadratic_extension(C::T) where T <: ClassField_pp
         v = real_plc[i]
         w = [real_plc[j] for j = 1:length(real_plc) if j != i]
         lf = factor(I)
-        newc = merge(max, c, lf)
+        newc = mergewith(max, c, lf)
         r, mr = ray_class_group_quo(OK, newc, w, ctx)
         gens, group_gens = find_gens(mr)
         images = FinGenAbGroupElem[mQ(mR\J) for J in gens]
@@ -589,36 +589,6 @@ function compute_coeffs_L_function(chi::T, n::Int, prec::Int) where T <: RCFChar
     end
   end
   return coeffs_old
-end
-
-function ideals_up_to(OK::AbsSimpleNumFieldOrder, n::Int, coprime_to::AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem} = ideal(OK, 1))
-
-  lp = prime_ideals_up_to(OK, n)
-  filter!(x -> is_coprime(x, coprime_to), lp)
-  lI = AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}[ideal(OK, 1)]
-  for i = 1:length(lp)
-    lnew = AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}[]
-    P = lp[i]
-    nP = Int(norm(P, copy = false))
-    @assert nP <= n
-    expon = Int(flog(ZZRingElem(n), nP))
-    for j = 1:length(lI)
-      I = lI[j]
-      if norm(I, copy = false)*nP > n
-        break
-      end
-      push!(lnew, I*P)
-      for s = 2:expon
-        if nP^s*norm(I, copy = false) > n
-          break
-        end
-        push!(lnew, I*P^s)
-      end
-    end
-    append!(lI, lnew)
-    sort!(lI, by = x -> norm(x, copy = false))
-  end
-  return lI
 end
 
 ################################################################################
