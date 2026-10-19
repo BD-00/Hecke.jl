@@ -249,16 +249,43 @@ end
 function Base.in(x::FieldElem, A::GenOrdFracIdl)
   O = order(A)
   @req parent(x) === field(O) "Element must be in field(order(A))"
-  # x is in I/d iff d*x is in I (and integral)
-  # note that den lives in the order ring, which lies in the base field
-  K  = field(O)
-  den = K(base_field(K)(denominator(A; copy = false)))
-  y = x * den
-  dy = integral_split(y, O)[2]
-  return isone(dy) && O(y; check = false) in numerator(A; copy = false)
+
+  # for d = denominator(A), A \subseteq (1/d)*O. If x is in A, x must be
+  #   in (1/d)*O, that is denominator(x) | d
+  v, dx = integral_split(coordinates(x, O), coefficient_ring(O))
+  divides(denominator(A; copy = false), dx)[1] || return false
+
+  # x is in A iff its coordinates are integral with respect to (any) basis of A
+  M, d = _basis_matrix_inv_pair(A)
+  return _is_integral_row(v, M, dx*d)
 end
 
 Base.in(x::GenOrdElem, A::GenOrdFracIdl) = data(x) in A
+
+################################################################################
+#
+#  Reduction of element modulo fractional ideal
+#
+################################################################################
+
+@doc raw"""
+    mod(x::FieldElem, I::GenOrdFracIdl) -> FieldElem
+
+Return $y \in K$, where `K = field(order(I))`, such that $x - y \in I$,
+for nonzero $I$.
+"""
+function mod(x::FieldElem, I::GenOrdFracIdl)
+  O = order(I)
+  K = field(O)
+  @req parent(x) === K "Element must be in field(order(I))"
+  @req !iszero(I) "Modulus must be nonzero"
+  _, dx = integral_split(x, O)
+  di = denominator(I; copy = false)
+  d = lcm(dx, di)
+  J = divexact(d, di)*numerator(I; copy = false)
+  c = K(base_field(K)(d))
+  return K(mod(O(c*x; check = false), J))//c
+end
 
 ################################################################################
 #

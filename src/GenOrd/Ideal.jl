@@ -669,6 +669,7 @@ the coordinate vector of $x$ against the lower-left HNF basis matrix of $y$.
 """
 function Hecke.mod(x::GenOrdElem, y::GenOrdIdl)
   parent(x) !== order(y) && error("GenOrds of element and ideal must be equal")
+  @req !iszero(y) "Modulus must be nonzero"
   # this function assumes that HNF is lower left
   # !!! This must be changed as soon as HNF has a different shape
 
@@ -697,17 +698,51 @@ end
 
 ################################################################################
 #
+#  Idempotents
+#
+################################################################################
+
+function idempotents(I::GenOrdIdl, J::GenOrdIdl)
+  O = order(I)
+  @req O === order(J) "Ideals must belong to the same order"
+  n = degree(O)
+  R = coefficient_ring(O)
+  H, U = _hnf_with_transform(vcat(basis_matrix(I), basis_matrix(J)), :lowerleft)
+  @req is_one(view(H, n + 1:2*n, 1:n)) "Ideals must be coprime"
+
+  # The last n rows express the order basis in terms of the two ideal bases.
+  # Use the coordinates of 1, since the first order basis vector need not be 1.
+  c = matrix(R, 1, n, coordinates(one(O)))
+  v = c*view(U, n + 1:2*n, 1:n)*basis_matrix(I)
+  e = O(v[1, :])
+  return e, one(O) - e
+end
+
+################################################################################
+#
 #  Residue field
 #
 ################################################################################
 
+# NOTE: FqField *ignore* check kwarg and do not check p to be irreducible.
+#   Currently ALL the usages i have found are guaranteed to be irreducible,
+#   but it would make sense to have cached kwarg in residue_field
+
 function Hecke.residue_field(R::fpPolyRing, p::fpPolyRingElem)
-  K, _ = finite_field(p,"o")
-  return K, map_from_func(R, K, x->K(x), y->R(y))
+  @req parent(p) === R "p must belong to R"
+  K = FqField(p, :o, false; check = false)
+  return K, MapFromFunc(R, K, x -> K(x), y -> R(y))
+end
+
+function Hecke.residue_field(R::FpPolyRing, p::FpPolyRingElem)
+  @req parent(p) === R "p must belong to R"
+  K = FqField(p, :o, false; check = false)
+  return K, MapFromFunc(R, K, x -> K(x), y -> R(y))
 end
 
 function Hecke.residue_field(R::FqPolyRing, p::FqPolyRingElem)
-  return Nemo._residue_field(p, absolute = false)
+  @req parent(p) === R "p must belong to R"
+  return Nemo._residue_field(p; absolute = false)
 end
 
 ################################################################################
@@ -725,7 +760,7 @@ function Hecke.index(O::GenOrd)
   return is_equation_order(O) ? O.R(1) : O.R(_inverse_basis_matrix_determinant(O))
 end
 
-function prime_dec_nonindex(O::GenOrd{S, T}, p::RingElem, degree_limit::Int = 0, lower_limit::Int = 0) where {S, T}
+function prime_dec_nonindex(O::GenOrd{S, T}, p::RingElem; degree_limit::Int, lower_limit::Int) where {S, T}
   @req parent(p) === base_ring(O) "p must come from the base ring of O"
 
   F = field(O)
@@ -738,7 +773,10 @@ function prime_dec_nonindex(O::GenOrd{S, T}, p::RingElem, degree_limit::Int = 0,
     num, den = integral_split(c, base_ring(O))
     mK(num) // mK(den)
   end
-  fact = factor(fmodp)
+
+  # Degree of the factor is the inertia degree: filter factors right away
+  fact = Tuple{typeof(fmodp), Int}[(g, e) for (g, e) in factor(fmodp)
+                                   if lower_limit <= degree(g) <= degree_limit]
 
   result = Vector{Tuple{GenOrdIdl{S, T}, Int}}(undef, length(fact))
   for (i, (fac, e)) in enumerate(fact)
@@ -859,25 +897,21 @@ function is_index_divisor(O::GenOrd, p::RingElem)
 end
 
 function prime_decomposition(O::GenOrd{S, T}, p::RingElem, degree_limit::Int = degree(O), lower_limit::Int = 0; cached::Bool = true) where {S, T}
+  # keep the same convention as number fields
+  if degree_limit == 0
+    degree_limit = degree(O)
+  end
+
   if _is_defining_polynomial_nice_at(O, p) && !is_index_divisor(O, p)
-    return prime_dec_nonindex(O, p, degree_limit, lower_limit)
+    return prime_dec_nonindex(O, p; degree_limit = degree_limit, lower_limit = lower_limit)
   else
-    return prime_dec_gen(O, p, degree_limit, lower_limit)
+    return prime_dec_gen(O, p; degree_limit = degree_limit, lower_limit = lower_limit)
   end
 end
 
-function prime_dec_gen(O::GenOrd{S, T}, p::RingElem, degree_limit::Int = degree(O), lower_limit::Int = 0) where {S, T}
+function prime_dec_gen(O::GenOrd{S, T}, p::RingElem; degree_limit::Int, lower_limit::Int) where {S, T}
   Ip = pradical(O, p)
-  lp = _decomposition(O, ideal(O, p), Ip, p)
-  #=z = Tuple{ideal_type(O), Int}[]
-  for (Q, e) in lp
-    if degree(Q) <= degree_limit && degree(Q) >= lower_limit
-      push!(z, (Q, e))
-    end
-  end
-  return z
-  =#
-  return lp
+  return _decomposition(O, ideal(O, p), Ip, p; degree_limit = degree_limit, lower_limit = lower_limit)
 end
 
 function residue_field(R::PolyRing{QQBarFieldElem}, p::PolyRingElem{QQBarFieldElem})
@@ -943,7 +977,8 @@ function _idempotent_uniformizer(P::GenOrdIdl, p::RingElem, f::Int, idempotent::
   return nothing
 end
 
-function _decomposition(O::GenOrd{S, T}, I::GenOrdIdl{S, T}, Ip::GenOrdIdl{S, T}, p::RingElem) where {S, T}
+function _decomposition(O::GenOrd{S, T}, I::GenOrdIdl{S, T}, Ip::GenOrdIdl{S, T}, p::RingElem;
+                        degree_limit::Int = degree(O), lower_limit::Int = 0) where {S, T}
   #I is an ideal lying over p
   #Ip is the p-radical
   Ip1 = Ip + I
@@ -953,9 +988,12 @@ function _decomposition(O::GenOrd{S, T}, I::GenOrdIdl{S, T}, Ip::GenOrdIdl{S, T}
   ideals, AA = _from_algs_to_ideals(A, OtoA, AtoO, Ip1, p)
 
   pcount = length(ideals)
+  result = Tuple{GenOrdIdl{S, T}, Int}[]
 
   # check if we have inert prime: we then have principal ideal
   if pcount == 1 && ideals[1][1].splitting_type[2] == degree(O)
+    lower_limit <= degree(O) <= degree_limit || return result
+
     P = ideals[1][1]
     P.splitting_type = 1, degree(O)
 
@@ -965,13 +1003,14 @@ function _decomposition(O::GenOrd{S, T}, I::GenOrdIdl{S, T}, Ip::GenOrdIdl{S, T}
     P.princ_gen = O(p)
     P.is_principal = 1
 
-    ideals[1] = (P, 1)
-    return ideals
+    push!(result, (P, 1))
+    return result
   end
 
   for i in 1:pcount
     P = ideals[i][1]
     f = P.splitting_type[2]
+    lower_limit <= f <= degree_limit || continue
 
     # find uniformizer (gen_two)
     P_uni = if pcount == 1
@@ -990,10 +1029,10 @@ function _decomposition(O::GenOrd{S, T}, I::GenOrdIdl{S, T}, Ip::GenOrdIdl{S, T}
 
     e = valuation(ideal(O, p), P)
     P.splitting_type = e, f
-    ideals[i] = (P, e)
+    push!(result, (P, e))
   end
 
-  return ideals
+  return result
 end
 
 function StructureConstantAlgebra(O::GenOrd, I::GenOrdIdl, p::RingElem)
@@ -1198,6 +1237,13 @@ end
 #
 ################################################################################
 
+# Checks is v*M/d is integral, i.e. v*M lies in d*R^n
+function _is_integral_row(v::Vector, M::MatElem, d::RingElem)
+  is_unit(d) && return true
+  w = matrix(base_ring(M), 1, length(v), v)*M
+  return all(c -> divides(c, d)[1], w)
+end
+
 @doc raw"""
     in(x::GenOrdElem, y::GenOrdIdl)
 
@@ -1209,15 +1255,8 @@ function in(x::GenOrdElem, y::GenOrdIdl)
 end
 
 function containment_by_matrices(x::GenOrdElem, y::GenOrdIdl)
-  A, den = _basis_matrix_inv_pair(y)
-  kx = base_ring(order(y))
-  R = residue_ring(kx, den; cached = false)[1]
-  M = map_entries(R, A)
-  coords = coordinates(x)
-  v = matrix(R, 1, degree(parent(x)), coords)
-  #mul!(v, v, M) This didn't work
-  v = v*M
-  return iszero(v)
+  M, d = _basis_matrix_inv_pair(y)
+  return _is_integral_row(coordinates(x), M, d)
 end
 
 ###############################################################################
@@ -1329,6 +1368,12 @@ function Nemo._residue_field(f::PolyRingElem{<:NumFieldElem})
   return L, map_from_func(Kt, L, x -> L(x), y -> Kt(y))
 end
 
+function Nemo._residue_field(f::Union{fpPolyRingElem, FpPolyRingElem})
+  Kt = parent(f)
+  L = FqField(f, :o, false; check = false)
+  return L, MapFromFunc(Kt, L, x -> L(x), y -> Kt(y))
+end
+
 function residue_field(O::GenOrd, P::GenOrdIdl, check::Bool = true)
   a, g, b, phi = get_residue_field_data(P)::Tuple{elem_type(O),
                                                   poly_type(base_ring(O)),
@@ -1336,21 +1381,25 @@ function residue_field(O::GenOrd, P::GenOrdIdl, check::Bool = true)
                                                   Any} # not optimal
   gg = map_coefficients(phi, g)
   bb = map_entries.(phi, b)
-  K = base_ring(parent(gg))
+  Kt = parent(gg)
   F, KtoF = Nemo._residue_field(gg)
+  # NOTE: for K = base_ring(Kt), K might not coerce to F; thus work in K[t]
+  #   and map to F at the end
+
   d = degree(O)
-  imgofbas = [KtoF(parent(gg)(bb[i][1, :])) for i in 1:d]
+  polyofbas = [Kt(bb[i][1, :]) for i in 1:d]
   powersofa = powers(a, degree(g))
 
   _image = function(x::GenOrdElem)
     @assert parent(x) === O
     c = base_ring(O).(coordinates(x))
-    return sum(phi(c[i]) * imgofbas[i] for i in 1:d)
+    return KtoF(sum(phi(c[i]) * polyofbas[i] for i in 1:d))
   end
 
   _preimage = function(x)
     @assert parent(x) === F
-    return sum(preimage(phi, coeff(x, i - 1)) * powersofa[i] for i in 1:degree(g))
+    y = preimage(KtoF, x)
+    return sum(preimage(phi, coeff(y, i - 1)) * powersofa[i] for i in 1:degree(g))
   end
 
   return F, GenOrdToFqField{typeof(O), typeof(F)}(O, F, P, _image, _preimage)
