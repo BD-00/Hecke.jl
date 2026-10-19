@@ -197,9 +197,10 @@ function maximal_reduction(D::Divisor, A::Divisor, m = 0)
   @req !iszero(D) "Divisor is zero."
   @req degree(A)>0 "Reduction only with divisor of degree > 0."
   #@show d = degree(D) #relevant for cases, or use dimension?
-  
   r = 0
   D_tilde = D
+  s = 1 #only used in binary search
+  #= alternative to binary search
   dim_tilde = dimension(D_tilde)
   if dim_tilde > 0
    D_next = D_tilde - 10*A
@@ -220,8 +221,8 @@ function maximal_reduction(D::Divisor, A::Divisor, m = 0)
    D_tilde -= A
    r += 1
   end
-  
-#= binary search works, but not efficient for small examples
+  =#
+# binary search works, but not efficient for small examples
   current = r # dimension > 0
   next = r + s*10 # dimension 0
   mid = next
@@ -229,7 +230,7 @@ function maximal_reduction(D::Divisor, A::Divisor, m = 0)
   while diff != s
     mid = div(next + current,2)
     diff = mid - current
-    @show current, mid, next, diff, r
+    #@show current, mid, next, diff, r
     if dimension(D_tilde - diff*A) > 0
       current = mid
       D_tilde -= diff*A
@@ -238,7 +239,7 @@ function maximal_reduction(D::Divisor, A::Divisor, m = 0)
       next = mid
     end
   end
-  =#
+  
   RRSp = riemann_roch_space(D_tilde)
   a = divisor(RRSp[1])
   D_tilde+=a
@@ -264,8 +265,10 @@ function maximal_reduction_old(D::Divisor, m=0)
  RR, RRCtx = _riemann_roch_space(D, 0)
  r = maximum(RRCtx.d_limit)
  RR_red, RRCtx = _riemann_roch_space(D, -r, RRCtx)
+
  #@assert RR_red == riemann_roch_space(D-r*A)
  #@assert length(RR_red) > 0
+
  a = divisor(RR_red[1])
  D_tilde = D-r*A+a
  #RR_tilde = RR_red.*inv(RR[1])
