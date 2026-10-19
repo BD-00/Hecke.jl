@@ -126,7 +126,7 @@ F20, a20 = function_field(x20^5 + t20*x20^3 + t20^5 + t20^2 + 1)
 k = GF(ZZ(5)^12)
 kt, t = rational_function_field(k, "t")
 ktx, x = polynomial_ring(kt, "x")
-F, a = function_field(x^4-t^2x+3*t^18+2)
+F, a = function_field(x^4-t^2*x+3*t^18+2)
 
 #examples from Claus for p-torsion part
 k = GF(3)
