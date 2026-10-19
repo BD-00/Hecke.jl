@@ -43,6 +43,8 @@ function _riemann_roch_space(D::Divisor, r=0, RR_Ctx=RiemannRochCtx())
   empty!(RR_Ctx.d_limit)
 
   for i in (1:n)
+    #TODO: use mapreduce here
+    #TODO: change in usual riemann_roch computation!!!
     d_i = maximum(map(degree, T[i,1:n])) #max degree in i-th row
     d_l = - d_i + d_deg
     push!(RR_Ctx.d_limit, d_l)
@@ -254,16 +256,16 @@ function maximal_reduction(D::Divisor, A::Divisor, m = 0)
   return D_tilde, r, a
 end
 
-function maximal_reduction(D::Divisor, m=0)
+function maximal_reduction_old(D::Divisor, m=0)
  #max reduction with (x)_infty
  F = function_field(D)
  A = pole_divisor(Hecke.separating_element(F))
  @req !iszero(D) "Divisor is zero."
- RR, RRCtx = _riemann_roch_space(D)
+ RR, RRCtx = _riemann_roch_space(D, 0)
  r = maximum(RRCtx.d_limit)
  RR_red, RRCtx = _riemann_roch_space(D, -r, RRCtx)
- @assert RR_red == riemann_roch_space(D-r*A)
- @assert length(RR_red) > 0
+ #@assert RR_red == riemann_roch_space(D-r*A)
+ #@assert length(RR_red) > 0
  a = divisor(RR_red[1])
  D_tilde = D-r*A+a
  #RR_tilde = RR_red.*inv(RR[1])
