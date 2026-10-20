@@ -407,44 +407,6 @@ function nth_derivative(f::Generic.AbsSimpleFunctionFieldElem, n::Int)
   return F(f)
 end
 
-#TODO: if pth root in Fq expensive, use LinALg
-function Hecke.pth_root(a::Generic.AbsSimpleFunctionFieldElem{FqFieldElem, FqPolyRingElem})
-  F = parent(a)
-  p = characteristic(F)
-  n = degree(F)
-  kx = base_ring(F)
-
-  #M maps p powers of coordinates of a to coordinates of a^p 
-  M = matrix(base_ring(F), [coordinates(b^p) for b in basis(F)])
-  Minv = inv(M)
-
-  coord = coordinates(a)*Minv
-  for i in 1:n
-    c = coord[i]
-
-    c_num_test = numerator(c) #test
-
-    c_num = numerator(c)
-    c_num = deflate(c_num, p.d)
-    c_num = map_coefficients(pth_root, c_num)
-
-    @assert isequal(c_num^p, c_num_test) #test
-
-    c_den_test = denominator(c) #test
-   
-    c_den = denominator(c) 
-    c_den = deflate(c_den, p.d)
-    c_den = map_coefficients(pth_root, c_den)
-
-    @assert isequal(c_den^p, c_den_test) #test
-    @assert isequal(kx(c_num, c_den)^p, c) #test
-
-    coord[i] = kx(c_num, c_den)
-  end
-  return F(coord)
-end
-
-
 #TODO: move
 
 function extract_fp_coefficients(z::FqPolyRingElem, degree_bound::Int)
