@@ -6,6 +6,7 @@ add_assertion_scope(:RayClass)
 set_assertion_level(:RayClass, 1)
 =#
 
+#TODO: rename iso to map
 #TODO: replace .section with preimage
 
 mutable struct UnitGroupCtx
@@ -40,8 +41,8 @@ function unit_group_mod_P_pow(P::GenOrdIdl, k::Int)
 end
 
 
-#Construct O -> FP -> FP*, FP::FqField and FP*::FinGenAbGroup
-#where phi1: O -> FP with preimage
+#Construct O -> FP -> FP*, FP::FqField and FP*::FinGenAbGroup where
+#phi1: O -> FP with preimage
 #phi2: FP -> FP* with generator of FP* in FP.
 #mu: O -> FP with preimage
 #Note that only the preimages of phi2 are given, phi2.header.image is not defined.
@@ -51,7 +52,7 @@ function mult_group_of_residue_field(P::GenOrdIdl, k::Int)
   FP, phi1 = residue_field(O, P)
   G, phi2 = unit_group(FP)
 
-  @hassert :RayClass 3 order(G) == order(constant_field(O.F))^(degree(P)*degree(minimum(P)))-1
+  @hassert :RayClass 3 order(G) == order(defining_constant_field(O.F))^(degree(P)*degree(minimum(P)))-1
   G.rels = matrix(ZZ, 1, 1, [order(G)])
 
   func_mod_k = x -> mod(x, P_pow_k)
@@ -77,7 +78,7 @@ end
 
 
 #CRT
-#Compute (O/m)*=(O/mfin)* X (O/minf)* 
+#Compute (O/m)*=(O/mfin)* x (O/minf)* 
 function unit_group_mod_m(m::Divisor)
   F = m.function_field
 
@@ -251,8 +252,9 @@ end
 function class_group_p(F::Generic.AbsSimpleFunctionField)
   #B = basis_of_differentials(F)
   #dx = differential(separating_element(F))
-  Fq = constant_field(F)
+  Fq = defining_constant_field(F)
   Fp = base_field(Fq)
+  Fp_basis = basis(Fq)
   p = order(Fp)
 
   Ofin = finite_maximal_order(F)
@@ -265,26 +267,29 @@ function class_group_p(F::Generic.AbsSimpleFunctionField)
 
   RRCtx = Hecke._riemann_roch_space_with_ctx(J_fin, J_inf, F)
 
-  Hecke.test_RRspace(RRCtx, J_fin, J_inf)
+  #Hecke.test_RRspace(RRCtx, J_fin, J_inf)
+  #Hecke.test_RRmap(RRCtx)
+
+  #Compute generators of RR space over Fp, since cartier op is Fp-linear:
+  gens = [c*g for g in RRCtx.RR_basis for c in Fp_basis]
 
   #Compute representation matrix of (id - cartier operator) w.r.t. Fp-basis of RR space
   #for row vectors, so x->x*Mrep
-  B = basis(F)
-  B_im = [b - Hecke.cartier_operator(b) for b in RRCtx.gens]
-  Mrep = reduce(vcat, [preimage(RRCtx.iso, a).v for a in B_im])
+  B_im = [b - Hecke.cartier_operator(b) for b in gens]
+  Mrep = reduce(vcat, [preimage(RRCtx.map, a).v for a in B_im])
 
   #Compute right kernel (x*Mrep = 0)
   K = kernel(Mrep) #basis elements row-wise
 
   #Generators of kernel:
-  kernel_gens = K*RRCtx.gens
+  kernel_gens = K*gens
   V = vector_space(Fp, nrows(K))
 
   Hecke.test_kernel(kernel_gens) #test
 
   #disclog for elem in kernel using disclog in whole RR-space resp. F
   function disclog_kernel(a::Generic.AbsSimpleFunctionFieldElem, RRCtx, K)
-    a_v = preimage(RRCtx.iso, a).v #elem in Fp-vectorspace of RR
+    a_v = preimage(RRCtx.map, a).v #elem in Fp-vectorspace of RR
     u = solve(K, a_v) #a_v = u*K -> coordinates w.r.t. kernel basis
     return u
   end
@@ -320,8 +325,10 @@ function class_group_p(F::Generic.AbsSimpleFunctionField)
   D_one = Hecke.divisor_of_degree_one(F)
   #basis a_i for candidates a:
   candidates_ctx = Hecke.riemann_roch_space_with_ctx(genus(F)*p.d*D_one) #candidates for a
+  #generators over Fp:
+  candidates_gens = [c*g for g in candidates_ctx.RR_basis for c in Fp_basis]
   #a_i' for a_i in basis of candidates
-  candidates_dx = [Hecke.nth_derivative(a, 1) for a in candidates_ctx.gens]
+  candidates_dx = [Hecke.nth_derivative(a, 1) for a in candidates_gens]
   len = length(candidates_dx)
 
   #collect k(x)-coordinates of a_i' - b * a_i
@@ -337,7 +344,7 @@ function class_group_p(F::Generic.AbsSimpleFunctionField)
     max_degs = Int[]
     for i in 1:len
       #a_i' - b * a_i:
-      w = candidates_dx[i]-b*candidates_ctx.gens[i]
+      w = candidates_dx[i]-b*candidates_gens[i]
       c = coordinates(w)
       coordinate_dict[i] = c
       max_deg = maximum(map(x->degree(numerator(x))-degree(denominator(x)), c))
@@ -362,9 +369,9 @@ function class_group_p(F::Generic.AbsSimpleFunctionField)
     fp_coordinate_matrix = matrix(Fp, fp_coordinates)
     #basis for coefficients of `a` satisfying p*D = a
     coeff_basis = kernel(fp_coordinate_matrix)
-    a = (F.(coeff_basis[1:1, :])*candidates_ctx.gens)[1]
-    Da = divexact(divisor(a), p)
-    push!(p_torsion_basis, Da)
+    a = (F.(coeff_basis[1:1, :])*candidates_gens)[1]
+    #Da = divexact(divisor(a), p)
+    push!(p_torsion_basis, divisor(a))
   end
   return p_torsion_basis
 end
@@ -374,7 +381,7 @@ function cartier_operator(a::Generic.AbsSimpleFunctionFieldElem)
   F = parent(a)
   p = characteristic(F) #ZZRingElem
   a = nth_derivative(a, p.d-1)
-  @assert isequal(pth_root(-a)^p,-a) #test FAILS
+  @assert isequal(pth_root(-a)^p,-a) #test
   return pth_root(-a)
 end
 
@@ -408,7 +415,7 @@ function nth_derivative(f::Generic.AbsSimpleFunctionFieldElem, n::Int)
 end
 
 #TODO: move
-
+#TODO: use Fp vectorspace of fixed length instead?
 function extract_fp_coefficients(z::FqPolyRingElem, degree_bound::Int)
   Fq = base_ring(parent(z))
   d = degree(z)
@@ -441,19 +448,22 @@ end
 function AbstractAlgebra.divexact(D::Divisor, n)
   I, J = ideals(D)
 
-  I_fact = factor(I)
-  J_fact = factor(J)
+  fin_supp = D.finite_support
+  inf_supp = D.infinite_support
 
-  Inew = mapreduce(x->x[1]^(x[2]), prod, collect(I_fact))
+  Inew = ideal(one(order(I)))
+  Jnew = ideal(one(order(J)))
+  for (p, e) in fin_supp
 
-  Dnew = Divisor(I^n, J^n)
 
-  if has_support(D)
-    fin_supp = finite_support(D)
-    inf_supp = infinite_support(D)
-    Dnew.finite_support = Dict((p, divexact(e, n)) for (p, e) in fin_supp)
-    Dnew.infinite_support = Dict((p, divexact(e, n)) for (p, e) in inf_supp)
   end
+  Inew = prod([p^divexact(e, n) for (p, e) in fin_supp])
+  Jnew = prod([p^divexact(e, n) for (p, e) in inf_supp])
+
+  Dnew = Divisor(Inew, Jnew)
+
+  Dnew.finite_support = Dict((p, divexact(e, n)) for (p, e) in fin_supp)
+  Dnew.infinite_support = Dict((p, divexact(e, n)) for (p, e) in inf_supp)
 
   return Dnew
 end
@@ -479,10 +489,11 @@ function test_pth_root(R::FqPolyRing)
 end
 
 
+#=
 #test iso to Fp-vectorspace
-
-function test_RRiso(RRCtx)#::RiemannRochCtx)
-  iso = RRCtx.iso
+#TODO: update
+function test_RRmap(RRCtx)#::RiemannRochCtx)
+  iso = RRCtx.map
   V = domain(iso)
   v = collect(V)
   RR = [(v[i].v*RRCtx.gens)[1] for i in 1:length(V)]
@@ -505,9 +516,11 @@ function test_RRspace(RRCtx, J_fin, J_inf)
     @assert mod(Oinf(g2), numerator(J_inf)) == 0
   end
 end
+=#
 
 function test_kernel(kernel_gens)
   for g in kernel_gens
     @assert cartier_operator(g) == g
   end
 end
+
