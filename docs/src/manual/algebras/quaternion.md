@@ -17,6 +17,7 @@ This functionality is currently restricted to fields of characteristic not equal
 
 ```@docs
 quaternion_algebra(::Field, ::Any, ::Any)
+quaternion_algebra_ramified_at(::QQField, ::IntegerUnion)
 ```
 
 ## Arithmetic of elements
@@ -58,9 +59,23 @@ julia> m(z)
 0
 ```
 
+## Eichler orders
+
+```@docs
+is_eichler(::Union{AlgAssAbsOrd, AlgAssRelOrd})
+eichler_level(::AlgAssAbsOrd{<:QuaternionAlgebra})
+```
+
 ## Splitting of quaternion algebras
 
 ```@docs
 is_split_with_zero_divisor
 ```
 
+## Gross lattices
+
+```@docs
+gross_lattice(::AlgAssAbsOrd{<:QuaternionAlgebra{QQFieldElem}})
+gross_lattice_basis(::AlgAssAbsOrd{<:QuaternionAlgebra{QQFieldElem}})
+gross_gram_matrix(::Vector{<:AssociativeAlgebraElem{QQFieldElem}})
+```

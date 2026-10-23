@@ -50,14 +50,53 @@ The Hecke tests can be found in `Hecke/test/` and are organized in such a way th
 ### Adding tests
 
 - If one adds functionality to a file, say `src/QuadForm/Quad/Genus.jl`, a
-  corresponding a test should be added to the corresponding test file. In this
+  test should be added to the corresponding test file. In this
   case this would be `test/QuadForm/Quad/Genus.jl`.
 - Assume one adds a new file, say `src/QuadForm/New.jl`, which is included in
-  `src/QuadForm.jl`. Then a corresponding file `test/QuadForm/Test.jl`
+  `src/QuadForm.jl`. Then a corresponding file `test/QuadForm/New.jl`
   containing the tests must be added. This new file must then also be included
   in `test/QuadForm.jl`.
 - Similar to the above, if a new directory in `src/` is added, the same must apply
   in `test/`.
+
+When a test file has a matching directory, such as `test/AlgAssAbsOrd/PIP.jl`
+and `test/AlgAssAbsOrd/PIP/`, the full test runner skips the file and runs the
+files inside the directory as separate jobs. Use the skipped file as a wrapper
+that includes its child test files. Put all test cases and assertions in the
+child files, and shared helper code in `setup_tests.jl` as described below.
+Tests written directly in the skipped file will not run in CI.
+When creating a directory beside an existing test file, move all of that file's
+test cases into child files.
+
+For example, add unit group generator tests to
+`test/AlgAssAbsOrd/PIP/unit_group_generators.jl` and include that file from
+`test/AlgAssAbsOrd/PIP.jl`. Running the wrapper explicitly with
+`Hecke.test_module("AlgAssAbsOrd/PIP")` still runs all of its included tests.
+
+### Shared test setup
+
+If a test directory contains a file `setup_tests.jl`, this file is included into
+`Main` before each test file in that directory run by the test runner or
+`Hecke.test_module`. It can be used to define common helper functions and
+initialize test data. It is not run as a separate test.
+
+Setup files in parent directories are ignored. The setup file is included again
+for each test file, so definitions that should only be evaluated once must be
+guarded, for example with `isdefined`.
+
+For example, `setup_tests.jl` can define a helper function as follows:
+
+```julia
+if !isdefined(@__MODULE__, :test_parent)
+  function test_parent(x, R)
+    @test parent(x) === R
+  end
+end
+```
+
+Test files run this way do not need to include the setup file themselves. When
+including test files manually, the caller is responsible for loading their
+setup files.
 
 ### Adding long tests
 
@@ -84,7 +123,7 @@ Because the test structure mirrors the source directory, it is easy to run only 
 julia> Hecke.test_module("QuadForm/Quad/Genus")
 ```
 
-This also works on the directory level. If one wants to add run all tests for quadratic forms, one can just run
+This also works on the directory level. If one wants to run all tests for quadratic forms, one can just run
 
 ```julia
 julia> Hecke.test_module("QuadForm")

@@ -106,6 +106,82 @@ function QuaternionAlgebra(K::Field, a::T, b::T) where { T <: FieldElem }
   end
 end
 
+@doc raw"""
+    quaternion_algebra_ramified_at(K::QQField, p::IntegerUnion;
+                                   check::Bool = true)
+      -> QuaternionAlgebra{QQFieldElem}
+
+Return the quaternion algebra over $\mathbf{Q}$ that is ramified exactly at
+the prime $p$ and at infinity, presented as $(-p, -q)_{\mathbf{Q}}$, so
+$i^2 = -p$ and $j^2 = -q$, where $q$ is the least prime with
+$q \equiv 3 \bmod 8$ and $\left(\frac{p}{q}\right) = -1$.
+
+The algebra carries the maximal order, which [`maximal_order`](@ref) returns,
+
+```math
+\mathbf{Z} + \mathbf{Z}\frac{1 + j}{2} + \mathbf{Z}\frac{i(1 + j)}{2}
++ \mathbf{Z}\frac{(r + i)j}{q},
+```
+
+where $r$ is the square root of $-p$ modulo $q$ in ``(0, q/2]``. Both $q$
+and $r$ are determined by $p$, so the algebra and its maximal order are the
+same on every call.
+
+If `check` is `true`, it is tested that $p$ is prime.
+
+The presentation and the order are those of [Ibu82](@cite), Lemmas 1.1 and
+1.2, with the least admissible $q$, which exists by Dirichlet's theorem.
+
+# Examples
+
+```jldoctest
+julia> A = quaternion_algebra_ramified_at(QQ, 97)
+Quaternion algebra
+  over rational field
+  defined by i^2 = -97, j^2 = -19, ij = -ji
+
+julia> abs(discriminant(maximal_order(A))) == 97^2
+true
+```
+"""
+function quaternion_algebra_ramified_at(K::QQField, p::IntegerUnion;
+                                        check::Bool = true)
+  p = ZZ(p)
+  if check
+    @req is_prime(p) "p must be a prime"
+  end
+  q = _least_admissible_prime(p)
+  A = quaternion_algebra(K, -p, -q)
+  A.maximal_order = [_ibukiyama_maximal_order(A, p, q)]
+  return A
+end
+
+# The least prime q with q = 3 mod 8 and (p/q) = -1, Ibukiyama's conditions on
+# q (Nagoya Math. J. 88, p. 181): for odd p, (p/q) = -1 is his (-q/p) = -1,
+# by quadratic reciprocity, and for p = 2 it holds for every q = 3 mod 8.
+function _least_admissible_prime(p::ZZRingElem)
+  q = ZZ(3)
+  while !(mod(q, 8) == 3 && kronecker_symbol(p, q) == -1)
+    q = next_prime(q)
+  end
+  return q
+end
+
+# Ibukiyama's maximal order O(q, r) of A = (-p, -q), Lemma 1.2 of Nagoya Math.
+# J. 88: Z + Z(1 + j)/2 + Z i(1 + j)/2 + Z (r + i)j/q, with r the square root
+# of -p modulo q in (0, q/2]. As q = 3 mod 4, a square root of -p is
+# (-p)^((q + 1)/4) mod q.
+function _ibukiyama_maximal_order(A::QuaternionAlgebra{QQFieldElem},
+                                  p::ZZRingElem, q::ZZRingElem)
+  r = powermod(mod(-p, q), div(q + 1, 4), q)
+  r = min(r, q - r)
+  e, i, j, k = basis(A)
+  B = [e, QQ(1, 2) * (e + j), QQ(1, 2) * (i + k), QQ(1, q) * (r * j + k)]
+  O = order(A, B; isbasis = true, check = false)
+  O.is_maximal = 1
+  return O
+end
+
 dim(A::QuaternionAlgebra) = 4
 
 base_ring(A::QuaternionAlgebra{T}) where {T} = A.base_ring::parent_type(T)
@@ -496,7 +572,10 @@ function Base.enumerate(O::Union{AlgAssRelOrd, AlgAssAbsOrd}, b::Int, equal::Boo
   end
 
   # TODO: Replace this by short_vectors_gram(M, nrr) once it works
-  @assert !iszero(det(G))
+  # the enumeration needs a positive definite norm form, that is, a totally
+  # definite quaternion algebra; otherwise it does not terminate
+  @req is_positive_definite(G) (
+    "Algebra must be a totally definite quaternion algebra")
   V = _short_vectors_gram(Vector, G, ZZRingElem(b), hard = true)
   res = elem_type(O)[]
   y = zero(A)
@@ -665,78 +744,6 @@ function ___standard_involution(A)
   end
   invol = N
   return hom(A, A, invol, inv(invol))
-end
-
-function _is_principal_maximal_quaternion_generic_proper(a, M, side = :right)
-  A = algebra(M)
-  f = standard_involution(A)
-  K = base_ring(A)
-  #@assert right_order(a) == M
-  @assert _test_ideal_sidedness(a, M, :right)
-  nr = normred(a)
-  nr = simplify(nr)
-  #@show norm(nr)
-  #@show nr
-  fl, c = is_principal_with_data(nr)
-  if !fl
-    return false, zero(A)
-  end
-  #@show c
-  fl, u, reps = _reps_for_totally_positive(c, K)
-  if !fl
-    return false, zero(A)
-  end
-
-  #@show u
-  #@show is_totally_positive(u * c)
-  #@show u * c
-
-  Babs = absolute_basis(a)
-  d = length(Babs)
-  G = zero_matrix(ZZ, d, d)
-  #@show reps
-  for z in reps
-    Nnu = z * u * c
-
-    alpha = inv(Nnu)
-
-    _d = denominator(alpha, maximal_order(K))
-    alpha = _d * alpha
-
-    #@show is_integral(alpha)
-
-    for i in 1:d
-      for j in 1:d
-        G[i, j] = ZZ(absolute_tr(alpha * trred(Babs[i] * f(Babs[j]))))
-      end
-    end
-
-    B = 2 * trace(alpha * Nnu)
-
-    @assert is_integral(B)
-
-    ##@show Hecke._eltseq(G)
-    #
-    #@show denominator(G)
-
-    #_d = degree(base_ring(A))
-
-    #@show B
-
-    v = _short_vectors_gram_integral(Vector, G, ZZ(B), hard = true)
-
-    #if min == degree(base_ring(A))
-    for w in v
-      xi = sum(w[1][i] * Babs[i] for i in 1:length(Babs))
-      if abs(norm(normred(xi))) == norm(normred(a))
-        @assert xi in a
-        @assert xi * M == a
-        return true, xi
-      end
-    end
-  end
-  # TODO: Replace this by short_vectors_gram(M, nrr) once it works
-  return false, zero(A)
 end
 
 ################################################################################

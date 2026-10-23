@@ -27,7 +27,8 @@ mutable struct Divisor{S <: Generic.AbsSimpleFunctionField, T1 <: PolyRing, T2 <
 
 end
 
-function trivial_divisor(F::Generic.AbsSimpleFunctionField)
+@attr Divisor{Generic.AbsSimpleFunctionField{T, U}, parent_type(U), KInftyRing{T, U}} function
+trivial_divisor(F::Generic.AbsSimpleFunctionField{T, U}) where {T, U}
   return divisor(one(F))
 end
 
@@ -140,14 +141,6 @@ function function_field(O::GenOrd)
   return O.F
 end
 
-@doc raw"""
-    constant_field(K::AbsSimpleFunctionField) -> Field
-
-Return the field of constants of K.
-"""
-function constant_field(K::AbstractAlgebra.Generic.AbsSimpleFunctionField)
-  return base_ring(base_ring(K))
-end
 
 @doc raw"""
     finite_maximal_order(K::AbsSimpleFunctionField) -> GenOrd
@@ -591,7 +584,8 @@ Return the genus of F.
   dDiff = d1 - d2
   @assert iseven(dDiff)
 
-  return 1 - degree(F) + divexact(dDiff, 2)
+  m = constant_field_degree(F)
+  return 1 + divexact(dDiff - 2*degree(F), 2*m)
 end
 
 ################################################################################

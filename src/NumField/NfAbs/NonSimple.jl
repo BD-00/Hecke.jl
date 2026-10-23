@@ -6,7 +6,7 @@
 
 @inline base_ring(K::AbsNonSimpleNumField) = QQ
 
-@inline base_ring_type(K::AbsNonSimpleNumField) = QQField
+base_ring_type(::Type{AbsNonSimpleNumField}) = QQField
 
 @inline base_field(K::AbsNonSimpleNumField) = QQ
 
@@ -90,6 +90,10 @@ function rand(rng::AbstractRNG,
   ei = Vector{Int}[copy(exp) for exp in exp_it]
 
   return K(QQMPolyRingElem(parent(K.pol[1]), ci, ei))
+end
+
+function ConformanceTests.generate_element(K::AbsNonSimpleNumField)
+  return rand(K, -10:10)
 end
 
 ################################################################################
@@ -264,7 +268,10 @@ function Base.div(a::AbsNonSimpleNumFieldElem, b::AbsNonSimpleNumFieldElem)
   return a * inv(b)
 end
 
-Nemo.divexact(a::AbsNonSimpleNumFieldElem, b::AbsNonSimpleNumFieldElem; check::Bool = false) = div(a, b)
+function Nemo.divexact(a::AbsNonSimpleNumFieldElem, b::AbsNonSimpleNumFieldElem; check::Bool = false)
+  iszero(b) && throw(DivideError())
+  return div(a, b)
+end
 
 ################################################################################
 #

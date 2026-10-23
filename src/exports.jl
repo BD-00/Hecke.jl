@@ -250,6 +250,7 @@ export conjugates_log
 export conjugates_real
 export constant_coefficient
 export constant_field
+export constant_field_degree
 export contains_equation_order
 export content_ideal
 export contract
@@ -279,6 +280,7 @@ export decompose_into_p_rings
 export decomposition_field
 export decomposition_group
 export deepcopy
+export defining_constant_field
 export defining_modulus
 export defining_polynomial
 export defining_polynomials
@@ -325,7 +327,10 @@ export dual
 export dual_isogeny
 export dual_of_frobenius
 export echelon_with_transform
+export eichler_level
 export eisenstein_extension
+export eisenstein_reduction
+export eisenstein_reduction_with_transform
 export elem_in_algebra
 export elem_in_nf
 export elem_order_bsgs
@@ -401,6 +406,9 @@ export gram_matrix_bilinear
 export gram_matrix_of_generators
 export gram_matrix_of_rational_span
 export gram_matrix_quadratic
+export gross_gram_matrix
+export gross_lattice
+export gross_lattice_basis
 export group
 export group_algebra
 export grunwald_wang
@@ -517,6 +525,7 @@ export is_discriminant
 export is_dyadic
 export is_effective
 export is_eichler
+export is_eisenstein_reduced
 export is_elementary
 export is_elementary_with_prime
 export is_equal_locally
@@ -713,6 +722,7 @@ export mod!
 export mod_sym!
 export modord
 export modular_init
+export module_index
 export modulus_bilinear_form
 export modulus_quadratic_form
 export morphisms
@@ -824,6 +834,7 @@ export quadratic_space
 export quadratic_twist
 export quadratic_twists
 export quaternion_algebra
+export quaternion_algebra_ramified_at
 export quo
 export quotient
 export radical

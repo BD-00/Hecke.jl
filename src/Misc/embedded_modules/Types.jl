@@ -46,6 +46,7 @@ _ring_type(::Type{ZZRing}) = _PID
 _ring_type(::Type{<:PolyRing{<:T}}) where {T <: FieldElement} = _PID
 _ring_type(::Type{<:KInftyRing{T}}) where {T <: FieldElement} = _PID
 _ring_type(::Type{<:AbsNumFieldOrder}) = _DD
+_ring_type(::Type{<:GenOrd}) = _DD
 _ring_type(R::Ring) = _ring_type(typeof(R))
 
 # When working over a Dedekind domain, work with PseudoElements
@@ -57,7 +58,7 @@ struct PseudoElement{S, T}
 end
 
 # Structure to represent R-modules inside S^n, where R <= S are commutative rings.
-mutable struct EmbeddedModule{RingTypeType, RingType, OverringType}
+@attributes mutable struct EmbeddedModule{RingTypeType, RingType, OverringType}
   overstructure::Any          # only used to check whether modules are compatible
   generator_matrix            # matrix (or pseudo-matrix) whose rows generate the module
   ring::RingType              # R
@@ -130,7 +131,7 @@ end
 #     the matrix representing the map
 #
 # 2) Dedekind domain
-#   - Have to think about this what to store
+#   - For embedded codomains, store a matrix in pseudo-basis coordinates
 
 # Note that the EmbeddedModuleMapXXData types are the actual maps
 # but we package everything up in EmbeddedModuleMap to only have one
@@ -219,10 +220,39 @@ end
 
 # Dedekind domains
 
-struct EmbeddedModuleMapDDData{DomainT, CodomainT, RingMapT}
-  # Core
+struct EmbeddedModuleDataDDQuotient{DomainT, CodomainT} <:
+         Map{DomainT, CodomainT, HeckeMap, EmbeddedModuleDataDDQuotient}
+  domain::DomainT
+  codomain::CodomainT
+  kernel::DomainT
+end
+
+struct EmbeddedModuleDataDDReduction{DomainT, CodomainT, RingMapT, FieldMapT, VectorT, MatrixT} <:
+         Map{DomainT, CodomainT, HeckeMap, EmbeddedModuleDataDDReduction}
+  domain::DomainT
+  codomain::CodomainT
+  kernel::DomainT
+  ring_map::RingMapT
+  field_map::FieldMapT
+  local_generators::VectorT
+  lift_coefficients::VectorT
+  reduction_matrix::MatrixT  # nothing for M -> M/pM
+  pivot_columns::Vector{Int}
+  basis_columns::Vector{Int}
+end
+
+@attributes mutable struct EmbeddedModuleMapDDData{
+    DomainT, CodomainT, RingMapT, MatrixT} <:
+    Map{DomainT, CodomainT, Hecke.SetMap, EmbeddedModuleMapDDData}
   domain::DomainT
   codomain::CodomainT
   ring_map::RingMapT
-  # ???
+  matrix::MatrixT
+
+  function EmbeddedModuleMapDDData(M::EmbeddedModule, N::EmbeddedModule,
+                                   A::MatElem)
+    B = copy(A)
+    return new{typeof(M), typeof(N), typeof(identity), typeof(B)}(
+      M, N, identity, B)
+  end
 end

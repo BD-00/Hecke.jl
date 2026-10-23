@@ -191,11 +191,13 @@ function abelian_normal_extensions(K::AbsSimpleNumField, gtype::Vector{Int}, abs
     end
     act = induce_action(mr, gs)
     ls = stable_subgroups_for_abexts(r, act, gtype)
+    # wild generators depend only on mr, share them across subgroups
+    lwp = Dict{Int, Vector{FinGenAbGroupElem}}()
     for s in ls
       s::FinGenAbGroupHom
       @hassert :AbExt 1 order(codomain(s)) == n
       C = ray_class_field(mr, s)::ClassField{MapRayClassGrp, FinGenAbGroupHom}
-      if _is_conductor_min_normal(C) && discriminant_conductor(C, bound)
+      if _is_conductor_min_normal(C; lwp) && discriminant_conductor(C, bound)
         if only_complex
           rC, sC = signature(C)
           if !iszero(rC)
@@ -251,6 +253,25 @@ function abelian_extensions(K::AbsSimpleNumField, gtype::Vector{Int},
     @assert r == length(rlp)
     onetor = collect(1:r)
     fields = ClassField{MapRayClassGrp, FinGenAbGroupHom}[]
+    # the conductors do not depend on the signature, compute them once
+    if conductors === nothing
+      gtype_snf = map(Int, snf(abelian_group(gtype))[1].snf)
+      conductors = conductors_generic(K, gtype_snf, absolute_discriminant_bound, only_tame = only_tame)
+      isempty(conductors) && return fields
+    end
+    if absolutely_distinct
+      auts = automorphism_list(K)
+      absolutely_distinct = !isone(length(auts))
+    end
+    if absolutely_distinct
+      if !(conductors isa Vector{<:Dict})
+        conductors = [factor(I) for I in conductors]
+      end
+      conductors, stabilizers = _conductor_orbits(auts, conductors;
+                                                 with_stabilizers = true)
+      permutations = [Int[findfirst(isequal(induce_image(f, P)), rlp)::Int
+                          for P in rlp] for f in auts]
+    end
     for (R, S) in signatures
       if mod(r * n - R, n) != 0
         continue
@@ -262,13 +283,31 @@ function abelian_extensions(K::AbsSimpleNumField, gtype::Vector{Int},
       if S != (s + num_ramified//2)*n || num_ramified < 0
         continue
       end
+      if absolutely_distinct
+        seen = [Set{Vector{Int}}() for _ in conductors]
+      end
       for s in subsets(onetor, num_ramified)
+        if absolutely_distinct
+          # All infinite subsets of this size are allowed. We may choose
+          # finite representatives even if the input omits conjugates,
+          # then identify infinite parts under each finite stabilizer.
+          selected = similar(conductors, 0)
+          for j in eachindex(conductors)
+            if _is_new_infinite_orbit!(seen[j], permutations, stabilizers[j], s)
+              push!(selected, conductors[j])
+            end
+          end
+          isempty(selected) && continue
+        else
+          selected = conductors
+        end
         rlp_ramify = rlp[s]
         more_fields =  _abelian_extensions(K, gtype, absolute_discriminant_bound,
                                absolutely_distinct = absolutely_distinct,
                                ramified_at_inf_plc = (true, rlp_ramify),
                                only_tame = only_tame,
-                               conductors = conductors)
+                               conductors = selected,
+                               conductors_sieved = absolutely_distinct)
         for L in more_fields
           @assert signature(L) == (R, S)
         end
@@ -279,12 +318,24 @@ function abelian_extensions(K::AbsSimpleNumField, gtype::Vector{Int},
   end
 end
 
+function _is_new_infinite_orbit!(seen::Set{Vector{Int}},
+                               permutations::Vector{Vector{Int}},
+                               stabilizer::Vector{Int}, subset::Vector{Int})
+  isone(length(stabilizer)) && return true
+  subset in seen && return false
+  for i in stabilizer
+    push!(seen, sort!(permutations[i][subset]))
+  end
+  return true
+end
+
 function _abelian_extensions(K::AbsSimpleNumField, gtype::Vector{Int},
                             absolute_discriminant_bound::ZZRingElem;
                             absolutely_distinct::Bool = false,
                             ramified_at_inf_plc::Tuple{Bool, Vector{<: InfPlc}} = (false, InfPlc[]),
                             only_tame::Bool = false,
-                            conductors = nothing)
+                            conductors = nothing,
+                            conductors_sieved::Bool = false)
 
   # quick check
   OK = lll(maximal_order(K))
@@ -323,6 +374,11 @@ function _abelian_extensions(K::AbsSimpleNumField, gtype::Vector{Int},
 
   expo = gtype[end]
   auts = automorphism_list(K)
+  if absolutely_distinct && ramified_at_inf_plc[1]
+    # Both conductor sieving and ray-class actions must preserve the
+    # prescribed infinite places as a set.
+    auts = [f for f in auts if all(P -> induce_image(f, P) in inf_plc, inf_plc)]
+  end
   gens_auts = small_generating_set(auts)
   if isone(length(auts))
     absolutely_distinct = false
@@ -332,7 +388,7 @@ function _abelian_extensions(K::AbsSimpleNumField, gtype::Vector{Int},
   AbstractAlgebra.allow_cache!(mCl)
 
 
-  if absolutely_distinct
+  if absolutely_distinct && !conductors_sieved
     l_conductors = _sieve_conjugates(auts, l_conductors)
   end
   @vprintln :AbExt 1 "Number of conductors: $(length(l_conductors))"
@@ -440,8 +496,17 @@ function _image(cache, auts, I, i)
 end
 
 function _sieve_conjugates(auts::Vector{<:NumFieldHom{AbsSimpleNumField, AbsSimpleNumField}}, conds::Vector{Dict{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}, Int}})
+  return _conductor_orbits(auts, conds)[1]
+end
+
+function _conductor_orbits(auts, conds; with_stabilizers::Bool = false)
+  # auts contains the full group; stabilizers refer to indices in this list.
+  stabilizers = Vector{Int}[]
   if isone(length(auts))
-    return conds
+    if with_stabilizers
+      append!(stabilizers, [Int[1] for _ in conds])
+    end
+    return conds, stabilizers
   end
   closure = Set{Dict{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}, Int}}()
   reps = Vector{Dict{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}, Int}}()
@@ -454,11 +519,18 @@ function _sieve_conjugates(auts::Vector{<:NumFieldHom{AbsSimpleNumField, AbsSimp
       continue
     end
     push!(reps, conds[j])
+    if with_stabilizers
+      push!(stabilizers, Int[])
+    end
     for i = 1:length(auts)
-      push!(closure, _induce_image(auts, i, conds[j], cache))
+      image = _induce_image(auts, i, conds[j], cache)
+      push!(closure, image)
+      if with_stabilizers && image == conds[j]
+        push!(stabilizers[end], i)
+      end
     end
   end
-  return reps
+  return reps, stabilizers
 end
 
 function _induce_image(auts::Vector{<:NumFieldHom{AbsSimpleNumField, AbsSimpleNumField}}, i::Int, cond::Dict{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}, Int}, cache::Vector{Dict{AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}, AbsNumFieldOrderIdeal{AbsSimpleNumField, AbsSimpleNumFieldElem}}})

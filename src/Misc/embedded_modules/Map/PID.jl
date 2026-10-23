@@ -1,3 +1,11 @@
+function _hom_from_ambient_matrix(M::EmbeddedModule{_PID},
+                                  N::EmbeddedModule{_PID}, A::MatElem)
+  _check_ambient_matrix(M, N, A)
+  fl, B = _in(basis_matrix(M)*A, N, Val(true))
+  @req fl "The matrix does not define a module map"
+  return _hom(M, N, B)
+end
+
 function hom(M::EmbeddedModule{_PID}, X, images::Vector)
   @req length(images) == rank(M) "Wrong number of basis images"
   @req all(x -> parent(x) === X, images) "Images must belong to the codomain"
@@ -6,6 +14,17 @@ function hom(M::EmbeddedModule{_PID}, X, images::Vector)
   end
   return EmbeddedModuleMap(M, X,
                            EmbeddedModuleMapPIDData(M, X, identity, images))
+end
+
+function _hom(M::EmbeddedModule{_PID}, P::EmbeddedModule{_PID}, A::MatElem)
+  @req ring(M) === ring(P) "The modules must have the same coefficient ring"
+  @req base_ring(A) === ring(M) "The matrix must be over the coefficient ring"
+  @req nrows(A) == rank(M) && ncols(A) == rank(P) "The matrix has the wrong dimensions"
+  images = elem_type(P)[_element_from_coordinates(P, A[i, :]; check = false)
+                       for i in 1:nrows(A)]
+  f = hom(M, P, images)
+  data(f).data.matrix = A
+  return f
 end
 
 function hom(M::EmbeddedModule{_PID}, X, imgs::Vector{<:Pair})
